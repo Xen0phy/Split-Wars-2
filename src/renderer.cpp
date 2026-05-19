@@ -27,10 +27,10 @@ static void FormatDiff(char* buf, int bufSize, double diff)
 static ImVec4 TimeColor(double current, double best, bool running)
 {
     if (best <= 0.0)
-        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f); // no best = green
+        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f);
     if (current <= best)
-        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f); // ahead = green
-    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);     // behind = red
+        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f);
+    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
 }
 
 void RenderTimerOverlay()
@@ -73,7 +73,6 @@ void RenderTimerOverlay()
             ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 100.0f);
             ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
 
-            // Completed splits
             for (int i = 0; i < numSplits; i++)
             {
                 double splitTime = SplitMode
@@ -114,7 +113,6 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("%s", splits[i].Name);
             }
 
-            // Current running segment
             if (running || finished)
             {
                 double segmentStart = numSplits > 0 ? splits[numSplits-1].Timestamp : 0.0;
@@ -154,7 +152,6 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("Goal");
             }
 
-            // Total row
             if ((running || finished) && numSplits > 0)
             {
                 ImGui::TableNextRow();
@@ -233,104 +230,93 @@ void RenderTimerOverlay()
     ImGui::End();
 }
 
-static void RenderRoutePoint(const char* label, RoutePoint& point, int id = -1)
+static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 {
-    if (label && label[0] != '\0')
-    {
-        ImGui::Text("%s", label);
-        ImGui::SameLine();
-    }
+    ImGui::TableNextRow();
 
+    // Name
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextDisabled("%s", label);
+
+    // Trigger type
+    ImGui::TableSetColumnIndex(1);
     const char* triggerTypes[] = { "Circle", "Plane", "Map Change" };
     int currentType = (int)point.TriggerType;
-    ImGui::SetNextItemWidth(90.0f);
-    char comboLabel[32];
-    if (id >= 0) snprintf(comboLabel, sizeof(comboLabel), "##type_%d", id);
-    else         snprintf(comboLabel, sizeof(comboLabel), "##type_%s", label);
+    ImGui::SetNextItemWidth(-1);
+    char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", id);
     if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
         point.TriggerType = (ETriggerType)currentType;
-    ImGui::SameLine();
 
-    ImGui::Text("MapID");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(60.0f);
-    char mapIdLabel[32];
-    if (id >= 0) snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", id);
-    else         snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%s", label);
+    // MapID
+    ImGui::TableSetColumnIndex(2);
+    ImGui::SetNextItemWidth(-1);
+    char mapIdLabel[32]; snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", id);
     int mapId = (int)point.MapID;
     if (ImGui::InputInt(mapIdLabel, &mapId, 0, 0))
         point.MapID = (unsigned int)mapId;
-    ImGui::SameLine();
 
-    if (point.TriggerType != ETriggerType::MapChange)
+    bool isMapChange = point.TriggerType == ETriggerType::MapChange;
+
+    // X
+    ImGui::TableSetColumnIndex(3);
+    if (!isMapChange)
     {
-        ImGui::Text("X");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(70.0f);
-        char xLabel[32];
-        if (id >= 0) snprintf(xLabel, sizeof(xLabel), "##x_%d", id);
-        else         snprintf(xLabel, sizeof(xLabel), "##x_%s", label);
-        ImGui::InputFloat(xLabel, &point.X, 0.0f, 0.0f, "%.2f");
-        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1);
+        char l[32]; snprintf(l, sizeof(l), "##x_%d", id);
+        ImGui::InputFloat(l, &point.X, 0.0f, 0.0f, "%.2f");
+    }
 
-        ImGui::Text("Y");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(70.0f);
-        char yLabel[32];
-        if (id >= 0) snprintf(yLabel, sizeof(yLabel), "##y_%d", id);
-        else         snprintf(yLabel, sizeof(yLabel), "##y_%s", label);
-        ImGui::InputFloat(yLabel, &point.Y, 0.0f, 0.0f, "%.2f");
-        ImGui::SameLine();
+    // Y
+    ImGui::TableSetColumnIndex(4);
+    if (!isMapChange)
+    {
+        ImGui::SetNextItemWidth(-1);
+        char l[32]; snprintf(l, sizeof(l), "##y_%d", id);
+        ImGui::InputFloat(l, &point.Y, 0.0f, 0.0f, "%.2f");
+    }
 
-        ImGui::Text("Z");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(70.0f);
-        char zLabel[32];
-        if (id >= 0) snprintf(zLabel, sizeof(zLabel), "##z_%d", id);
-        else         snprintf(zLabel, sizeof(zLabel), "##z_%s", label);
-        ImGui::InputFloat(zLabel, &point.Z, 0.0f, 0.0f, "%.2f");
-        ImGui::SameLine();
+    // Z
+    ImGui::TableSetColumnIndex(5);
+    if (!isMapChange)
+    {
+        ImGui::SetNextItemWidth(-1);
+        char l[32]; snprintf(l, sizeof(l), "##z_%d", id);
+        ImGui::InputFloat(l, &point.Z, 0.0f, 0.0f, "%.2f");
+    }
 
+    // R/W
+    ImGui::TableSetColumnIndex(6);
+    if (!isMapChange)
+    {
+        ImGui::SetNextItemWidth(-1);
         if (point.TriggerType == ETriggerType::Plane)
         {
-            ImGui::Text("W");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(60.0f);
-            char wLabel[32];
-            if (id >= 0) snprintf(wLabel, sizeof(wLabel), "##w_%d", id);
-            else         snprintf(wLabel, sizeof(wLabel), "##w_%s", label);
-            ImGui::InputFloat(wLabel, &point.PlaneWidth, 0.0f, 0.0f, "%.2f");
-            ImGui::SameLine();
-
-            ImGui::Text("Angle");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(60.0f);
-            char aLabel[32];
-            if (id >= 0) snprintf(aLabel, sizeof(aLabel), "##angle_%d", id);
-            else         snprintf(aLabel, sizeof(aLabel), "##angle_%s", label);
-            ImGui::InputFloat(aLabel, &point.PlaneAngle, 0.0f, 0.0f, "%.1f");
-            ImGui::SameLine();
+            char l[32]; snprintf(l, sizeof(l), "##w_%d", id);
+            ImGui::InputFloat(l, &point.PlaneWidth, 0.0f, 0.0f, "%.2f");
         }
         else
         {
-            ImGui::Text("R");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(60.0f);
-            char rLabel[32];
-            if (id >= 0) snprintf(rLabel, sizeof(rLabel), "##r_%d", id);
-            else         snprintf(rLabel, sizeof(rLabel), "##r_%s", label);
-            ImGui::InputFloat(rLabel, &point.Radius, 0.0f, 0.0f, "%.2f");
-            ImGui::SameLine();
+            char l[32]; snprintf(l, sizeof(l), "##r_%d", id);
+            ImGui::InputFloat(l, &point.Radius, 0.0f, 0.0f, "%.2f");
         }
     }
 
-    char capLabel[32];
-    if (id >= 0) snprintf(capLabel, sizeof(capLabel), "Capture##%d", id);
-    else         snprintf(capLabel, sizeof(capLabel), "Capture##%s", label);
+    // Angle
+    ImGui::TableSetColumnIndex(7);
+    if (!isMapChange && point.TriggerType == ETriggerType::Plane)
+    {
+        ImGui::SetNextItemWidth(-1);
+        char l[32]; snprintf(l, sizeof(l), "##angle_%d", id);
+        ImGui::InputFloat(l, &point.PlaneAngle, 0.0f, 0.0f, "%.1f");
+    }
+
+    // Capture
+    ImGui::TableSetColumnIndex(8);
+    char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", id);
     if (ImGui::Button(capLabel) && MumbleLink)
     {
         point.MapID = MumbleLink->Context.MapID;
-        if (point.TriggerType != ETriggerType::MapChange)
+        if (!isMapChange)
         {
             point.X = MumbleLink->AvatarPosition.X;
             point.Y = MumbleLink->AvatarPosition.Y;
@@ -343,13 +329,15 @@ static void RenderRoutePoint(const char* label, RoutePoint& point, int id = -1)
             point.PlaneAngle = -(std::atan2(fx, fz) * 180.0f / 3.14159265f) + 90.0f;
         }
     }
+
+    // Empty remove column for Start/Goal
+    ImGui::TableSetColumnIndex(9);
 }
 
 void RenderConfigWindow()
 {
     if (!ShowConfig) return;
 
-    ImGui::SetNextWindowSize(ImVec2(900.0f, 0.0f), ImGuiCond_Always);
     ImGui::Begin("Speedrun Config");
 
     ImGui::Text("Route:");
@@ -406,32 +394,145 @@ void RenderConfigWindow()
 
     ImGui::Separator();
 
-    RenderRoutePoint("Start:", CurrentRoute.Start, 9999);
-    RenderRoutePoint("Goal: ", CurrentRoute.Goal);
-
-    ImGui::Separator();
-
-    int removeIndex = -1;
-    for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
+    // Route table
+    if (ImGui::BeginTable("route_table", 10,
+        ImGuiTableFlags_Borders |
+        ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_SizingStretchProp))
     {
-        Checkpoint& cp = CurrentRoute.Checkpoints[i];
+        ImGui::TableSetupColumn("Name",    ImGuiTableColumnFlags_WidthFixed,   100.0f);
+        ImGui::TableSetupColumn("Trigger", ImGuiTableColumnFlags_WidthFixed,    90.0f);
+        ImGui::TableSetupColumn("MapID",   ImGuiTableColumnFlags_WidthFixed,    60.0f);
+        ImGui::TableSetupColumn("X",       ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Y",       ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Z",       ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("R/W",     ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Angle",   ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Capture", ImGuiTableColumnFlags_WidthFixed,    50.0f);
+        ImGui::TableSetupColumn("Remove",  ImGuiTableColumnFlags_WidthFixed,    50.0f);
+        ImGui::TableHeadersRow();
 
-        ImGui::SetNextItemWidth(120.0f);
-        char nameLabel[32]; snprintf(nameLabel, sizeof(nameLabel), "##cpname_%d", i);
-        ImGui::InputText(nameLabel, cp.Name, sizeof(cp.Name));
-        ImGui::SameLine();
+        RenderRouteRow("Start", CurrentRoute.Start, 9999);
+        RenderRouteRow("Goal",  CurrentRoute.Goal,  9998);
 
-        RenderRoutePoint("", cp.Point, i);
-        ImGui::SameLine();
+        int removeIndex = -1;
+        for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
+        {
+            ImGui::TableNextRow();
+            RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
+            bool isMapChange = cp.TriggerType == ETriggerType::MapChange;
 
-        char removeLabel[32]; snprintf(removeLabel, sizeof(removeLabel), "X##rm_%d", i);
-        if (ImGui::Button(removeLabel))
-            removeIndex = i;
+            // Name
+            ImGui::TableSetColumnIndex(0);
+            ImGui::SetNextItemWidth(-1);
+            char nameLabel[32]; snprintf(nameLabel, sizeof(nameLabel), "##cpname_%d", i);
+            ImGui::InputText(nameLabel, CurrentRoute.Checkpoints[i].Name,
+                             sizeof(CurrentRoute.Checkpoints[i].Name));
+
+            // Trigger
+            ImGui::TableSetColumnIndex(1);
+            const char* triggerTypes[] = { "Circle", "Plane", "Map Change" };
+            int currentType = (int)cp.TriggerType;
+            ImGui::SetNextItemWidth(-1);
+            char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
+            if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
+                cp.TriggerType = (ETriggerType)currentType;
+
+            // MapID
+            ImGui::TableSetColumnIndex(2);
+            ImGui::SetNextItemWidth(-1);
+            char mapIdLabel[32]; snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", i);
+            int mapId = (int)cp.MapID;
+            if (ImGui::InputInt(mapIdLabel, &mapId, 0, 0))
+                cp.MapID = (unsigned int)mapId;
+
+            // X
+            ImGui::TableSetColumnIndex(3);
+            if (!isMapChange)
+            {
+                ImGui::SetNextItemWidth(-1);
+                char l[32]; snprintf(l, sizeof(l), "##x_%d", i);
+                ImGui::InputFloat(l, &cp.X, 0.0f, 0.0f, "%.2f");
+            }
+
+            // Y
+            ImGui::TableSetColumnIndex(4);
+            if (!isMapChange)
+            {
+                ImGui::SetNextItemWidth(-1);
+                char l[32]; snprintf(l, sizeof(l), "##y_%d", i);
+                ImGui::InputFloat(l, &cp.Y, 0.0f, 0.0f, "%.2f");
+            }
+
+            // Z
+            ImGui::TableSetColumnIndex(5);
+            if (!isMapChange)
+            {
+                ImGui::SetNextItemWidth(-1);
+                char l[32]; snprintf(l, sizeof(l), "##z_%d", i);
+                ImGui::InputFloat(l, &cp.Z, 0.0f, 0.0f, "%.2f");
+            }
+
+            // R/W
+            ImGui::TableSetColumnIndex(6);
+            if (!isMapChange)
+            {
+                ImGui::SetNextItemWidth(-1);
+                if (cp.TriggerType == ETriggerType::Plane)
+                {
+                    char l[32]; snprintf(l, sizeof(l), "##w_%d", i);
+                    ImGui::InputFloat(l, &cp.PlaneWidth, 0.0f, 0.0f, "%.2f");
+                }
+                else
+                {
+                    char l[32]; snprintf(l, sizeof(l), "##r_%d", i);
+                    ImGui::InputFloat(l, &cp.Radius, 0.0f, 0.0f, "%.2f");
+                }
+            }
+
+            // Angle
+            ImGui::TableSetColumnIndex(7);
+            if (!isMapChange && cp.TriggerType == ETriggerType::Plane)
+            {
+                ImGui::SetNextItemWidth(-1);
+                char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
+                ImGui::InputFloat(l, &cp.PlaneAngle, 0.0f, 0.0f, "%.1f");
+            }
+
+            // Capture
+            ImGui::TableSetColumnIndex(8);
+            char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", i);
+            if (ImGui::Button(capLabel) && MumbleLink)
+            {
+                cp.MapID = MumbleLink->Context.MapID;
+                if (!isMapChange)
+                {
+                    cp.X = MumbleLink->AvatarPosition.X;
+                    cp.Y = MumbleLink->AvatarPosition.Y;
+                    cp.Z = MumbleLink->AvatarPosition.Z;
+                }
+                if (cp.TriggerType == ETriggerType::Plane)
+                {
+                    float fx = MumbleLink->CameraFront.X;
+                    float fz = MumbleLink->CameraFront.Z;
+                    cp.PlaneAngle = -(std::atan2(fx, fz) * 180.0f / 3.14159265f) + 90.0f;
+                }
+            }
+
+            // Remove
+            ImGui::TableSetColumnIndex(9);
+            char removeLabel[32]; snprintf(removeLabel, sizeof(removeLabel), "X##rm_%d", i);
+            if (ImGui::Button(removeLabel))
+                removeIndex = i;
+        }
+
+        ImGui::EndTable();
+
+        if (removeIndex >= 0)
+            CurrentRoute.Checkpoints.erase(CurrentRoute.Checkpoints.begin() + removeIndex);
     }
 
-    if (removeIndex >= 0)
-        CurrentRoute.Checkpoints.erase(CurrentRoute.Checkpoints.begin() + removeIndex);
-
+    ImGui::Spacing();
     if (ImGui::Button("Add Checkpoint"))
     {
         Checkpoint cp;
@@ -453,17 +554,17 @@ void RenderConfigWindow()
     {
         CurrentRoute.IsValid = true;
         SpeedrunTimer.Reset();
-        RunFinished   = false;
-        PendingStart  = false;
-        ReadyToStart  = false;
+        RunFinished  = false;
+        PendingStart = false;
+        ReadyToStart = false;
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Timer"))
     {
         SpeedrunTimer.Reset();
-        RunFinished   = false;
-        PendingStart  = false;
-        ReadyToStart  = false;
+        RunFinished  = false;
+        PendingStart = false;
+        ReadyToStart = false;
     }
 
     ImGui::End();
@@ -485,7 +586,6 @@ void RenderHistoryWindow()
     }
     else
     {
-        // Find fastest time in history
         double fastestTime = -1.0;
         for (const auto& r : HistoryRuns)
             if (fastestTime < 0.0 || r.TotalTime < fastestTime)
@@ -507,7 +607,6 @@ void RenderHistoryWindow()
             {
                 const HistoricalRun& run = HistoryRuns[i];
 
-                // Check if this is the active best (used for comparison)
                 bool isActiveBest = !BestSplits.empty() &&
                     !run.Splits.empty() &&
                     std::abs(run.TotalTime - BestSplits.back().Timestamp) < 0.001;
@@ -516,7 +615,6 @@ void RenderHistoryWindow()
 
                 ImGui::TableNextRow();
 
-                // Highlight background for active best
                 if (isActiveBest)
                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
                         IM_COL32(50, 80, 50, 150));
@@ -529,15 +627,12 @@ void RenderHistoryWindow()
 
                 ImGui::TableSetColumnIndex(2);
                 FormatTime(buf, sizeof(buf), run.TotalTime);
-
-                // Green for fastest, white for others
                 ImGui::TextColored(
                     isFastest
                         ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                         : ImVec4(1.0f, 1.0f, 1.0f, 1.0f),
                     "%s", buf);
 
-                // Hover tooltip
                 if (ImGui::IsItemHovered())
                 {
                     ImGui::BeginTooltip();
@@ -568,7 +663,6 @@ void RenderHistoryWindow()
                     ImGui::EndTooltip();
                 }
 
-                // Set as best button
                 ImGui::SameLine();
                 char setLabel[32]; snprintf(setLabel, sizeof(setLabel), "Set as best##%d", i);
                 if (ImGui::SmallButton(setLabel))

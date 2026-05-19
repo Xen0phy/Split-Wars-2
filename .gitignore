@@ -6,3 +6,6 @@ build/
 *.exp
 *.lib
 .clangd
+*.gz
+*.tar
+*.tar.gz
