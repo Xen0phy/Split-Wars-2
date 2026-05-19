@@ -15,7 +15,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 {
     AddonDef.Signature        = -1;
     AddonDef.APIVersion       = NEXUS_API_VERSION;
-    AddonDef.Name             = "GW2 Speedrun";
+    AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
     AddonDef.Version.Minor    = 1;
     AddonDef.Version.Build    = 0;
@@ -70,7 +70,6 @@ void AddonLoad(AddonAPI_t* aApi)
     MumbleLink = (Mumble::Data*)APIDefs->DataLink_Get("DL_MUMBLE_LINK");
     AddonDir   = GetAddonDir();
 
-    // Load settings
     Settings s;
     if (LoadSettings(AddonDir, s))
         ApplySettings(s);
@@ -116,70 +115,132 @@ void AddonRender()
 {
     if (!MumbleLink) return;
 
-    static unsigned int lastUITick = 0;
-    static bool         wasLoading = false;
+    static unsigned int lastUITick       = 0;
+    static bool         wasLoading       = false;
+    static Vector3      prevPos          = {0, 0, 0};
+    static unsigned int prevMapID        = 0;
+    static bool         wasInCircleStart = false;
+    static std::vector<bool> wasInCheckpoint;
+
+    Vector3      currPos   = MumbleLink->AvatarPosition;
+    unsigned int currMapID = MumbleLink->Context.MapID;
+
+    // Loading screen detection
     bool isLoading = (MumbleLink->UITick == lastUITick);
     lastUITick     = MumbleLink->UITick;
 
     if (isLoading && !wasLoading)
         SpeedrunTimer.Pause();
     else if (!isLoading && wasLoading)
+    {
         SpeedrunTimer.Resume();
+        if (PendingStart)
+        {
+            SpeedrunTimer.Reset();
+            SpeedrunTimer.Start();
+            PendingStart = false;
+            RunFinished  = false;
+            wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+        }
+    }
     wasLoading = isLoading;
 
-    if (CurrentRoute.IsValid && !isLoading)
+    if (CurrentRoute.IsValid)
     {
-        static Vector3      prevPos   = {0, 0, 0};
-        static unsigned int prevMapID = 0;
-
-        Vector3      currPos   = MumbleLink->AvatarPosition;
-        unsigned int currMapID = MumbleLink->Context.MapID;
-
-        static bool wasInStart = false;
-        static std::vector<bool> wasInCheckpoint;
-
         if (wasInCheckpoint.size() != CurrentRoute.Checkpoints.size())
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
 
-        bool inStart = IsWithinRange(currPos, CurrentRoute.Start);
-
-        if (inStart && !wasInStart)
+        // --- Circle start logic ---
+        if (CurrentRoute.Start.TriggerType == ETriggerType::Circle)
         {
-            SpeedrunTimer.Reset();
-            RunFinished = false;
-            wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+            // Only trigger if on correct map (or MapID is 0)
+            bool onCorrectMap = CurrentRoute.Start.MapID == 0 ||
+                                currMapID == CurrentRoute.Start.MapID;
+            bool inStart = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Start);
+
+            if (inStart && !wasInCircleStart)
+            {
+                SpeedrunTimer.Reset();
+                RunFinished  = false;
+                PendingStart = false;
+                wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+            }
+
+            if (!inStart && wasInCircleStart &&
+                !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
+            {
+                SpeedrunTimer.Start();
+            }
+
+            wasInCircleStart = inStart;
+        }
+        // --- Plane start logic ---
+        else if (CurrentRoute.Start.TriggerType == ETriggerType::Plane)
+        {
+            bool onCorrectMap = CurrentRoute.Start.MapID == 0 ||
+                                currMapID == CurrentRoute.Start.MapID;
+            bool crossed = onCorrectMap && HasCrossedPlane(prevPos, currPos, CurrentRoute.Start);
+
+            if (crossed && !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
+            {
+                SpeedrunTimer.Reset();
+                SpeedrunTimer.Start();
+                RunFinished  = false;
+                PendingStart = false;
+                wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+            }
+        }
+        // --- Map Change start logic ---
+        else if (CurrentRoute.Start.TriggerType == ETriggerType::MapChange)
+        {
+            if (CurrentRoute.Start.MapID != 0 &&
+                currMapID == CurrentRoute.Start.MapID)
+            {
+                PendingStart = true;
+            }
         }
 
-        if (!inStart && wasInStart && !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
-            SpeedrunTimer.Start();
-
-        if (SpeedrunTimer.IsRunning())
+        // --- Checkpoint and goal logic (skip during loading) ---
+        if (!isLoading && SpeedrunTimer.IsRunning())
         {
             for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
             {
                 const RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
-                bool triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
+
+                // Map check
+                bool onCorrectMap = cp.MapID == 0 || cp.TriggerType == ETriggerType::MapChange
+                    ? true  // map change uses prevMapID check internally
+                    : currMapID == cp.MapID;
+
+                bool triggered = false;
+                if (onCorrectMap)
+                    triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
 
                 if (triggered && (cp.TriggerType != ETriggerType::Circle || !wasInCheckpoint[i]))
                     SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
 
-                wasInCheckpoint[i] = cp.TriggerType == ETriggerType::Circle
+                wasInCheckpoint[i] = (cp.TriggerType == ETriggerType::Circle && onCorrectMap)
                     ? IsWithinRange(currPos, cp)
                     : false;
             }
 
-            if (PointTriggered(prevPos, currPos, prevMapID, currMapID, CurrentRoute.Goal))
+            // Goal map check
+            bool goalOnCorrectMap = CurrentRoute.Goal.MapID == 0 ||
+                CurrentRoute.Goal.TriggerType == ETriggerType::MapChange
+                ? true
+                : currMapID == CurrentRoute.Goal.MapID;
+
+            if (goalOnCorrectMap &&
+                PointTriggered(prevPos, currPos, prevMapID, currMapID, CurrentRoute.Goal))
             {
                 SpeedrunTimer.Stop();
                 RunFinished = true;
 
-                // Auto-save to history
                 HistoricalRun run;
                 run.Date      = GetCurrentDateTimeString();
                 run.TotalTime = SpeedrunTimer.GetElapsedSeconds();
                 run.Splits    = SpeedrunTimer.GetSplits();
 
-                // Add goal split if not already there
                 if (run.Splits.empty() || strcmp(run.Splits.back().Name, "Goal") != 0)
                 {
                     Split goalSplit;
@@ -195,11 +256,11 @@ void AddonRender()
                 SaveHistory(AddonDir, CurrentRouteName, BestSplits, HistoryRuns);
             }
         }
-
-        wasInStart = inStart;
-        prevPos    = currPos;
-        prevMapID  = currMapID;
     }
+
+    prevPos = currPos;
+    if (!isLoading)
+        prevMapID = currMapID;
 
     RenderZones();
     RenderTimerOverlay();
@@ -219,9 +280,9 @@ void AddonOptions()
     ImGui::Checkbox("Compact Mode",       &CompactMode);
     ImGui::Separator();
     ImGui::Text("Max History Runs");
-    ImGui::SetNextItemWidth(60.0f);
+    ImGui::SetNextItemWidth(80.0f);
     ImGui::InputInt("##maxruns", &MaxHistoryRuns, 0, 0);
-    if (MaxHistoryRuns < 1)  MaxHistoryRuns = 1;
+    if (MaxHistoryRuns < 1)   MaxHistoryRuns = 1;
     if (MaxHistoryRuns > 100) MaxHistoryRuns = 100;
     ImGui::Separator();
     if (ImGui::Button("Save Settings"))

@@ -172,15 +172,21 @@ void RenderZones()
 {
     if (!MumbleLink || !ShowZones) return;
 
-    auto renderPoint = [](const RoutePoint& p, float r, float g, float b, float dbgOffset) {
-        if (!RoutePointIsSet(p)) return;
-        switch (p.TriggerType)
-        {
-            case ETriggerType::Plane:     RenderZonePlane(p, r, g, b);              break;
-            case ETriggerType::MapChange: break; // nothing to draw
-            case ETriggerType::Circle:
-            default:                      RenderZoneCircle(p, r, g, b, dbgOffset);  break;
-        }
+    unsigned int currMapID = MumbleLink->Context.MapID;
+
+    auto shouldRender = [&](const RoutePoint& p) -> bool {
+        if (!RoutePointIsSet(p)) return false;
+        if (p.TriggerType == ETriggerType::MapChange) return false; // nothing to draw
+        if (p.MapID == 0) return true; // no map filter
+        return currMapID == p.MapID;
+    };
+
+    auto renderPoint = [&](const RoutePoint& p, float r, float g, float b, float dbgOffset) {
+        if (!shouldRender(p)) return;
+        if (p.TriggerType == ETriggerType::Plane)
+            RenderZonePlane(p, r, g, b);
+        else
+            RenderZoneCircle(p, r, g, b, dbgOffset);
     };
 
     renderPoint(CurrentRoute.Start, 0.2f, 1.0f, 0.2f, 0.0f);

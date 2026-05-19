@@ -27,3 +27,5 @@ extern std::vector<HistoricalRun>   HistoryRuns;
 extern std::string                  CurrentRouteName;
 extern std::string                  AddonDir;
 extern bool                         RunFinished;
+extern bool                         PendingStart;
+extern bool                         ReadyToStart;

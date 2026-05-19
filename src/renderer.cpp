@@ -233,61 +233,20 @@ void RenderTimerOverlay()
     ImGui::End();
 }
 
-static void RenderStartPoint(RoutePoint& point)
+static void RenderRoutePoint(const char* label, RoutePoint& point, int id = -1)
 {
-    ImGui::Text("Start:");
-    ImGui::SameLine();
-
-    ImGui::Text("MapID");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(60.0f);
-    int mapId = (int)point.MapID;
-    if (ImGui::InputInt("##mapid_start", &mapId, 0, 0))
-        point.MapID = (unsigned int)mapId;
-    ImGui::SameLine();
-
-    ImGui::Text("X");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(70.0f);
-    ImGui::InputFloat("##x_start", &point.X, 0.0f, 0.0f, "%.2f");
-    ImGui::SameLine();
-
-    ImGui::Text("Y");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(70.0f);
-    ImGui::InputFloat("##y_start", &point.Y, 0.0f, 0.0f, "%.2f");
-    ImGui::SameLine();
-
-    ImGui::Text("Z");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(70.0f);
-    ImGui::InputFloat("##z_start", &point.Z, 0.0f, 0.0f, "%.2f");
-    ImGui::SameLine();
-
-    ImGui::Text("R");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(60.0f);
-    ImGui::InputFloat("##r_start", &point.Radius, 0.0f, 0.0f, "%.2f");
-    ImGui::SameLine();
-
-    if (ImGui::Button("Capture##start") && MumbleLink)
+    if (label && label[0] != '\0')
     {
-        point.X     = MumbleLink->AvatarPosition.X;
-        point.Y     = MumbleLink->AvatarPosition.Y;
-        point.Z     = MumbleLink->AvatarPosition.Z;
-        point.MapID = MumbleLink->Context.MapID;
+        ImGui::Text("%s", label);
+        ImGui::SameLine();
     }
-}
-
-static void RenderRoutePoint(const char* label, RoutePoint& point)
-{
-    ImGui::Text("%s", label);
-    ImGui::SameLine();
 
     const char* triggerTypes[] = { "Circle", "Plane", "Map Change" };
     int currentType = (int)point.TriggerType;
     ImGui::SetNextItemWidth(90.0f);
-    char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%s", label);
+    char comboLabel[32];
+    if (id >= 0) snprintf(comboLabel, sizeof(comboLabel), "##type_%d", id);
+    else         snprintf(comboLabel, sizeof(comboLabel), "##type_%s", label);
     if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
         point.TriggerType = (ETriggerType)currentType;
     ImGui::SameLine();
@@ -296,7 +255,8 @@ static void RenderRoutePoint(const char* label, RoutePoint& point)
     ImGui::SameLine();
     ImGui::SetNextItemWidth(60.0f);
     char mapIdLabel[32];
-    snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%s", label);
+    if (id >= 0) snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", id);
+    else         snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%s", label);
     int mapId = (int)point.MapID;
     if (ImGui::InputInt(mapIdLabel, &mapId, 0, 0))
         point.MapID = (unsigned int)mapId;
@@ -307,21 +267,27 @@ static void RenderRoutePoint(const char* label, RoutePoint& point)
         ImGui::Text("X");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(70.0f);
-        char xLabel[32]; snprintf(xLabel, sizeof(xLabel), "##x_%s", label);
+        char xLabel[32];
+        if (id >= 0) snprintf(xLabel, sizeof(xLabel), "##x_%d", id);
+        else         snprintf(xLabel, sizeof(xLabel), "##x_%s", label);
         ImGui::InputFloat(xLabel, &point.X, 0.0f, 0.0f, "%.2f");
         ImGui::SameLine();
 
         ImGui::Text("Y");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(70.0f);
-        char yLabel[32]; snprintf(yLabel, sizeof(yLabel), "##y_%s", label);
+        char yLabel[32];
+        if (id >= 0) snprintf(yLabel, sizeof(yLabel), "##y_%d", id);
+        else         snprintf(yLabel, sizeof(yLabel), "##y_%s", label);
         ImGui::InputFloat(yLabel, &point.Y, 0.0f, 0.0f, "%.2f");
         ImGui::SameLine();
 
         ImGui::Text("Z");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(70.0f);
-        char zLabel[32]; snprintf(zLabel, sizeof(zLabel), "##z_%s", label);
+        char zLabel[32];
+        if (id >= 0) snprintf(zLabel, sizeof(zLabel), "##z_%d", id);
+        else         snprintf(zLabel, sizeof(zLabel), "##z_%s", label);
         ImGui::InputFloat(zLabel, &point.Z, 0.0f, 0.0f, "%.2f");
         ImGui::SameLine();
 
@@ -330,14 +296,18 @@ static void RenderRoutePoint(const char* label, RoutePoint& point)
             ImGui::Text("W");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(60.0f);
-            char wLabel[32]; snprintf(wLabel, sizeof(wLabel), "##w_%s", label);
+            char wLabel[32];
+            if (id >= 0) snprintf(wLabel, sizeof(wLabel), "##w_%d", id);
+            else         snprintf(wLabel, sizeof(wLabel), "##w_%s", label);
             ImGui::InputFloat(wLabel, &point.PlaneWidth, 0.0f, 0.0f, "%.2f");
             ImGui::SameLine();
 
             ImGui::Text("Angle");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(60.0f);
-            char aLabel[32]; snprintf(aLabel, sizeof(aLabel), "##angle_%s", label);
+            char aLabel[32];
+            if (id >= 0) snprintf(aLabel, sizeof(aLabel), "##angle_%d", id);
+            else         snprintf(aLabel, sizeof(aLabel), "##angle_%s", label);
             ImGui::InputFloat(aLabel, &point.PlaneAngle, 0.0f, 0.0f, "%.1f");
             ImGui::SameLine();
         }
@@ -346,13 +316,17 @@ static void RenderRoutePoint(const char* label, RoutePoint& point)
             ImGui::Text("R");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(60.0f);
-            char rLabel[32]; snprintf(rLabel, sizeof(rLabel), "##r_%s", label);
+            char rLabel[32];
+            if (id >= 0) snprintf(rLabel, sizeof(rLabel), "##r_%d", id);
+            else         snprintf(rLabel, sizeof(rLabel), "##r_%s", label);
             ImGui::InputFloat(rLabel, &point.Radius, 0.0f, 0.0f, "%.2f");
             ImGui::SameLine();
         }
     }
 
-    char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Capture##%s", label);
+    char capLabel[32];
+    if (id >= 0) snprintf(capLabel, sizeof(capLabel), "Capture##%d", id);
+    else         snprintf(capLabel, sizeof(capLabel), "Capture##%s", label);
     if (ImGui::Button(capLabel) && MumbleLink)
     {
         point.MapID = MumbleLink->Context.MapID;
@@ -432,7 +406,7 @@ void RenderConfigWindow()
 
     ImGui::Separator();
 
-    RenderStartPoint(CurrentRoute.Start);
+    RenderRoutePoint("Start:", CurrentRoute.Start, 9999);
     RenderRoutePoint("Goal: ", CurrentRoute.Goal);
 
     ImGui::Separator();
@@ -447,7 +421,7 @@ void RenderConfigWindow()
         ImGui::InputText(nameLabel, cp.Name, sizeof(cp.Name));
         ImGui::SameLine();
 
-        RenderRoutePoint(cp.Name, cp.Point);
+        RenderRoutePoint("", cp.Point, i);
         ImGui::SameLine();
 
         char removeLabel[32]; snprintf(removeLabel, sizeof(removeLabel), "X##rm_%d", i);
@@ -479,13 +453,17 @@ void RenderConfigWindow()
     {
         CurrentRoute.IsValid = true;
         SpeedrunTimer.Reset();
-        RunFinished = false;
+        RunFinished   = false;
+        PendingStart  = false;
+        ReadyToStart  = false;
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Timer"))
     {
         SpeedrunTimer.Reset();
-        RunFinished = false;
+        RunFinished   = false;
+        PendingStart  = false;
+        ReadyToStart  = false;
     }
 
     ImGui::End();
