@@ -23,7 +23,7 @@ add_library(gw2-speedrun SHARED
 target_include_directories(gw2-speedrun PRIVATE include)
 
 set_target_properties(gw2-speedrun PROPERTIES
-    OUTPUT_NAME "gw2-speedrun"
+    OUTPUT_NAME "SplitWars2"
     PREFIX ""
     SUFFIX ".dll"
 )
