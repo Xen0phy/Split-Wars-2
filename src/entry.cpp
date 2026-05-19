@@ -121,6 +121,7 @@ void AddonRender()
     static unsigned int prevMapID        = 0;
     static bool         wasInCircleStart = false;
     static std::vector<bool> wasInCheckpoint;
+    static std::vector<bool> checkpointTriggered;
 
     Vector3      currPos   = MumbleLink->AvatarPosition;
     unsigned int currMapID = MumbleLink->Context.MapID;
@@ -141,6 +142,7 @@ void AddonRender()
             PendingStart = false;
             RunFinished  = false;
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+            checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
         }
     }
     wasLoading = isLoading;
@@ -148,7 +150,10 @@ void AddonRender()
     if (CurrentRoute.IsValid)
     {
         if (wasInCheckpoint.size() != CurrentRoute.Checkpoints.size())
+        {
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+            checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);  // 5
+        }
 
         // --- Circle start logic ---
         if (CurrentRoute.Start.TriggerType == ETriggerType::Circle)
@@ -158,12 +163,13 @@ void AddonRender()
                                 currMapID == CurrentRoute.Start.MapID;
             bool inStart = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Start);
 
-            if (inStart && !wasInCircleStart)
+            if (inStart && !wasInCircleStart && !SpeedrunTimer.IsRunning())
             {
                 SpeedrunTimer.Reset();
                 RunFinished  = false;
                 PendingStart = false;
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+                checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
             }
 
             if (!inStart && wasInCircleStart &&
@@ -188,13 +194,15 @@ void AddonRender()
                 RunFinished  = false;
                 PendingStart = false;
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+                checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
             }
         }
         // --- Map Change start logic ---
         else if (CurrentRoute.Start.TriggerType == ETriggerType::MapChange)
         {
             if (CurrentRoute.Start.MapID != 0 &&
-                currMapID == CurrentRoute.Start.MapID)
+                currMapID == CurrentRoute.Start.MapID &&
+                !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
             {
                 PendingStart = true;
             }
@@ -206,19 +214,22 @@ void AddonRender()
             for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
             {
                 const RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
-
-                // Map check
-                bool onCorrectMap = cp.MapID == 0 || cp.TriggerType == ETriggerType::MapChange
-                    ? true  // map change uses prevMapID check internally
-                    : currMapID == cp.MapID;
-
+    
+                bool onCorrectMap = cp.TriggerType == ETriggerType::MapChange ||
+                                    cp.MapID == 0 ||
+                                    currMapID == cp.MapID;
+    
                 bool triggered = false;
                 if (onCorrectMap)
                     triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
-
-                if (triggered && (cp.TriggerType != ETriggerType::Circle || !wasInCheckpoint[i]))
+    
+                if (triggered && !checkpointTriggered[i] &&  // 6
+                    (cp.TriggerType != ETriggerType::Circle || !wasInCheckpoint[i]))
+                {
                     SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
-
+                    checkpointTriggered[i] = true;
+                }
+    
                 wasInCheckpoint[i] = (cp.TriggerType == ETriggerType::Circle && onCorrectMap)
                     ? IsWithinRange(currPos, cp)
                     : false;
