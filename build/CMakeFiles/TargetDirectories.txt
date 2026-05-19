@@ -1,0 +1,3 @@
+/home/xenophy/Projects/gw2-speedrun/build/CMakeFiles/gw2-speedrun.dir
+/home/xenophy/Projects/gw2-speedrun/build/CMakeFiles/edit_cache.dir
+/home/xenophy/Projects/gw2-speedrun/build/CMakeFiles/rebuild_cache.dir

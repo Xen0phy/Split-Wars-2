@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/xenophy/Projects/gw2-speedrun/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
