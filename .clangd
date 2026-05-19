@@ -1,4 +1,0 @@
-CompileFlags:
-  Add:
-    - "-I/home/xenophy/Projects/gw2-speedrun/include"
-    - "--target=x86_64-w64-mingw32"
