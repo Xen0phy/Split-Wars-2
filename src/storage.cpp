@@ -25,7 +25,7 @@ std::string GetAddonDir()
     std::string fullPath(path);
     size_t last = fullPath.find_last_of("\\/");
     std::string dir = fullPath.substr(0, last);
-    return dir + "\\gw2-speedrun";
+    return dir + "\\Split Wars 2";
 }
 
 std::string GetCurrentDateTimeString()

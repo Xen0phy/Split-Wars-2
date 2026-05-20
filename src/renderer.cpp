@@ -114,7 +114,9 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("%s", splits[i].Name);
             }
 
-            if (running || finished)
+            bool goalIsAllCheckpoints = CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints;
+
+            if (running || (finished && !goalIsAllCheckpoints))
             {
                 double segmentStart = numSplits > 0 ? splits[numSplits-1].Timestamp : 0.0;
                 double segmentTime  = SplitMode ? (elapsed - segmentStart) : elapsed;
@@ -259,7 +261,7 @@ void RenderTimerOverlay()
     ImGui::End();
 }
 
-static void RenderRouteRow(const char* label, RoutePoint& point, int id)
+static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool isGoal = false)
 {
     ImGui::TableNextRow();
 
@@ -269,26 +271,40 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 
     // Trigger type
     ImGui::TableSetColumnIndex(1);
-    const char* triggerTypes[] = { "Circle", "Plane", "Map Change" };
+    const char* triggerTypes[]     = { "Circle", "Plane", "Map Change" };
+    const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "All Checkpoints" };
     int currentType = (int)point.TriggerType;
     ImGui::SetNextItemWidth(-1);
     char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", id);
-    if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
-        point.TriggerType = (ETriggerType)currentType;
+    if (isGoal)
+    {
+        if (ImGui::Combo(comboLabel, &currentType, goalTriggerTypes, 4))
+            point.TriggerType = (ETriggerType)currentType;
+    }
+    else
+    {
+        if (currentType > 2) currentType = 0; // safety: Start can't be AllCheckpoints
+        if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
+            point.TriggerType = (ETriggerType)currentType;
+    }
 
-    // MapID
+    bool isAllCheckpoints = (point.TriggerType == ETriggerType::AllCheckpoints);
+    bool isMapChange      = (point.TriggerType == ETriggerType::MapChange);
+
+    // MapID — hidden for AllCheckpoints
     ImGui::TableSetColumnIndex(2);
-    ImGui::SetNextItemWidth(-1);
-    char mapIdLabel[32]; snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", id);
-    int mapId = (int)point.MapID;
-    if (ImGui::InputInt(mapIdLabel, &mapId, 0, 0))
-        point.MapID = (unsigned int)mapId;
-
-    bool isMapChange = point.TriggerType == ETriggerType::MapChange;
+    if (!isAllCheckpoints)
+    {
+        ImGui::SetNextItemWidth(-1);
+        char mapIdLabel[32]; snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", id);
+        int mapId = (int)point.MapID;
+        if (ImGui::InputInt(mapIdLabel, &mapId, 0, 0))
+            point.MapID = (unsigned int)mapId;
+    }
 
     // X
     ImGui::TableSetColumnIndex(3);
-    if (!isMapChange)
+    if (!isMapChange && !isAllCheckpoints)
     {
         ImGui::SetNextItemWidth(-1);
         char l[32]; snprintf(l, sizeof(l), "##x_%d", id);
@@ -297,7 +313,7 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 
     // Y
     ImGui::TableSetColumnIndex(4);
-    if (!isMapChange)
+    if (!isMapChange && !isAllCheckpoints)
     {
         ImGui::SetNextItemWidth(-1);
         char l[32]; snprintf(l, sizeof(l), "##y_%d", id);
@@ -306,7 +322,7 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 
     // Z
     ImGui::TableSetColumnIndex(5);
-    if (!isMapChange)
+    if (!isMapChange && !isAllCheckpoints)
     {
         ImGui::SetNextItemWidth(-1);
         char l[32]; snprintf(l, sizeof(l), "##z_%d", id);
@@ -315,7 +331,7 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 
     // R/W
     ImGui::TableSetColumnIndex(6);
-    if (!isMapChange)
+    if (!isMapChange && !isAllCheckpoints)
     {
         ImGui::SetNextItemWidth(-1);
         if (point.TriggerType == ETriggerType::Plane)
@@ -332,7 +348,7 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 
     // Angle
     ImGui::TableSetColumnIndex(7);
-    if (!isMapChange && point.TriggerType == ETriggerType::Plane)
+    if (!isMapChange && !isAllCheckpoints && point.TriggerType == ETriggerType::Plane)
     {
         ImGui::SetNextItemWidth(-1);
         char l[32]; snprintf(l, sizeof(l), "##angle_%d", id);
@@ -341,22 +357,30 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id)
 
     // Capture
     ImGui::TableSetColumnIndex(8);
-    char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", id);
-    if (ImGui::Button(capLabel) && MumbleLink)
+    if (!isAllCheckpoints)
     {
-        point.MapID = MumbleLink->Context.MapID;
-        if (!isMapChange)
+        char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", id);
+        if (ImGui::Button(capLabel) && MumbleLink)
         {
-            point.X = MumbleLink->AvatarPosition.X;
-            point.Y = MumbleLink->AvatarPosition.Y;
-            point.Z = MumbleLink->AvatarPosition.Z;
+            point.MapID = MumbleLink->Context.MapID;
+            if (!isMapChange)
+            {
+                point.X = MumbleLink->AvatarPosition.X;
+                point.Y = MumbleLink->AvatarPosition.Y;
+                point.Z = MumbleLink->AvatarPosition.Z;
+            }
+            if (point.TriggerType == ETriggerType::Plane)
+            {
+                float fx = MumbleLink->CameraFront.X;
+                float fz = MumbleLink->CameraFront.Z;
+                point.PlaneAngle = -(std::atan2(fx, fz) * 180.0f / 3.14159265f) + 90.0f;
+            }
         }
-        if (point.TriggerType == ETriggerType::Plane)
-        {
-            float fx = MumbleLink->CameraFront.X;
-            float fz = MumbleLink->CameraFront.Z;
-            point.PlaneAngle = -(std::atan2(fx, fz) * 180.0f / 3.14159265f) + 90.0f;
-        }
+    }
+    else
+    {
+        ImGui::TableSetColumnIndex(8);
+        ImGui::TextDisabled("—");
     }
 
     // Empty remove column for Start/Goal
@@ -441,8 +465,8 @@ void RenderConfigWindow()
         ImGui::TableSetupColumn("Remove",  ImGuiTableColumnFlags_WidthFixed,    50.0f);
         ImGui::TableHeadersRow();
 
-        RenderRouteRow("Start", CurrentRoute.Start, 9999);
-        RenderRouteRow("Goal",  CurrentRoute.Goal,  9998);
+        RenderRouteRow("Start", CurrentRoute.Start, 9999, false);
+        RenderRouteRow("Goal",  CurrentRoute.Goal,  9998, true);
 
         int removeIndex = -1;
         for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
@@ -585,7 +609,6 @@ void RenderConfigWindow()
         SpeedrunTimer.Reset();
         RunFinished  = false;
         PendingStart = false;
-        ReadyToStart = false;
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Timer"))
@@ -593,7 +616,6 @@ void RenderConfigWindow()
         SpeedrunTimer.Reset();
         RunFinished  = false;
         PendingStart = false;
-        ReadyToStart = false;
     }
 
     ImGui::End();
@@ -670,7 +692,13 @@ void RenderHistoryWindow()
                         ImGui::TableSetupColumn("Split", ImGuiTableColumnFlags_WidthStretch);
                         ImGui::TableSetupColumn("Time",  ImGuiTableColumnFlags_WidthFixed, 100.0f);
 
-                        for (int s = 0; s < (int)run.Splits.size(); s++)
+                        bool tooltipGoalIsAllCheckpoints = CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints;
+                        int  splitsToShow = (int)run.Splits.size();
+                        if (tooltipGoalIsAllCheckpoints && splitsToShow > 0 &&
+                            strcmp(run.Splits.back().Name, "Goal") == 0)
+                            splitsToShow--;
+
+                        for (int s = 0; s < splitsToShow; s++)
                         {
                             double splitTime = SplitMode
                                 ? (s == 0 ? run.Splits[s].Timestamp

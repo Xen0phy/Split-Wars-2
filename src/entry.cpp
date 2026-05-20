@@ -17,8 +17,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.APIVersion       = NEXUS_API_VERSION;
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
-    AddonDef.Version.Minor    = 9;
-    AddonDef.Version.Build    = 1;
+    AddonDef.Version.Minor    = 10;
+    AddonDef.Version.Build    = 2;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
     AddonDef.Description      = "A speedrun timer with coordinate-based triggers.";
@@ -243,14 +243,27 @@ void AddonRender()
                     : false;
             }
 
-            // Goal map check
-            bool goalOnCorrectMap = CurrentRoute.Goal.MapID == 0 ||
-                CurrentRoute.Goal.TriggerType == ETriggerType::MapChange
-                ? true
-                : currMapID == CurrentRoute.Goal.MapID;
+            // Goal trigger check
+            bool goalTriggered = false;
+            if (CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints)
+            {
+                // Fire once all checkpoints have been hit (order doesn't matter)
+                bool allDone = !CurrentRoute.Checkpoints.empty();
+                for (int i = 0; i < (int)checkpointTriggered.size(); i++)
+                    if (!checkpointTriggered[i]) { allDone = false; break; }
+                goalTriggered = allDone;
+            }
+            else
+            {
+                bool goalOnCorrectMap = CurrentRoute.Goal.MapID == 0 ||
+                    CurrentRoute.Goal.TriggerType == ETriggerType::MapChange
+                    ? true
+                    : currMapID == CurrentRoute.Goal.MapID;
+                goalTriggered = goalOnCorrectMap &&
+                    PointTriggered(prevPos, currPos, prevMapID, currMapID, CurrentRoute.Goal);
+            }
 
-            if (goalOnCorrectMap &&
-                PointTriggered(prevPos, currPos, prevMapID, currMapID, CurrentRoute.Goal))
+            if (goalTriggered)
             {
                 SpeedrunTimer.Stop();
                 GrandTimer.Stop();

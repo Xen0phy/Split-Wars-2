@@ -22,4 +22,3 @@ std::string                 CurrentRouteName    = "New Route";
 std::string                 AddonDir;
 bool                        RunFinished         = false;
 bool                        PendingStart        = false;
-bool                        ReadyToStart        = false;
