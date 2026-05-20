@@ -150,7 +150,9 @@ void RenderTimerOverlay()
                 ImGui::TextColored(TimeColor(segmentTime, bestSegmentTime, running), "%s", buf);
 
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
-                ImGui::TextDisabled("Goal");
+                ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
+                if (finished)
+                    ImGui::TextDisabled("Goal");
             }
 
             // Total row
