@@ -448,10 +448,14 @@ void RenderConfigWindow()
     ImGui::Separator();
 
     // Route table
+    float footerReserve = ImGui::GetFrameHeightWithSpacing() * 2.0f
+                        + ImGui::GetStyle().ItemSpacing.y * 3.0f + 1.0f;
+    ImGui::BeginChild("##route_scroll", ImVec2(0, -footerReserve));
     if (ImGui::BeginTable("route_table", 10,
         ImGuiTableFlags_Borders |
         ImGuiTableFlags_Resizable |
-        ImGuiTableFlags_SizingStretchProp))
+        ImGuiTableFlags_SizingStretchProp |
+        ImGuiTableFlags_ScrollY))
     {
         ImGui::TableSetupColumn("Name",    ImGuiTableColumnFlags_WidthFixed,   100.0f);
         ImGui::TableSetupColumn("Trigger", ImGuiTableColumnFlags_WidthFixed,    90.0f);
@@ -584,6 +588,8 @@ void RenderConfigWindow()
         if (removeIndex >= 0)
             CurrentRoute.Checkpoints.erase(CurrentRoute.Checkpoints.begin() + removeIndex);
     }
+
+    ImGui::EndChild(); 
 
     ImGui::Spacing();
     if (ImGui::Button("Add Checkpoint"))
