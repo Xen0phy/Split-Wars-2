@@ -6,10 +6,11 @@
 
 enum class ETriggerType : unsigned char
 {
-    Circle        = 0,
-    Plane         = 1,
-    MapChange     = 2,
-    AllCheckpoints = 3  // Goal only: fires once every checkpoint has been triggered
+    Circle          = 0,
+    Plane           = 1,
+    MapChange       = 2,
+    CircleInteract  = 3,     // Fires when interact key is pressed inside the circle
+    AllCheckpoints  = 4    // Goal only: fires once every checkpoint has been triggered
 };
 
 struct RoutePoint

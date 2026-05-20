@@ -11,14 +11,20 @@ void AddonRender();
 void AddonOptions();
 void HandleIdentityUpdate(void* aEventArgs);
 
+static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
+{
+    if (!aIsRelease)
+        InteractKeyPressed = true;
+}
+
 extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 {
     AddonDef.Signature        = 0x53573200;
     AddonDef.APIVersion       = NEXUS_API_VERSION;
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
-    AddonDef.Version.Minor    = 10;
-    AddonDef.Version.Build    = 3;
+    AddonDef.Version.Minor    = 11;
+    AddonDef.Version.Build    = 2;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
     AddonDef.Description      = "A speedrun timer with coordinate-based triggers.";
@@ -79,12 +85,14 @@ void AddonLoad(AddonAPI_t* aApi)
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
+    APIDefs->InputBinds_RegisterWithStruct("Interact", OnInteractKey, Keybind_t{});
 }
 
 void AddonUnload()
 {
     SaveSettings(AddonDir, GatherSettings());
 
+    APIDefs->InputBinds_Deregister("Interact");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
@@ -107,6 +115,8 @@ static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
             return HasCrossedPlane(prevPos, currPos, point);
         case ETriggerType::MapChange:
             return prevMapID == point.MapID && currMapID != point.MapID;
+        case ETriggerType::CircleInteract:
+            return IsWithinRange(currPos, point) && InteractKeyPressed;
         case ETriggerType::Circle:
         default:
             return IsWithinRange(currPos, point);
@@ -216,6 +226,26 @@ void AddonRender()
             }
         }
 
+        // --- Circle Interact start logic ---
+        else if (CurrentRoute.Start.TriggerType == ETriggerType::CircleInteract)
+        {
+            bool onCorrectMap = CurrentRoute.Start.MapID == 0 ||
+                                currMapID == CurrentRoute.Start.MapID;
+            bool inCircle = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Start);
+
+            if (inCircle && InteractKeyPressed && !SpeedrunTimer.IsRunning())
+            {
+                SpeedrunTimer.Reset();
+                GrandTimer.Reset();
+                SpeedrunTimer.Start();
+                GrandTimer.Start();
+                RunFinished  = false;
+                PendingStart = false;
+                wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+                checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
+            }
+        }
+
         // --- Checkpoint and goal logic (skip during loading) ---
         if (!isLoading && SpeedrunTimer.IsRunning())
         {
@@ -295,6 +325,8 @@ void AddonRender()
     prevPos = currPos;
     if (!isLoading)
         prevMapID = currMapID;
+        
+    InteractKeyPressed = false;
 
     RenderZones();
     RenderTimerOverlay();

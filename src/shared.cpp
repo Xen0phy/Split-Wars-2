@@ -22,3 +22,4 @@ std::string                 CurrentRouteName    = "New Route";
 std::string                 AddonDir;
 bool                        RunFinished         = false;
 bool                        PendingStart        = false;
+std::atomic<bool>           InteractKeyPressed  = false;

@@ -271,20 +271,20 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool is
 
     // Trigger type
     ImGui::TableSetColumnIndex(1);
-    const char* triggerTypes[]     = { "Circle", "Plane", "Map Change" };
-    const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "All Checkpoints" };
+    const char* triggerTypes[] = { "Circle", "Plane", "Map Change", "Interact" };
+    const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "All Checkpoints" };
     int currentType = (int)point.TriggerType;
     ImGui::SetNextItemWidth(-1);
     char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", id);
     if (isGoal)
     {
-        if (ImGui::Combo(comboLabel, &currentType, goalTriggerTypes, 4))
+        if (ImGui::Combo(comboLabel, &currentType, goalTriggerTypes, 5))
             point.TriggerType = (ETriggerType)currentType;
     }
     else
     {
-        if (currentType > 2) currentType = 0; // safety: Start can't be AllCheckpoints
-        if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
+        if (currentType == (int)ETriggerType::AllCheckpoints) currentType = 0; // safety: Start can't be AllCheckpoints
+        if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 4))
             point.TriggerType = (ETriggerType)currentType;
     }
 
@@ -488,11 +488,11 @@ void RenderConfigWindow()
 
             // Trigger
             ImGui::TableSetColumnIndex(1);
-            const char* triggerTypes[] = { "Circle", "Plane", "Map Change" };
+            const char* triggerTypes[] = { "Circle", "Plane", "Map Change", "Interact" };
             int currentType = (int)cp.TriggerType;
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 3))
+            if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 4))
                 cp.TriggerType = (ETriggerType)currentType;
 
             // MapID

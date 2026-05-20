@@ -8,6 +8,7 @@
 #include "storage.h"
 #include <string>
 #include <vector>
+#include <atomic>
 
 extern AddonAPI_t*                  APIDefs;
 extern Mumble::Data*                MumbleLink;
@@ -30,3 +31,4 @@ extern std::string                  CurrentRouteName;
 extern std::string                  AddonDir;
 extern bool                         RunFinished;
 extern bool                         PendingStart;
+extern std::atomic<bool>            InteractKeyPressed;
