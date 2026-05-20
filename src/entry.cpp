@@ -17,6 +17,65 @@ static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
         InteractKeyPressed = true;
 }
 
+static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
+{
+    if (aIsRelease) return;
+    std::lock_guard<std::mutex> lock(KeybindMutex);
+    if (SpeedrunTimer.IsRunning())
+    {
+        SpeedrunTimer.AddSplit("Manual Stop");
+        SpeedrunTimer.Stop();
+        GrandTimer.Stop();
+        RunFinished = true;
+
+        HistoricalRun run;
+        run.Date       = GetCurrentDateTimeString();
+        run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
+        run.GrandTotal = GrandTimer.GetElapsedSeconds();
+        run.Splits     = SpeedrunTimer.GetSplits();
+        HistoryRuns.insert(HistoryRuns.begin(), run);
+        if ((int)HistoryRuns.size() > MaxHistoryRuns)
+            HistoryRuns.resize(MaxHistoryRuns);
+        SaveHistory(AddonDir, CurrentRouteName, BestSplits, HistoryRuns);
+    }
+    else
+    {
+        SpeedrunTimer.Reset();
+        GrandTimer.Reset();
+        RunFinished  = false;
+        SpeedrunTimer.Start();
+        GrandTimer.Start();
+        SpeedrunTimer.AddSplit("Manual Start");
+    }
+}
+
+static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
+{
+    if (aIsRelease) return;
+    std::lock_guard<std::mutex> lock(KeybindMutex);
+    if (SpeedrunTimer.IsRunning())
+    {
+        SpeedrunTimer.AddSplit("Manual Checkpoint");
+    }
+    else if (MumbleLink)
+    {
+        Checkpoint cp;
+        snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
+        cp.Point.X     = MumbleLink->AvatarPosition.X;
+        cp.Point.Y     = MumbleLink->AvatarPosition.Y;
+        cp.Point.Z     = MumbleLink->AvatarPosition.Z;
+        cp.Point.MapID = MumbleLink->Context.MapID;
+        CurrentRoute.Checkpoints.push_back(cp);
+    }
+}
+
+static void OnShowTimerKey      (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowTimer      = !ShowTimer;      }
+static void OnShowConfigKey     (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowConfig     = !ShowConfig;     }
+static void OnShowHistoryKey    (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowHistory    = !ShowHistory;    }
+static void OnShowZonesKey      (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowZones      = !ShowZones;      }
+static void OnSplitModeKey      (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) SplitMode      = !SplitMode;      }
+static void OnCompactModeKey    (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode    = !CompactMode;    }
+
 extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 {
     AddonDef.Signature        = 0x53573200;
@@ -24,7 +83,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
     AddonDef.Version.Minor    = 11;
-    AddonDef.Version.Build    = 2;
+    AddonDef.Version.Build    = 5;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
     AddonDef.Description      = "A speedrun timer with coordinate-based triggers.";
@@ -86,6 +145,14 @@ void AddonLoad(AddonAPI_t* aApi)
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
     APIDefs->InputBinds_RegisterWithStruct("Interact", OnInteractKey, Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Start/Stop",    OnStartStopKey,   Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Add/Call Checkpoint",   OnCheckpointKey,  Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show Timer",   OnShowTimerKey,   Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show Config",  OnShowConfigKey,  Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show History", OnShowHistoryKey, Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show Zones",   OnShowZonesKey,   Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Split Mode",   OnSplitModeKey,   Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Compact Mode", OnCompactModeKey, Keybind_t{});
 }
 
 void AddonUnload()
@@ -93,6 +160,14 @@ void AddonUnload()
     SaveSettings(AddonDir, GatherSettings());
 
     APIDefs->InputBinds_Deregister("Interact");
+    APIDefs->InputBinds_Deregister("Start/Stop");
+    APIDefs->InputBinds_Deregister("Add/Call Checkpoint");
+    APIDefs->InputBinds_Deregister("Show Timer");
+    APIDefs->InputBinds_Deregister("Show Config");
+    APIDefs->InputBinds_Deregister("Show History");
+    APIDefs->InputBinds_Deregister("Show Zones");
+    APIDefs->InputBinds_Deregister("Split Mode");
+    APIDefs->InputBinds_Deregister("Compact Mode");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
@@ -161,6 +236,8 @@ void AddonRender()
     }
     wasLoading = isLoading;
 
+    {
+    std::lock_guard<std::mutex> lock(KeybindMutex);
     if (CurrentRoute.IsValid)
     {
         if (wasInCheckpoint.size() != CurrentRoute.Checkpoints.size())
@@ -321,6 +398,7 @@ void AddonRender()
             }
         }
     }
+    } // KeybindMutex
 
     prevPos = currPos;
     if (!isLoading)

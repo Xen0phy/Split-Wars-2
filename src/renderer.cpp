@@ -116,7 +116,10 @@ void RenderTimerOverlay()
 
             bool goalIsAllCheckpoints = CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints;
 
-            if (running || (finished && !goalIsAllCheckpoints))
+            bool manualStop = finished && numSplits > 0 &&
+                              strcmp(splits[numSplits - 1].Name, "Manual Stop") == 0;
+
+            if (running || (finished && !goalIsAllCheckpoints && !manualStop))
             {
                 double segmentStart = numSplits > 0 ? splits[numSplits-1].Timestamp : 0.0;
                 double segmentTime  = SplitMode ? (elapsed - segmentStart) : elapsed;

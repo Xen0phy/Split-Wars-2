@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include <mutex>
 
 extern AddonAPI_t*                  APIDefs;
 extern Mumble::Data*                MumbleLink;
@@ -32,3 +33,4 @@ extern std::string                  AddonDir;
 extern bool                         RunFinished;
 extern bool                         PendingStart;
 extern std::atomic<bool>            InteractKeyPressed;
+extern std::mutex                   KeybindMutex;
