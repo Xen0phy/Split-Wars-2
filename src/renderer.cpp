@@ -46,11 +46,12 @@ void RenderTimerOverlay()
         ImGuiWindowFlags_NoNav
     );
 
-    const auto& splits   = SpeedrunTimer.GetSplits();
-    double      elapsed  = SpeedrunTimer.GetElapsedSeconds();
-    bool        running  = SpeedrunTimer.IsRunning();
-    bool        finished = SpeedrunTimer.IsFinished();
-    bool        hasBest  = !BestSplits.empty();
+    const auto& splits    = SpeedrunTimer.GetSplits();
+    double      elapsed   = SpeedrunTimer.GetElapsedSeconds();
+    double      grand     = GrandTimer.GetElapsedSeconds();
+    bool        running   = SpeedrunTimer.IsRunning();
+    bool        finished  = SpeedrunTimer.IsFinished();
+    bool        hasBest   = !BestSplits.empty();
     int         numSplits = (int)splits.size();
     char        buf[32];
     char        diffBuf[32];
@@ -152,6 +153,7 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("Goal");
             }
 
+            // Total row
             if ((running || finished) && numSplits > 0)
             {
                 ImGui::TableNextRow();
@@ -175,8 +177,33 @@ void RenderTimerOverlay()
                 double bestTotal = hasBest ? BestSplits.back().Timestamp : 0.0;
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);
 
+                // Tooltip on Total showing Grand Total
+                if (ImGui::IsItemHovered() && grand > 0.0)
+                {
+                    ImGui::BeginTooltip();
+                    FormatTime(buf, sizeof(buf), grand);
+                    ImGui::Text("Grand Total: %s", buf);
+                    ImGui::EndTooltip();
+                }
+
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
                 ImGui::TextDisabled("Total");
+            }
+
+            // Grand Total row (always visible toggle)
+            if (ShowGrandTotal && (running || finished) && grand > 0.0)
+            {
+                ImGui::TableNextRow();
+
+                if (hasBest)
+                    ImGui::TableSetColumnIndex(0); // empty diff cell
+
+                ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
+                FormatTime(buf, sizeof(buf), grand);
+                ImGui::TextDisabled("%s", buf);
+
+                ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
+                ImGui::TextDisabled("Grand Total");
             }
 
             ImGui::EndTable();
@@ -660,6 +687,11 @@ void RenderHistoryWindow()
                     ImGui::Separator();
                     FormatTime(buf, sizeof(buf), run.TotalTime);
                     ImGui::Text("Total: %s", buf);
+                    if (run.GrandTotal > 0.0)
+                    {
+                        FormatTime(buf, sizeof(buf), run.GrandTotal);
+                        ImGui::Text("Grand Total: %s", buf);
+                    }
                     ImGui::EndTooltip();
                 }
 

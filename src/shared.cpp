@@ -4,6 +4,7 @@
 AddonAPI_t*                 APIDefs             = nullptr;
 Mumble::Data*               MumbleLink          = nullptr;
 Timer                       SpeedrunTimer;
+Timer                       GrandTimer;
 Route                       CurrentRoute;
 float                       CameraFOV           = 0.873f;
 bool                        ShowZones           = true;
@@ -13,6 +14,7 @@ bool                        ShowDebug           = false;
 bool                        SplitMode           = true;
 bool                        CompactMode         = false;
 bool                        ShowHistory         = false;
+bool                        ShowGrandTotal      = false;
 int                         MaxHistoryRuns      = 10;
 std::vector<Split>          BestSplits;
 std::vector<HistoricalRun>  HistoryRuns;

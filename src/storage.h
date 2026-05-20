@@ -9,7 +9,8 @@
 struct HistoricalRun
 {
     std::string         Date;
-    double              TotalTime = 0.0;
+    double              TotalTime   = 0.0;
+    double              GrandTotal  = 0.0;
     std::vector<Split>  Splits;
 };
 
@@ -28,6 +29,7 @@ struct Settings
     bool    SplitMode       = true;
     bool    CompactMode     = false;
     bool    ShowHistory     = false;
+    bool    ShowGrandTotal  = false;
     int     MaxHistoryRuns  = 10;
 };
 

@@ -153,8 +153,9 @@ bool SaveHistory(const std::string& addonDir, const std::string& routeName, cons
         for (const auto& run : runs)
         {
             json rj;
-            rj["date"]       = run.Date;
-            rj["total_time"] = run.TotalTime;
+            rj["date"]        = run.Date;
+            rj["total_time"]  = run.TotalTime;
+            rj["grand_total"] = run.GrandTotal;
 
             json splits = json::array();
             for (const auto& s : run.Splits)
@@ -197,8 +198,9 @@ bool LoadHistory(const std::string& addonDir, const std::string& routeName, std:
         for (const auto& rj : j["history"])
         {
             HistoricalRun run;
-            run.Date      = rj["date"].get<std::string>();
-            run.TotalTime = rj["total_time"];
+            run.Date       = rj["date"].get<std::string>();
+            run.TotalTime  = rj["total_time"];
+            run.GrandTotal = rj.value("grand_total", 0.0);
 
             for (const auto& s : rj["splits"])
             {
@@ -230,6 +232,7 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"split_mode",       settings.SplitMode},
             {"compact_mode",     settings.CompactMode},
             {"show_history",     settings.ShowHistory},
+            {"show_grand_total", settings.ShowGrandTotal},
             {"max_history_runs", settings.MaxHistoryRuns}
         };
 
@@ -258,6 +261,7 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.SplitMode      = j.value("split_mode",       true);
         settings.CompactMode    = j.value("compact_mode",     false);
         settings.ShowHistory    = j.value("show_history",     false);
+        settings.ShowGrandTotal = j.value("show_grand_total", false);
         settings.MaxHistoryRuns = j.value("max_history_runs", 10);
         return true;
     }

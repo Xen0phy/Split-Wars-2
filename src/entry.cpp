@@ -40,6 +40,7 @@ static void ApplySettings(const Settings& s)
     SplitMode      = s.SplitMode;
     CompactMode    = s.CompactMode;
     ShowHistory    = s.ShowHistory;
+    ShowGrandTotal = s.ShowGrandTotal;
     MaxHistoryRuns = s.MaxHistoryRuns;
 }
 
@@ -53,6 +54,7 @@ static Settings GatherSettings()
     s.SplitMode      = SplitMode;
     s.CompactMode    = CompactMode;
     s.ShowHistory    = ShowHistory;
+    s.ShowGrandTotal = ShowGrandTotal;
     s.MaxHistoryRuns = MaxHistoryRuns;
     return s;
 }
@@ -138,7 +140,9 @@ void AddonRender()
         if (PendingStart)
         {
             SpeedrunTimer.Reset();
+            GrandTimer.Reset();
             SpeedrunTimer.Start();
+            GrandTimer.Start();
             PendingStart = false;
             RunFinished  = false;
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
@@ -166,6 +170,7 @@ void AddonRender()
             if (inStart && !wasInCircleStart && !SpeedrunTimer.IsRunning())
             {
                 SpeedrunTimer.Reset();
+                GrandTimer.Reset();
                 RunFinished  = false;
                 PendingStart = false;
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
@@ -176,6 +181,7 @@ void AddonRender()
                 !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
             {
                 SpeedrunTimer.Start();
+                GrandTimer.Start();
             }
 
             wasInCircleStart = inStart;
@@ -190,7 +196,9 @@ void AddonRender()
             if (crossed && !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
             {
                 SpeedrunTimer.Reset();
+                GrandTimer.Reset();
                 SpeedrunTimer.Start();
+                GrandTimer.Start();
                 RunFinished  = false;
                 PendingStart = false;
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
@@ -245,12 +253,14 @@ void AddonRender()
                 PointTriggered(prevPos, currPos, prevMapID, currMapID, CurrentRoute.Goal))
             {
                 SpeedrunTimer.Stop();
+                GrandTimer.Stop();
                 RunFinished = true;
 
                 HistoricalRun run;
-                run.Date      = GetCurrentDateTimeString();
-                run.TotalTime = SpeedrunTimer.GetElapsedSeconds();
-                run.Splits    = SpeedrunTimer.GetSplits();
+                run.Date       = GetCurrentDateTimeString();
+                run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
+                run.GrandTotal = GrandTimer.GetElapsedSeconds();
+                run.Splits     = SpeedrunTimer.GetSplits();
 
                 if (run.Splits.empty() || strcmp(run.Splits.back().Name, "Goal") != 0)
                 {
@@ -289,6 +299,7 @@ void AddonOptions()
     ImGui::Separator();
     ImGui::Checkbox("Split Mode",         &SplitMode);
     ImGui::Checkbox("Compact Mode",       &CompactMode);
+    ImGui::Checkbox("Show Grand Total", &ShowGrandTotal);
     ImGui::Separator();
     ImGui::Text("Max History Runs");
     ImGui::SetNextItemWidth(80.0f);

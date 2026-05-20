@@ -12,6 +12,7 @@
 extern AddonAPI_t*                  APIDefs;
 extern Mumble::Data*                MumbleLink;
 extern Timer                        SpeedrunTimer;
+extern Timer                        GrandTimer;
 extern Route                        CurrentRoute;
 extern float                        CameraFOV;
 extern bool                         ShowZones;
@@ -21,6 +22,7 @@ extern bool                         ShowDebug;
 extern bool                         SplitMode;
 extern bool                         CompactMode;
 extern bool                         ShowHistory;
+extern bool                         ShowGrandTotal;
 extern int                          MaxHistoryRuns;
 extern std::vector<Split>           BestSplits;
 extern std::vector<HistoricalRun>   HistoryRuns;
