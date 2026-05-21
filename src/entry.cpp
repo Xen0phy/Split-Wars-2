@@ -46,6 +46,9 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
         SpeedrunTimer.Start();
         GrandTimer.Start();
         SpeedrunTimer.AddSplit("Manual Start");
+        CombatStart = {};
+        CombatGoal  = {};
+        CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
     }
 }
 
@@ -82,7 +85,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.APIVersion       = NEXUS_API_VERSION;
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
-    AddonDef.Version.Minor    = 11;
+    AddonDef.Version.Minor    = 12;
     AddonDef.Version.Build    = 5;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
@@ -207,11 +210,82 @@ void AddonRender()
     static Vector3      prevPos          = {0, 0, 0};
     static unsigned int prevMapID        = 0;
     static bool         wasInCircleStart = false;
+    static bool         prevInCombat     = false;
     static std::vector<bool> wasInCheckpoint;
-    static std::vector<bool> checkpointTriggered;
 
-    Vector3      currPos   = MumbleLink->AvatarPosition;
-    unsigned int currMapID = MumbleLink->Context.MapID;
+    Vector3      currPos      = MumbleLink->AvatarPosition;
+    unsigned int currMapID    = MumbleLink->Context.MapID;
+    bool         currInCombat = MumbleLink->Context.IsInCombat;
+
+    // Helper: advance a CombatTriggerState one frame.
+    // Returns true on the frame the finish event fires.
+    // onCorrectMap / inCircle are pre-evaluated for this trigger's point.
+    auto TickCombat = [&](CombatTriggerState& cs, const RoutePoint& point,
+                          bool onCorrectMap, bool inCircle) -> bool
+    {
+        constexpr double GraceDuration = 2.0; // seconds
+
+        if (cs.finished) return false;
+
+        if (!cs.active)
+        {
+            // Arm: rising edge of combat while inside circle (and on correct map)
+            bool risingEdge = currInCombat && !prevInCombat;
+            if (risingEdge && onCorrectMap && inCircle)
+            {
+                cs.active = true;
+                cs.state  = ECombatState::Armed;
+            }
+            return false;
+        }
+
+        // Already Armed or GracePending
+        if (cs.state == ECombatState::Armed)
+        {
+            if (!inCircle)
+            {
+                // Left circle — immediate finish, no grace
+                cs.active   = false;
+                cs.finished = true;
+                return true;
+            }
+            if (!currInCombat)
+            {
+                // Combat dropped — start grace period
+                cs.state     = ECombatState::GracePending;
+                cs.dropTime  = SpeedrunTimer.GetElapsedSeconds();
+                cs.graceStart = std::chrono::steady_clock::now();
+            }
+            return false;
+        }
+
+        // GracePending
+        if (!currInCombat && inCircle)
+        {
+            auto elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - cs.graceStart).count();
+            if (elapsed >= GraceDuration)
+            {
+                cs.active   = false;
+                cs.finished = true;
+                return true;
+            }
+            return false;
+        }
+
+        if (currInCombat && inCircle)
+        {
+            // Combat resumed within grace — back to Armed
+            cs.state    = ECombatState::Armed;
+            cs.dropTime = 0.0;
+            return false;
+        }
+
+        // Left circle during grace — immediate finish
+        cs.active   = false;
+        cs.finished = true;
+        return true;
+    };
 
     // Loading screen detection
     bool isLoading = (MumbleLink->UITick == lastUITick);
@@ -232,6 +306,9 @@ void AddonRender()
             RunFinished  = false;
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
             checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
+            CombatStart = {};
+            CombatGoal  = {};
+            CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
         }
     }
     wasLoading = isLoading;
@@ -244,6 +321,7 @@ void AddonRender()
         {
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
             checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);  // 5
+            CombatCheckpoints.resize(CurrentRoute.Checkpoints.size());
         }
 
         // --- Circle start logic ---
@@ -260,6 +338,9 @@ void AddonRender()
                 GrandTimer.Reset();
                 RunFinished  = false;
                 PendingStart = false;
+                CombatStart    = {};
+                CombatGoal     = {};
+                CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
                 checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
             }
@@ -288,6 +369,9 @@ void AddonRender()
                 GrandTimer.Start();
                 RunFinished  = false;
                 PendingStart = false;
+                CombatStart    = {};
+                CombatGoal     = {};
+                CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
                 checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
             }
@@ -318,8 +402,86 @@ void AddonRender()
                 GrandTimer.Start();
                 RunFinished  = false;
                 PendingStart = false;
+                CombatStart    = {};
+                CombatGoal     = {};
+                CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
                 wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
                 checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
+            }
+        }
+
+        // --- Combat Arena start logic ---
+        else if (CurrentRoute.Start.TriggerType == ETriggerType::CombatArena)
+        {
+            bool onCorrectMap = CurrentRoute.Start.MapID == 0 ||
+                                currMapID == CurrentRoute.Start.MapID;
+            bool inCircle = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Start);
+
+            // Allow re-arming between runs: clear finished state when timer is idle
+            if (CombatStart.finished && !SpeedrunTimer.IsRunning())
+                CombatStart = {};
+
+            if (!SpeedrunTimer.IsRunning())
+            {
+                // Detect arm: rising edge of combat inside circle
+                bool risingEdge = currInCombat && !prevInCombat;
+                if (risingEdge && onCorrectMap && inCircle)
+                {
+                    SpeedrunTimer.Reset();
+                    GrandTimer.Reset();
+                    SpeedrunTimer.Start();
+                    GrandTimer.Start();
+                    RunFinished  = false;
+                    PendingStart = false;
+                    CombatStart    = {};
+                    CombatStart.active = true;
+                    CombatStart.state  = ECombatState::Armed;
+                    CombatGoal     = {};
+                    CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
+                    wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+                    checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
+
+                    // Check if Start and Goal are the same combat arena (identical point)
+                    // In that case Goal handles its own finish; Start just starts the timer.
+                    bool sameArea = CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena &&
+                        CurrentRoute.Goal.MapID  == CurrentRoute.Start.MapID  &&
+                        CurrentRoute.Goal.X      == CurrentRoute.Start.X      &&
+                        CurrentRoute.Goal.Y      == CurrentRoute.Start.Y      &&
+                        CurrentRoute.Goal.Z      == CurrentRoute.Start.Z      &&
+                        CurrentRoute.Goal.Radius == CurrentRoute.Start.Radius;
+
+                    if (sameArea)
+                    {
+                        // Mirror armed state to goal so it tracks the same fight
+                        CombatGoal.active = true;
+                        CombatGoal.state  = ECombatState::Armed;
+                    }
+                }
+            }
+            else if (SpeedrunTimer.IsRunning() && CombatStart.active)
+            {
+                // Check finish for Start-as-Start (only when Goal is NOT the same area)
+                bool sameArea = CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena &&
+                    CurrentRoute.Goal.MapID  == CurrentRoute.Start.MapID  &&
+                    CurrentRoute.Goal.X      == CurrentRoute.Start.X      &&
+                    CurrentRoute.Goal.Y      == CurrentRoute.Start.Y      &&
+                    CurrentRoute.Goal.Z      == CurrentRoute.Start.Z      &&
+                    CurrentRoute.Goal.Radius == CurrentRoute.Start.Radius;
+
+                if (!sameArea)
+                {
+                    bool finished = TickCombat(CombatStart, CurrentRoute.Start, onCorrectMap, inCircle);
+                    if (finished)
+                    {
+                        double t = CombatStart.dropTime > 0.0
+                            ? CombatStart.dropTime
+                            : SpeedrunTimer.GetElapsedSeconds();
+                        Split s;
+                        strncpy(s.Name, "Arena End", sizeof(s.Name) - 1);
+                        s.Timestamp = t;
+                        SpeedrunTimer.AddSplitAt(s);
+                    }
+                }
             }
         }
 
@@ -336,12 +498,49 @@ void AddonRender()
     
                 bool triggered = false;
                 if (onCorrectMap)
-                    triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
+                {
+                    if (cp.TriggerType == ETriggerType::CombatArena)
+                    {
+                        bool inCircle = IsWithinRange(currPos, cp);
+                        if (!CombatCheckpoints[i].finished)
+                        {
+                            // Arm: rising edge of combat inside circle
+                            if (!CombatCheckpoints[i].active)
+                            {
+                                bool risingEdge = currInCombat && !prevInCombat;
+                                if (risingEdge && inCircle)
+                                {
+                                    CombatCheckpoints[i] = { true, ECombatState::Armed };
+                                    SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
+                                }
+                            }
+                            else
+                            {
+                                triggered = TickCombat(CombatCheckpoints[i], cp, onCorrectMap, inCircle);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
+                    }
+                }
     
                 if (triggered && !checkpointTriggered[i] &&  // 6
                     (cp.TriggerType != ETriggerType::Circle || !wasInCheckpoint[i]))
                 {
-                    SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
+                    if (cp.TriggerType == ETriggerType::CombatArena &&
+                        CombatCheckpoints[i].dropTime > 0.0)
+                    {
+                        Split s;
+                        strncpy(s.Name, CurrentRoute.Checkpoints[i].Name, sizeof(s.Name) - 1);
+                        s.Timestamp = CombatCheckpoints[i].dropTime;
+                        SpeedrunTimer.AddSplitAt(s);
+                    }
+                    else
+                    {
+                        SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
+                    }
                     checkpointTriggered[i] = true;
                 }
     
@@ -352,6 +551,7 @@ void AddonRender()
 
             // Goal trigger check
             bool goalTriggered = false;
+            double goalTime    = 0.0; // used for combat arena finish time
             if (CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints)
             {
                 // Fire once all checkpoints have been hit (order doesn't matter)
@@ -359,6 +559,46 @@ void AddonRender()
                 for (int i = 0; i < (int)checkpointTriggered.size(); i++)
                     if (!checkpointTriggered[i]) { allDone = false; break; }
                 goalTriggered = allDone;
+            }
+            else if (CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena)
+            {
+                bool onCorrectMap = CurrentRoute.Goal.MapID == 0 ||
+                                    currMapID == CurrentRoute.Goal.MapID;
+                bool inCircle = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Goal);
+
+                // Check if Start and Goal are the same area — if so, state was mirrored on arm
+                bool sameArea = CurrentRoute.Start.TriggerType == ETriggerType::CombatArena &&
+                    CurrentRoute.Start.MapID  == CurrentRoute.Goal.MapID  &&
+                    CurrentRoute.Start.X      == CurrentRoute.Goal.X      &&
+                    CurrentRoute.Start.Y      == CurrentRoute.Goal.Y      &&
+                    CurrentRoute.Start.Z      == CurrentRoute.Goal.Z      &&
+                    CurrentRoute.Start.Radius == CurrentRoute.Goal.Radius;
+
+                if (!CombatGoal.finished)
+                {
+                    if (!CombatGoal.active)
+                    {
+                        if (!sameArea)
+                        {
+                            bool risingEdge = currInCombat && !prevInCombat;
+                            if (risingEdge && onCorrectMap && inCircle)
+                            {
+                                CombatGoal.active = true;
+                                CombatGoal.state  = ECombatState::Armed;
+                                SpeedrunTimer.AddSplit("Arena");
+                            }
+                        }
+                        // if sameArea, goal was armed by the Start block already
+                    }
+                    else
+                    {
+                        goalTriggered = TickCombat(CombatGoal, CurrentRoute.Goal, onCorrectMap, inCircle);
+                        if (goalTriggered)
+                            goalTime = CombatGoal.dropTime > 0.0
+                                ? CombatGoal.dropTime
+                                : SpeedrunTimer.GetElapsedSeconds();
+                    }
+                }
             }
             else
             {
@@ -372,7 +612,11 @@ void AddonRender()
 
             if (goalTriggered)
             {
-                SpeedrunTimer.Stop();
+                // For combat arena goal, stop the timer at the recorded drop time
+                if (CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena && goalTime > 0.0)
+                    SpeedrunTimer.StopAt(goalTime);
+                else
+                    SpeedrunTimer.Stop();
                 GrandTimer.Stop();
                 RunFinished = true;
 
@@ -403,6 +647,7 @@ void AddonRender()
     prevPos = currPos;
     if (!isLoading)
         prevMapID = currMapID;
+    prevInCombat = currInCombat;
         
     InteractKeyPressed = false;
 

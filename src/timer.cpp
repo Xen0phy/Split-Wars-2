@@ -79,6 +79,23 @@ void Timer::AddSplit(const char* name)
     m_Splits.push_back(split);
 }
 
+void Timer::AddSplitAt(const Split& split)
+{
+    m_Splits.push_back(split);
+}
+
+void Timer::StopAt(double elapsedSeconds)
+{
+    if (!m_Running) return;
+    // Back-calculate what the stop time_point would be for the given elapsed value
+    m_StopTime = m_StartTime +
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(elapsedSeconds + m_PausedDuration));
+    m_Running  = false;
+    m_Finished = true;
+    m_Paused   = false;
+}
+
 const std::vector<Split>& Timer::GetSplits() const
 {
     return m_Splits;

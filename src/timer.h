@@ -22,6 +22,8 @@ public:
     bool    IsPaused()   const;
     double  GetElapsedSeconds() const;
     void    AddSplit(const char* name);
+    void    AddSplitAt(const Split& split); // insert a split with a pre-recorded timestamp
+    void    StopAt(double elapsedSeconds);  // stop the timer at a specific elapsed time
     const   std::vector<Split>& GetSplits() const;
 
 private:

@@ -3,14 +3,32 @@
 
 #include "Mumble.h"
 #include <vector>
+#include <chrono>
 
 enum class ETriggerType : unsigned char
 {
     Circle          = 0,
     Plane           = 1,
     MapChange       = 2,
-    CircleInteract  = 3,     // Fires when interact key is pressed inside the circle
-    AllCheckpoints  = 4    // Goal only: fires once every checkpoint has been triggered
+    CircleInteract  = 3,    // Fires when interact key is pressed inside the circle
+    CombatArena     = 4,     // Arms on combat-enter inside circle, fires finish on combat-leave or circle-leave
+    AllCheckpoints  = 5   // Goal only: fires once every checkpoint has been triggered
+};
+
+enum class ECombatState : unsigned char
+{
+    Armed,          // In combat inside the circle
+    GracePending,   // Combat dropped, waiting grace period before finishing
+    Finished        // Trigger has fired its finish event; cannot re-arm
+};
+
+struct CombatTriggerState
+{
+    bool                                        active       = false;  // true = Armed or GracePending
+    ECombatState                                state        = ECombatState::Armed;
+    double                                      dropTime     = 0.0;    // timer value when combat dropped
+    std::chrono::steady_clock::time_point       graceStart;            // wall clock when grace began
+    bool                                        finished     = false;  // has fired finish; locked out
 };
 
 struct RoutePoint

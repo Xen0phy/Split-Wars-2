@@ -274,21 +274,34 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool is
 
     // Trigger type
     ImGui::TableSetColumnIndex(1);
-    const char* triggerTypes[] = { "Circle", "Plane", "Map Change", "Interact" };
-    const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "All Checkpoints" };
+    const char* triggerTypes[]     = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)" };
+    const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)", "All Checkpoints" };
+
+    // Non-goal types skip AllCheckpoints(4), so we need to remap index 4 <-> enum 5
+    auto ToNonGoalIndex = [](ETriggerType t) -> int {
+        if (t == ETriggerType::CombatArena) return 4;
+        return (int)t;
+    };
+    auto FromNonGoalIndex = [](int i) -> ETriggerType {
+        if (i == 4) return ETriggerType::CombatArena;
+        return (ETriggerType)i;
+    };
+
     int currentType = (int)point.TriggerType;
     ImGui::SetNextItemWidth(-1);
     char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", id);
     if (isGoal)
     {
-        if (ImGui::Combo(comboLabel, &currentType, goalTriggerTypes, 5))
+        if (ImGui::Combo(comboLabel, &currentType, goalTriggerTypes, 6))
             point.TriggerType = (ETriggerType)currentType;
     }
     else
     {
         if (currentType == (int)ETriggerType::AllCheckpoints) currentType = 0; // safety: Start can't be AllCheckpoints
-        if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 4))
-            point.TriggerType = (ETriggerType)currentType;
+        int displayIndex = ToNonGoalIndex(point.TriggerType);
+        if (ImGui::Combo(comboLabel, &displayIndex, triggerTypes, 5))
+            point.TriggerType = FromNonGoalIndex(displayIndex);
+        currentType = (int)point.TriggerType;
     }
 
     bool isAllCheckpoints = (point.TriggerType == ETriggerType::AllCheckpoints);
@@ -349,7 +362,7 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool is
         }
     }
 
-    // Angle
+    // Angle / Re-arm
     ImGui::TableSetColumnIndex(7);
     if (!isMapChange && !isAllCheckpoints && point.TriggerType == ETriggerType::Plane)
     {
@@ -491,12 +504,16 @@ void RenderConfigWindow()
 
             // Trigger
             ImGui::TableSetColumnIndex(1);
-            const char* triggerTypes[] = { "Circle", "Plane", "Map Change", "Interact" };
-            int currentType = (int)cp.TriggerType;
+            const char* triggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)" };
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            if (ImGui::Combo(comboLabel, &currentType, triggerTypes, 4))
-                cp.TriggerType = (ETriggerType)currentType;
+            int displayIndex = (cp.TriggerType == ETriggerType::CombatArena) ? 4 : (int)cp.TriggerType;
+            if (ImGui::Combo(comboLabel, &displayIndex, triggerTypes, 5))
+            {
+                cp.TriggerType = (displayIndex == 4)
+                    ? ETriggerType::CombatArena
+                    : (ETriggerType)displayIndex;
+            }
 
             // MapID
             ImGui::TableSetColumnIndex(2);
@@ -550,9 +567,22 @@ void RenderConfigWindow()
                 }
             }
 
-            // Angle
+            // Angle / Re-arm
             ImGui::TableSetColumnIndex(7);
-            if (!isMapChange && cp.TriggerType == ETriggerType::Plane)
+            if (cp.TriggerType == ETriggerType::CombatArena)
+            {
+                if (i < (int)CombatCheckpoints.size() && CombatCheckpoints[i].finished)
+                {
+                    char rearmLabel[32]; snprintf(rearmLabel, sizeof(rearmLabel), "Re-arm##%d", i);
+                    if (ImGui::Button(rearmLabel))
+                    {
+                        CombatCheckpoints[i] = {};
+                        if (i < (int)checkpointTriggered.size())
+                            checkpointTriggered[i] = false;
+                    }
+                }
+            }
+            else if (!isMapChange && cp.TriggerType == ETriggerType::Plane)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
