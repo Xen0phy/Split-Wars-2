@@ -28,8 +28,18 @@ set_target_properties(SplitWars2 PROPERTIES
     SUFFIX ".dll"
 )
 
+target_compile_options(SplitWars2 PRIVATE
+    -Os                  # optimise for size (smaller than -O2)
+    -ffunction-sections  # put each function in its own section
+    -fdata-sections      # put each variable in its own section
+    -fno-rtti            # no dynamic_cast/typeid — safe, nothing in this codebase uses it
+)
+
 target_link_options(SplitWars2 PRIVATE
     -static-libgcc
     -static-libstdc++
     -static
+    -s                        # strip all debug symbols
+    -Wl,--gc-sections         # dead-code elimination: drop anything not reachable
+    -Wl,--exclude-libs,ALL    # don't re-export symbols from static libs into the DLL
 )

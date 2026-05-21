@@ -433,7 +433,7 @@ void RenderConfigWindow()
 {
     if (!ShowConfig) return;
 
-    ImGui::Begin("Speedrun Config");
+    ImGui::Begin("Speedrun Config", &ShowConfig);
 
     // Route name field
     ImGui::Text("Route:");
