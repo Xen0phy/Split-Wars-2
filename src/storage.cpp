@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <cstdio>
 #include <ctime>
+#include <algorithm>
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -40,18 +41,6 @@ std::string GetCurrentDateTimeString()
     return std::string(buf);
 }
 
-static std::string SanitizeFilename(const std::string& name)
-{
-    std::string result = name;
-    for (char& c : result)
-    {
-        if (c == '/' || c == '\\' || c == ':' || c == '*' ||
-            c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
-            c = '_';
-    }
-    return result;
-}
-
 static json SerializePoint(const RoutePoint& p)
 {
     return {
@@ -78,11 +67,13 @@ static void DeserializePoint(const json& j, RoutePoint& p)
     p.PlaneAngle  = j.value("plane_angle", 0.0f);
 }
 
-bool SaveRoute(const std::string& addonDir, const Route& route, const std::string& routeName)
+// --- Route ---
+
+bool SaveRoute(const std::string& filepath, const Route& route, const std::string& routeName)
 {
     try
     {
-        fs::create_directories(addonDir);
+        fs::create_directories(fs::path(filepath).parent_path());
 
         json j;
         j["name"]  = routeName;
@@ -98,7 +89,6 @@ bool SaveRoute(const std::string& addonDir, const Route& route, const std::strin
         }
         j["checkpoints"] = cps;
 
-        std::string filepath = addonDir + "\\" + SanitizeFilename(routeName) + ".json";
         std::ofstream file(filepath);
         if (!file.is_open()) return false;
         file << j.dump(4);
@@ -107,11 +97,11 @@ bool SaveRoute(const std::string& addonDir, const Route& route, const std::strin
     catch (...) { return false; }
 }
 
-bool LoadRoute(const std::string& filename, Route& route, std::string& routeName)
+bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName)
 {
     try
     {
-        std::ifstream file(filename);
+        std::ifstream file(filepath);
         if (!file.is_open()) return false;
 
         json j = json::parse(file);
@@ -136,11 +126,17 @@ bool LoadRoute(const std::string& filename, Route& route, std::string& routeName
     catch (...) { return false; }
 }
 
-bool SaveHistory(const std::string& addonDir, const std::string& routeName, const std::vector<Split>& bestSplits, const std::vector<HistoricalRun>& runs)
+// --- History ---
+// History is always stored as a sibling .history file next to the .json,
+// so the historyPath is the full absolute path (e.g. "…/Fractals/Nightmare.history").
+// This means two routes with identical display names in different folders
+// will never collide.
+
+bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestSplits, const std::vector<HistoricalRun>& runs)
 {
     try
     {
-        fs::create_directories(addonDir);
+        fs::create_directories(fs::path(historyPath).parent_path());
 
         json j;
 
@@ -165,8 +161,7 @@ bool SaveHistory(const std::string& addonDir, const std::string& routeName, cons
         }
         j["history"] = history;
 
-        std::string filepath = addonDir + "\\" + SanitizeFilename(routeName) + ".history";
-        std::ofstream file(filepath);
+        std::ofstream file(historyPath);
         if (!file.is_open()) return false;
         file << j.dump(4);
         return true;
@@ -174,12 +169,11 @@ bool SaveHistory(const std::string& addonDir, const std::string& routeName, cons
     catch (...) { return false; }
 }
 
-bool LoadHistory(const std::string& addonDir, const std::string& routeName, std::vector<Split>& bestSplits, std::vector<HistoricalRun>& runs)
+bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestSplits, std::vector<HistoricalRun>& runs)
 {
     try
     {
-        std::string filepath = addonDir + "\\" + SanitizeFilename(routeName) + ".history";
-        std::ifstream file(filepath);
+        std::ifstream file(historyPath);
         if (!file.is_open()) return false;
 
         json j = json::parse(file);
@@ -218,6 +212,8 @@ bool LoadHistory(const std::string& addonDir, const std::string& routeName, std:
     catch (...) { return false; }
 }
 
+// --- Settings ---
+
 bool SaveSettings(const std::string& addonDir, const Settings& settings)
 {
     try
@@ -225,15 +221,16 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
         fs::create_directories(addonDir);
 
         json j = {
-            {"show_timer",       settings.ShowTimer},
-            {"show_config",      settings.ShowConfig},
-            {"show_zones",       settings.ShowZones},
-            {"show_debug",       settings.ShowDebug},
-            {"split_mode",       settings.SplitMode},
-            {"compact_mode",     settings.CompactMode},
-            {"show_history",     settings.ShowHistory},
-            {"show_grand_total", settings.ShowGrandTotal},
-            {"max_history_runs", settings.MaxHistoryRuns}
+            {"show_timer",          settings.ShowTimer},
+            {"show_config",         settings.ShowConfig},
+            {"show_zones",          settings.ShowZones},
+            {"show_debug",          settings.ShowDebug},
+            {"split_mode",          settings.SplitMode},
+            {"compact_mode",        settings.CompactMode},
+            {"show_history",        settings.ShowHistory},
+            {"show_grand_total",    settings.ShowGrandTotal},
+            {"show_route_browser",  settings.ShowRouteBrowser},
+            {"max_history_runs",    settings.MaxHistoryRuns}
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -254,44 +251,94 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         if (!file.is_open()) return false;
 
         json j = json::parse(file);
-        settings.ShowTimer      = j.value("show_timer",       true);
-        settings.ShowConfig     = j.value("show_config",      true);
-        settings.ShowZones      = j.value("show_zones",       true);
-        settings.ShowDebug      = j.value("show_debug",       false);
-        settings.SplitMode      = j.value("split_mode",       true);
-        settings.CompactMode    = j.value("compact_mode",     false);
-        settings.ShowHistory    = j.value("show_history",     false);
-        settings.ShowGrandTotal = j.value("show_grand_total", false);
-        settings.MaxHistoryRuns = j.value("max_history_runs", 10);
+        settings.ShowTimer          = j.value("show_timer",         true);
+        settings.ShowConfig         = j.value("show_config",        true);
+        settings.ShowZones          = j.value("show_zones",         true);
+        settings.ShowDebug          = j.value("show_debug",         false);
+        settings.SplitMode          = j.value("split_mode",         true);
+        settings.CompactMode        = j.value("compact_mode",       false);
+        settings.ShowHistory        = j.value("show_history",       false);
+        settings.ShowGrandTotal     = j.value("show_grand_total",   false);
+        settings.ShowRouteBrowser   = j.value("show_route_browser", false);
+        settings.MaxHistoryRuns     = j.value("max_history_runs",   10);
         return true;
     }
     catch (...) { return false; }
 }
 
-std::vector<RouteFile> ListRoutes(const std::string& addonDir)
+// --- Route tree ---
+
+// Derives the .history path from a .json path: same location, swaps extension.
+static std::string HistoryPathFromJsonPath(const std::string& jsonPath)
 {
-    std::vector<RouteFile> result;
+    fs::path p(jsonPath);
+    p.replace_extension(".history");
+    return p.string();
+}
+
+// Recursively builds a RouteFolder for the given directory.
+// Subfolders become RouteFolder children; .json files (excluding settings.json)
+// become RouteFile entries sorted alphabetically.
+static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
+{
+    RouteFolder node;
+    node.FolderName = dir.filename().string();
+    node.FolderPath = dir.string();
+
+    // If this is the root, use a friendlier display name
+    if (dir == rootDir)
+        node.FolderName = "";
+
     try
     {
-        if (!fs::exists(addonDir)) return result;
-        for (const auto& entry : fs::directory_iterator(addonDir))
-        {
-            if (entry.path().extension() == ".json" &&
-                entry.path().filename() != "settings.json")
-            {
-                RouteFile rf;
-                rf.Filename = entry.path().string();
+        std::vector<fs::directory_entry> entries;
+        for (const auto& entry : fs::directory_iterator(dir))
+            entries.push_back(entry);
 
-                std::ifstream file(rf.Filename);
-                if (file.is_open())
+        // Sort: directories first (alphabetical), then files (alphabetical)
+        std::sort(entries.begin(), entries.end(), [](const fs::directory_entry& a, const fs::directory_entry& b)
+        {
+            bool aDir = a.is_directory();
+            bool bDir = b.is_directory();
+            if (aDir != bDir) return aDir > bDir;
+            return a.path().filename().string() < b.path().filename().string();
+        });
+
+        for (const auto& entry : entries)
+        {
+            if (entry.is_directory())
+            {
+                node.SubFolders.push_back(BuildFolderNode(entry.path(), rootDir));
+            }
+            else if (entry.is_regular_file() &&
+                     entry.path().extension() == ".json" &&
+                     entry.path().filename() != "settings.json")
+            {
+                std::ifstream file(entry.path());
+                if (!file.is_open()) continue;
+
+                try
                 {
                     json j = json::parse(file);
-                    rf.Name = j["name"].get<std::string>();
-                    result.push_back(rf);
+                    RouteFile rf;
+                    rf.Name        = j["name"].get<std::string>();
+                    rf.Filepath    = entry.path().string();
+                    rf.HistoryPath = HistoryPathFromJsonPath(rf.Filepath);
+                    node.Routes.push_back(rf);
                 }
+                catch (...) { /* skip malformed files */ }
             }
         }
     }
     catch (...) {}
-    return result;
+
+    return node;
+}
+
+RouteFolder BuildRouteTree(const std::string& addonDir)
+{
+    fs::path root(addonDir);
+    if (!fs::exists(root))
+        return RouteFolder{};
+    return BuildFolderNode(root, root);
 }

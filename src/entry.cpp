@@ -36,13 +36,15 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
         HistoryRuns.insert(HistoryRuns.begin(), run);
         if ((int)HistoryRuns.size() > MaxHistoryRuns)
             HistoryRuns.resize(MaxHistoryRuns);
-        SaveHistory(AddonDir, CurrentRouteName, BestSplits, HistoryRuns);
+        if (!CurrentHistoryPath.empty())
+            SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
     }
     else
     {
         SpeedrunTimer.Reset();
         GrandTimer.Reset();
         RunFinished  = false;
+        PendingStart = false;
         SpeedrunTimer.Start();
         GrandTimer.Start();
         SpeedrunTimer.AddSplit("Manual Start");
@@ -72,12 +74,23 @@ static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
     }
 }
 
-static void OnShowTimerKey      (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowTimer      = !ShowTimer;      }
-static void OnShowConfigKey     (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowConfig     = !ShowConfig;     }
-static void OnShowHistoryKey    (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowHistory    = !ShowHistory;    }
-static void OnShowZonesKey      (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowZones      = !ShowZones;      }
-static void OnSplitModeKey      (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) SplitMode      = !SplitMode;      }
-static void OnCompactModeKey    (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode    = !CompactMode;    }
+static void OnShowTimerKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowTimer        = !ShowTimer;        }
+static void OnShowConfigKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowConfig       = !ShowConfig;       }
+static void OnShowHistoryKey       (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowHistory      = !ShowHistory;      }
+static void OnShowZonesKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowZones        = !ShowZones;        }
+static void OnSplitModeKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) SplitMode        = !SplitMode;        }
+static void OnCompactModeKey       (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode      = !CompactMode;      }
+static void OnShowRouteBrowserKey  (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowRouteBrowser = !ShowRouteBrowser; }
+
+static void OnResetTimerKey(const char* aIdentifier, bool aIsRelease)
+{
+    if (aIsRelease) return;
+    std::lock_guard<std::mutex> lock(KeybindMutex);
+    SpeedrunTimer.Reset();
+    GrandTimer.Reset();
+    RunFinished  = false;
+    PendingStart = false;
+}
 
 extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 {
@@ -85,8 +98,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.APIVersion       = NEXUS_API_VERSION;
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
-    AddonDef.Version.Minor    = 12;
-    AddonDef.Version.Build    = 5;
+    AddonDef.Version.Minor    = 13;
+    AddonDef.Version.Build    = 1;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
     AddonDef.Description      = "A speedrun timer with coordinate-based triggers.";
@@ -101,29 +114,31 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 
 static void ApplySettings(const Settings& s)
 {
-    ShowTimer      = s.ShowTimer;
-    ShowConfig     = s.ShowConfig;
-    ShowZones      = s.ShowZones;
-    ShowDebug      = s.ShowDebug;
-    SplitMode      = s.SplitMode;
-    CompactMode    = s.CompactMode;
-    ShowHistory    = s.ShowHistory;
-    ShowGrandTotal = s.ShowGrandTotal;
-    MaxHistoryRuns = s.MaxHistoryRuns;
+    ShowTimer        = s.ShowTimer;
+    ShowConfig       = s.ShowConfig;
+    ShowZones        = s.ShowZones;
+    ShowDebug        = s.ShowDebug;
+    SplitMode        = s.SplitMode;
+    CompactMode      = s.CompactMode;
+    ShowHistory      = s.ShowHistory;
+    ShowGrandTotal   = s.ShowGrandTotal;
+    ShowRouteBrowser = s.ShowRouteBrowser;
+    MaxHistoryRuns   = s.MaxHistoryRuns;
 }
 
 static Settings GatherSettings()
 {
     Settings s;
-    s.ShowTimer      = ShowTimer;
-    s.ShowConfig     = ShowConfig;
-    s.ShowZones      = ShowZones;
-    s.ShowDebug      = ShowDebug;
-    s.SplitMode      = SplitMode;
-    s.CompactMode    = CompactMode;
-    s.ShowHistory    = ShowHistory;
-    s.ShowGrandTotal = ShowGrandTotal;
-    s.MaxHistoryRuns = MaxHistoryRuns;
+    s.ShowTimer        = ShowTimer;
+    s.ShowConfig       = ShowConfig;
+    s.ShowZones        = ShowZones;
+    s.ShowDebug        = ShowDebug;
+    s.SplitMode        = SplitMode;
+    s.CompactMode      = CompactMode;
+    s.ShowHistory      = ShowHistory;
+    s.ShowGrandTotal   = ShowGrandTotal;
+    s.ShowRouteBrowser = ShowRouteBrowser;
+    s.MaxHistoryRuns   = MaxHistoryRuns;
     return s;
 }
 
@@ -147,15 +162,17 @@ void AddonLoad(AddonAPI_t* aApi)
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
-    APIDefs->InputBinds_RegisterWithStruct("Interact", OnInteractKey, Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Start/Stop",    OnStartStopKey,   Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Add/Call Checkpoint",   OnCheckpointKey,  Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show Timer",   OnShowTimerKey,   Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show Config",  OnShowConfigKey,  Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show History", OnShowHistoryKey, Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show Zones",   OnShowZonesKey,   Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Split Mode",   OnSplitModeKey,   Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Compact Mode", OnCompactModeKey, Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Interact",             OnInteractKey,           Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Start/Stop",           OnStartStopKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Add/Call Checkpoint",  OnCheckpointKey,         Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show Timer",           OnShowTimerKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show Config",          OnShowConfigKey,         Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show History",         OnShowHistoryKey,        Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Show Zones",           OnShowZonesKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Split Mode",           OnSplitModeKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Compact Mode",         OnCompactModeKey,        Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Browse Routes",        OnShowRouteBrowserKey,   Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("Reset Timer",          OnResetTimerKey,         Keybind_t{});
 }
 
 void AddonUnload()
@@ -171,6 +188,8 @@ void AddonUnload()
     APIDefs->InputBinds_Deregister("Show Zones");
     APIDefs->InputBinds_Deregister("Split Mode");
     APIDefs->InputBinds_Deregister("Compact Mode");
+    APIDefs->InputBinds_Deregister("Browse Routes");
+    APIDefs->InputBinds_Deregister("Reset Timer");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
@@ -217,19 +236,15 @@ void AddonRender()
     unsigned int currMapID    = MumbleLink->Context.MapID;
     bool         currInCombat = MumbleLink->Context.IsInCombat;
 
-    // Helper: advance a CombatTriggerState one frame.
-    // Returns true on the frame the finish event fires.
-    // onCorrectMap / inCircle are pre-evaluated for this trigger's point.
     auto TickCombat = [&](CombatTriggerState& cs, const RoutePoint& point,
                           bool onCorrectMap, bool inCircle) -> bool
     {
-        constexpr double GraceDuration = 2.0; // seconds
+        constexpr double GraceDuration = 2.0;
 
         if (cs.finished) return false;
 
         if (!cs.active)
         {
-            // Arm: rising edge of combat while inside circle (and on correct map)
             bool risingEdge = currInCombat && !prevInCombat;
             if (risingEdge && onCorrectMap && inCircle)
             {
@@ -239,19 +254,16 @@ void AddonRender()
             return false;
         }
 
-        // Already Armed or GracePending
         if (cs.state == ECombatState::Armed)
         {
             if (!inCircle)
             {
-                // Left circle — immediate finish, no grace
                 cs.active   = false;
                 cs.finished = true;
                 return true;
             }
             if (!currInCombat)
             {
-                // Combat dropped — start grace period
                 cs.state     = ECombatState::GracePending;
                 cs.dropTime  = SpeedrunTimer.GetElapsedSeconds();
                 cs.graceStart = std::chrono::steady_clock::now();
@@ -259,7 +271,6 @@ void AddonRender()
             return false;
         }
 
-        // GracePending
         if (!currInCombat && inCircle)
         {
             auto elapsed = std::chrono::duration<double>(
@@ -275,13 +286,11 @@ void AddonRender()
 
         if (currInCombat && inCircle)
         {
-            // Combat resumed within grace — back to Armed
             cs.state    = ECombatState::Armed;
             cs.dropTime = 0.0;
             return false;
         }
 
-        // Left circle during grace — immediate finish
         cs.active   = false;
         cs.finished = true;
         return true;
@@ -308,7 +317,7 @@ void AddonRender()
             checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
             CombatStart = {};
             CombatGoal  = {};
-            CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
+            CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});  // FIX: was resize()
         }
     }
     wasLoading = isLoading;
@@ -320,14 +329,13 @@ void AddonRender()
         if (wasInCheckpoint.size() != CurrentRoute.Checkpoints.size())
         {
             wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
-            checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);  // 5
-            CombatCheckpoints.resize(CurrentRoute.Checkpoints.size());
+            checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
+            CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});  // FIX: was resize(), kept stale state
         }
 
         // --- Circle start logic ---
         if (CurrentRoute.Start.TriggerType == ETriggerType::Circle)
         {
-            // Only trigger if on correct map (or MapID is 0)
             bool onCorrectMap = CurrentRoute.Start.MapID == 0 ||
                                 currMapID == CurrentRoute.Start.MapID;
             bool inStart = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Start);
@@ -386,7 +394,6 @@ void AddonRender()
                 PendingStart = true;
             }
         }
-
         // --- Circle Interact start logic ---
         else if (CurrentRoute.Start.TriggerType == ETriggerType::CircleInteract)
         {
@@ -409,7 +416,6 @@ void AddonRender()
                 checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
             }
         }
-
         // --- Combat Arena start logic ---
         else if (CurrentRoute.Start.TriggerType == ETriggerType::CombatArena)
         {
@@ -417,13 +423,18 @@ void AddonRender()
                                 currMapID == CurrentRoute.Start.MapID;
             bool inCircle = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Start);
 
-            // Allow re-arming between runs: clear finished state when timer is idle
             if (CombatStart.finished && !SpeedrunTimer.IsRunning())
                 CombatStart = {};
 
+            bool sameArea = CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena &&
+                CurrentRoute.Goal.MapID  == CurrentRoute.Start.MapID  &&
+                CurrentRoute.Goal.X      == CurrentRoute.Start.X      &&
+                CurrentRoute.Goal.Y      == CurrentRoute.Start.Y      &&
+                CurrentRoute.Goal.Z      == CurrentRoute.Start.Z      &&
+                CurrentRoute.Goal.Radius == CurrentRoute.Start.Radius;
+
             if (!SpeedrunTimer.IsRunning())
             {
-                // Detect arm: rising edge of combat inside circle
                 bool risingEdge = currInCombat && !prevInCombat;
                 if (risingEdge && onCorrectMap && inCircle)
                 {
@@ -441,18 +452,8 @@ void AddonRender()
                     wasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
                     checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
 
-                    // Check if Start and Goal are the same combat arena (identical point)
-                    // In that case Goal handles its own finish; Start just starts the timer.
-                    bool sameArea = CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena &&
-                        CurrentRoute.Goal.MapID  == CurrentRoute.Start.MapID  &&
-                        CurrentRoute.Goal.X      == CurrentRoute.Start.X      &&
-                        CurrentRoute.Goal.Y      == CurrentRoute.Start.Y      &&
-                        CurrentRoute.Goal.Z      == CurrentRoute.Start.Z      &&
-                        CurrentRoute.Goal.Radius == CurrentRoute.Start.Radius;
-
                     if (sameArea)
                     {
-                        // Mirror armed state to goal so it tracks the same fight
                         CombatGoal.active = true;
                         CombatGoal.state  = ECombatState::Armed;
                     }
@@ -460,14 +461,6 @@ void AddonRender()
             }
             else if (SpeedrunTimer.IsRunning() && CombatStart.active)
             {
-                // Check finish for Start-as-Start (only when Goal is NOT the same area)
-                bool sameArea = CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena &&
-                    CurrentRoute.Goal.MapID  == CurrentRoute.Start.MapID  &&
-                    CurrentRoute.Goal.X      == CurrentRoute.Start.X      &&
-                    CurrentRoute.Goal.Y      == CurrentRoute.Start.Y      &&
-                    CurrentRoute.Goal.Z      == CurrentRoute.Start.Z      &&
-                    CurrentRoute.Goal.Radius == CurrentRoute.Start.Radius;
-
                 if (!sameArea)
                 {
                     bool finished = TickCombat(CombatStart, CurrentRoute.Start, onCorrectMap, inCircle);
@@ -491,11 +484,11 @@ void AddonRender()
             for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
             {
                 const RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
-    
+
                 bool onCorrectMap = cp.TriggerType == ETriggerType::MapChange ||
                                     cp.MapID == 0 ||
                                     currMapID == cp.MapID;
-    
+
                 bool triggered = false;
                 if (onCorrectMap)
                 {
@@ -504,7 +497,6 @@ void AddonRender()
                         bool inCircle = IsWithinRange(currPos, cp);
                         if (!CombatCheckpoints[i].finished)
                         {
-                            // Arm: rising edge of combat inside circle
                             if (!CombatCheckpoints[i].active)
                             {
                                 bool risingEdge = currInCombat && !prevInCombat;
@@ -525,8 +517,8 @@ void AddonRender()
                         triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
                     }
                 }
-    
-                if (triggered && !checkpointTriggered[i] &&  // 6
+
+                if (triggered && !checkpointTriggered[i] &&
                     (cp.TriggerType != ETriggerType::Circle || !wasInCheckpoint[i]))
                 {
                     if (cp.TriggerType == ETriggerType::CombatArena &&
@@ -543,7 +535,7 @@ void AddonRender()
                     }
                     checkpointTriggered[i] = true;
                 }
-    
+
                 wasInCheckpoint[i] = (cp.TriggerType == ETriggerType::Circle && onCorrectMap)
                     ? IsWithinRange(currPos, cp)
                     : false;
@@ -551,10 +543,9 @@ void AddonRender()
 
             // Goal trigger check
             bool goalTriggered = false;
-            double goalTime    = 0.0; // used for combat arena finish time
+            double goalTime    = 0.0;
             if (CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints)
             {
-                // Fire once all checkpoints have been hit (order doesn't matter)
                 bool allDone = !CurrentRoute.Checkpoints.empty();
                 for (int i = 0; i < (int)checkpointTriggered.size(); i++)
                     if (!checkpointTriggered[i]) { allDone = false; break; }
@@ -566,7 +557,6 @@ void AddonRender()
                                     currMapID == CurrentRoute.Goal.MapID;
                 bool inCircle = onCorrectMap && IsWithinRange(currPos, CurrentRoute.Goal);
 
-                // Check if Start and Goal are the same area — if so, state was mirrored on arm
                 bool sameArea = CurrentRoute.Start.TriggerType == ETriggerType::CombatArena &&
                     CurrentRoute.Start.MapID  == CurrentRoute.Goal.MapID  &&
                     CurrentRoute.Start.X      == CurrentRoute.Goal.X      &&
@@ -588,7 +578,6 @@ void AddonRender()
                                 SpeedrunTimer.AddSplit("Arena");
                             }
                         }
-                        // if sameArea, goal was armed by the Start block already
                     }
                     else
                     {
@@ -612,7 +601,6 @@ void AddonRender()
 
             if (goalTriggered)
             {
-                // For combat arena goal, stop the timer at the recorded drop time
                 if (CurrentRoute.Goal.TriggerType == ETriggerType::CombatArena && goalTime > 0.0)
                     SpeedrunTimer.StopAt(goalTime);
                 else
@@ -638,7 +626,8 @@ void AddonRender()
                 if ((int)HistoryRuns.size() > MaxHistoryRuns)
                     HistoryRuns.resize(MaxHistoryRuns);
 
-                SaveHistory(AddonDir, CurrentRouteName, BestSplits, HistoryRuns);
+                if (!CurrentHistoryPath.empty())
+                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
             }
         }
     }
@@ -648,13 +637,14 @@ void AddonRender()
     if (!isLoading)
         prevMapID = currMapID;
     prevInCombat = currInCombat;
-        
+
     InteractKeyPressed = false;
 
     RenderZones();
     RenderTimerOverlay();
     RenderConfigWindow();
     RenderHistoryWindow();
+    RenderRouteBrowserWindow();
 }
 
 void AddonOptions()
@@ -662,12 +652,13 @@ void AddonOptions()
     ImGui::Checkbox("Show Timer",         &ShowTimer);
     ImGui::Checkbox("Show Config Window", &ShowConfig);
     ImGui::Checkbox("Show History",       &ShowHistory);
+    ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
     ImGui::Checkbox("Show Checkpoints",   &ShowZones);
     ImGui::Checkbox("Show Debug Overlay", &ShowDebug);
     ImGui::Separator();
     ImGui::Checkbox("Split Mode",         &SplitMode);
     ImGui::Checkbox("Compact Mode",       &CompactMode);
-    ImGui::Checkbox("Show Grand Total", &ShowGrandTotal);
+    ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
     ImGui::Separator();
     ImGui::Text("Max History Runs");
     ImGui::SetNextItemWidth(80.0f);

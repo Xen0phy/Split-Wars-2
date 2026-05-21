@@ -6,6 +6,9 @@
 #include <cstdio>
 #include <cmath>
 #include <string>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 static void FormatTime(char* buf, int bufSize, double elapsed)
 {
@@ -26,11 +29,34 @@ static void FormatDiff(char* buf, int bufSize, double diff)
 
 static ImVec4 TimeColor(double current, double best, bool running)
 {
+    if (running)
+        return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
     if (best <= 0.0)
         return ImVec4(0.2f, 1.0f, 0.2f, 1.0f);
     if (current <= best)
         return ImVec4(0.2f, 1.0f, 0.2f, 1.0f);
     return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+}
+
+// Helper: load a route from a RouteFile entry and update all shared state.
+static void LoadRouteFile(const RouteFile& rf)
+{
+    Route newRoute;
+    std::string newName;
+    if (!LoadRoute(rf.Filepath, newRoute, newName))
+        return;
+
+    CurrentRoute          = newRoute;
+    CurrentRouteName      = newName;
+    CurrentRouteFilepath  = rf.Filepath;
+    CurrentHistoryPath    = rf.HistoryPath;
+
+    BestSplits.clear();
+    HistoryRuns.clear();
+    LoadHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+
+    SpeedrunTimer.Reset();
+    RunFinished = false;
 }
 
 void RenderTimerOverlay()
@@ -155,7 +181,6 @@ void RenderTimerOverlay()
                 ImGui::TextColored(TimeColor(segmentTime, bestSegmentTime, running), "%s", buf);
 
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
-                ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
                 if (finished)
                     ImGui::TextDisabled("Goal");
             }
@@ -242,8 +267,11 @@ void RenderTimerOverlay()
                     goalSplit.Timestamp = elapsed;
                     BestSplits.push_back(goalSplit);
                 }
-                SaveRoute(AddonDir, CurrentRoute, CurrentRouteName);
-                SaveHistory(AddonDir, CurrentRouteName, BestSplits, HistoryRuns);
+                // Save route back to its original location, history alongside it
+                if (!CurrentRouteFilepath.empty())
+                    SaveRoute(CurrentRouteFilepath, CurrentRoute, CurrentRouteName);
+                if (!CurrentHistoryPath.empty())
+                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
                 RunFinished = false;
             }
 
@@ -277,7 +305,6 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool is
     const char* triggerTypes[]     = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)" };
     const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)", "All Checkpoints" };
 
-    // Non-goal types skip AllCheckpoints(4), so we need to remap index 4 <-> enum 5
     auto ToNonGoalIndex = [](ETriggerType t) -> int {
         if (t == ETriggerType::CombatArena) return 4;
         return (int)t;
@@ -297,17 +324,16 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool is
     }
     else
     {
-        if (currentType == (int)ETriggerType::AllCheckpoints) currentType = 0; // safety: Start can't be AllCheckpoints
+        if (currentType == (int)ETriggerType::AllCheckpoints) currentType = 0;
         int displayIndex = ToNonGoalIndex(point.TriggerType);
         if (ImGui::Combo(comboLabel, &displayIndex, triggerTypes, 5))
             point.TriggerType = FromNonGoalIndex(displayIndex);
-        currentType = (int)point.TriggerType;
     }
 
     bool isAllCheckpoints = (point.TriggerType == ETriggerType::AllCheckpoints);
     bool isMapChange      = (point.TriggerType == ETriggerType::MapChange);
 
-    // MapID — hidden for AllCheckpoints
+    // MapID
     ImGui::TableSetColumnIndex(2);
     if (!isAllCheckpoints)
     {
@@ -362,7 +388,7 @@ static void RenderRouteRow(const char* label, RoutePoint& point, int id, bool is
         }
     }
 
-    // Angle / Re-arm
+    // Angle
     ImGui::TableSetColumnIndex(7);
     if (!isMapChange && !isAllCheckpoints && point.TriggerType == ETriggerType::Plane)
     {
@@ -409,6 +435,7 @@ void RenderConfigWindow()
 
     ImGui::Begin("Speedrun Config");
 
+    // Route name field
     ImGui::Text("Route:");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(200.0f);
@@ -419,47 +446,62 @@ void RenderConfigWindow()
         CurrentRouteName = routeNameBuf;
     ImGui::SameLine();
 
+    // Save directory field – populated from the loaded route path, freely editable.
+    // We refresh it whenever CurrentRouteFilepath changes.
+    static char saveDirBuf[512]        = "";
+    static std::string lastSeenFilepath = "";
+    if (CurrentRouteFilepath != lastSeenFilepath)
+    {
+        lastSeenFilepath = CurrentRouteFilepath;
+        std::string dir = CurrentRouteFilepath.empty()
+            ? AddonDir
+            : fs::path(CurrentRouteFilepath).parent_path().string();
+        strncpy(saveDirBuf, dir.c_str(), sizeof(saveDirBuf) - 1);
+        saveDirBuf[sizeof(saveDirBuf) - 1] = '\0';
+    }
+    // Seed with AddonDir if still empty (first run before any route was loaded)
+    if (saveDirBuf[0] == '\0' && !AddonDir.empty())
+    {
+        strncpy(saveDirBuf, AddonDir.c_str(), sizeof(saveDirBuf) - 1);
+        saveDirBuf[sizeof(saveDirBuf) - 1] = '\0';
+    }
+
     if (ImGui::Button("Save Route"))
-        SaveRoute(AddonDir, CurrentRoute, CurrentRouteName);
-    ImGui::SameLine();
-
-    static std::vector<RouteFile> routeFiles;
-    static bool needsRefresh = true;
-    if (needsRefresh)
     {
-        routeFiles   = ListRoutes(AddonDir);
-        needsRefresh = false;
-    }
+        // Build the target path from the (possibly edited) directory + current name.
+        std::string dir   = saveDirBuf;
+        std::string newFP = dir + "\\" + CurrentRouteName + ".json";
+        std::string newHP = dir + "\\" + CurrentRouteName + ".history";
 
-    ImGui::SetNextItemWidth(180.0f);
-    if (ImGui::BeginCombo("##routeload", "Load Route"))
-    {
-        needsRefresh = true;
-        for (const auto& rf : routeFiles)
+        // Overwrite in-place only when both the name AND the directory are unchanged.
+        // In any other case (name changed, dir changed, or brand-new route) create a new file.
+        if (!CurrentRouteFilepath.empty() && newFP == CurrentRouteFilepath)
         {
-            if (ImGui::Selectable(rf.Name.c_str()))
-            {
-                Route newRoute;
-                std::string newName;
-                if (LoadRoute(rf.Filename, newRoute, newName))
-                {
-                    CurrentRoute     = newRoute;
-                    CurrentRouteName = newName;
-                    strncpy(routeNameBuf, newName.c_str(), sizeof(routeNameBuf) - 1);
-                    BestSplits.clear();
-                    HistoryRuns.clear();
-                    LoadHistory(AddonDir, newName, BestSplits, HistoryRuns);
-                    SpeedrunTimer.Reset();
-                    RunFinished = false;
-                }
-            }
+            SaveRoute(CurrentRouteFilepath, CurrentRoute, CurrentRouteName);
+            if (!CurrentHistoryPath.empty())
+                SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
         }
-        ImGui::EndCombo();
+        else
+        {
+            SaveRoute(newFP, CurrentRoute, CurrentRouteName);
+            CurrentRouteFilepath = newFP;
+            CurrentHistoryPath   = newHP;
+            lastSeenFilepath     = newFP;   // prevent re-sync from overwriting the buf
+        }
     }
-
     ImGui::SameLine();
+
+    if (ImGui::Button("Browse Routes"))
+        ShowRouteBrowser = !ShowRouteBrowser;
+    ImGui::SameLine();
+
     if (ImGui::Button("History"))
         ShowHistory = !ShowHistory;
+
+    // Editable save directory – shown below the toolbar.
+    ImGui::Text("Dir:"); ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##savedir", saveDirBuf, sizeof(saveDirBuf));
 
     ImGui::Separator();
 
@@ -622,7 +664,7 @@ void RenderConfigWindow()
             CurrentRoute.Checkpoints.erase(CurrentRoute.Checkpoints.begin() + removeIndex);
     }
 
-    ImGui::EndChild(); 
+    ImGui::EndChild();
 
     ImGui::Spacing();
     if (ImGui::Button("Add Checkpoint"))
@@ -637,6 +679,22 @@ void RenderConfigWindow()
             cp.Point.MapID = MumbleLink->Context.MapID;
         }
         CurrentRoute.Checkpoints.push_back(cp);
+    }
+    ImGui::SameLine();
+
+    if (ImGui::Button("Clear Route"))
+    {
+        CurrentRoute.Checkpoints.clear();
+        CurrentRoute.Start   = RoutePoint{};
+        CurrentRoute.Goal    = RoutePoint{};
+        CurrentRoute.IsValid = false;
+        CurrentRouteName     = "New Route";
+        CurrentRouteFilepath.clear();
+        CurrentHistoryPath.clear();
+        // routeNameBuf and saveDirBuf will re-sync on next frame via lastSeenFilepath check
+        SpeedrunTimer.Reset();
+        RunFinished  = false;
+        PendingStart = false;
     }
 
     ImGui::Spacing();
@@ -769,12 +827,154 @@ void RenderHistoryWindow()
                 if (ImGui::SmallButton(setLabel))
                 {
                     BestSplits = run.Splits;
-                    SaveHistory(AddonDir, CurrentRouteName, BestSplits, HistoryRuns);
+                    if (!CurrentHistoryPath.empty())
+                        SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
                 }
             }
 
             ImGui::EndTable();
         }
+    }
+
+    ImGui::End();
+}
+
+// Moves a route file (and its sibling .history) to destDir.
+// Updates CurrentRouteFilepath/CurrentHistoryPath if the active route was moved.
+static void MoveRouteFile(const std::string& srcJson, const std::string& destDir)
+{
+    try
+    {
+        fs::path src(srcJson);
+        fs::path dstDir(destDir);
+        fs::create_directories(dstDir);
+
+        fs::path dstJson    = dstDir / src.filename();
+        fs::path srcHistory = src; srcHistory.replace_extension(".history");
+        fs::path dstHistory = dstDir / srcHistory.filename();
+
+        fs::rename(src, dstJson);
+        if (fs::exists(srcHistory))
+            fs::rename(srcHistory, dstHistory);
+
+        if (CurrentRouteFilepath == srcJson)
+        {
+            CurrentRouteFilepath = dstJson.string();
+            CurrentHistoryPath   = dstHistory.string();
+        }
+    }
+    catch (...) {}
+}
+
+// Recursive helper that renders a folder node using ImGui TreeNodes.
+// Returns true if a route was selected (so the browser can auto-close).
+// dragDropNeedsRefresh is set true when a file is moved via drag & drop.
+static bool RenderFolderNode(const RouteFolder& folder, bool& dragDropNeedsRefresh)
+{
+    for (const auto& sub : folder.SubFolders)
+    {
+        bool open = ImGui::TreeNode(sub.FolderName.c_str());
+
+        // Drop target: accept a route dragged onto this folder label
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ROUTE_FILEPATH"))
+            {
+                std::string srcPath(static_cast<const char*>(payload->Data),
+                                    payload->DataSize - 1);
+                MoveRouteFile(srcPath, sub.FolderPath);
+                dragDropNeedsRefresh = true;
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (open)
+        {
+            if (RenderFolderNode(sub, dragDropNeedsRefresh))
+            {
+                ImGui::TreePop();
+                return true;
+            }
+            ImGui::TreePop();
+        }
+    }
+
+    for (const auto& rf : folder.Routes)
+    {
+        // Use SelectableFlags_AllowOverlap so the drag source can still fire
+        bool clicked = ImGui::Selectable(rf.Name.c_str(), false,
+                                         ImGuiSelectableFlags_AllowItemOverlap);
+
+        // Drag source – must be checked right after the Selectable
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+        {
+            ImGui::SetDragDropPayload("ROUTE_FILEPATH",
+                rf.Filepath.c_str(),
+                rf.Filepath.size() + 1);
+            ImGui::Text("Move: %s", rf.Name.c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        if (clicked)
+        {
+            LoadRouteFile(rf);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void RenderRouteBrowserWindow()
+{
+    if (!ShowRouteBrowser) return;
+
+    static RouteFolder routeTree;
+    static bool        needsRefresh = true;
+
+    if (needsRefresh)
+    {
+        routeTree    = BuildRouteTree(AddonDir);
+        needsRefresh = false;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(320.0f, 480.0f), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Routes", &ShowRouteBrowser);
+
+    if (ImGui::Button("Refresh"))
+        needsRefresh = true;
+
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextDisabled("Tip: drag a route onto a folder to move it.");
+    ImGui::Spacing();
+
+    bool dndRefresh = false;
+    bool selected   = RenderFolderNode(routeTree, dndRefresh);
+
+    // Root-level drop target (a small invisible button at the bottom of the list)
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextDisabled("[ root ]");
+    if (ImGui::BeginDragDropTarget())
+    {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ROUTE_FILEPATH"))
+        {
+            std::string srcPath(static_cast<const char*>(payload->Data),
+                                payload->DataSize - 1);
+            MoveRouteFile(srcPath, AddonDir);
+            dndRefresh = true;
+        }
+        ImGui::EndDragDropTarget();
+    }
+
+    if (dndRefresh)
+        needsRefresh = true;
+
+    if (selected)
+    {
+        ShowRouteBrowser = false;
+        needsRefresh     = true;
     }
 
     ImGui::End();

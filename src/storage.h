@@ -16,36 +16,48 @@ struct HistoricalRun
 
 struct RouteFile
 {
-    std::string Name;
-    std::string Filename;
+    std::string Name;         // display name (from inside the JSON)
+    std::string Filepath;     // full absolute path to .json
+    std::string HistoryPath;  // full absolute path to sibling .history file
+};
+
+struct RouteFolder
+{
+    std::string              FolderName;
+    std::string              FolderPath;   // full filesystem path for this folder
+    std::vector<RouteFolder> SubFolders;
+    std::vector<RouteFile>   Routes;
 };
 
 struct Settings
 {
-    bool    ShowTimer       = true;
-    bool    ShowConfig      = true;
-    bool    ShowZones       = true;
-    bool    ShowDebug       = false;
-    bool    SplitMode       = true;
-    bool    CompactMode     = false;
-    bool    ShowHistory     = false;
-    bool    ShowGrandTotal  = false;
-    int     MaxHistoryRuns  = 10;
+    bool    ShowTimer           = true;
+    bool    ShowConfig          = true;
+    bool    ShowZones           = true;
+    bool    ShowDebug           = false;
+    bool    SplitMode           = true;
+    bool    CompactMode         = false;
+    bool    ShowHistory         = false;
+    bool    ShowGrandTotal      = false;
+    bool    ShowRouteBrowser    = false;
+    int     MaxHistoryRuns      = 10;
 };
 
 // Route — no times, safe to share
-bool                    SaveRoute(const std::string& addonDir, const Route& route, const std::string& routeName);
-bool                    LoadRoute(const std::string& filename, Route& route, std::string& routeName);
+bool            SaveRoute(const std::string& filepath, const Route& route, const std::string& routeName);
+bool            LoadRoute(const std::string& filepath, Route& route, std::string& routeName);
 
-// History — best splits + run history, stays local
-bool                    SaveHistory(const std::string& addonDir, const std::string& routeName, const std::vector<Split>& bestSplits, const std::vector<HistoricalRun>& runs);
-bool                    LoadHistory(const std::string& addonDir, const std::string& routeName, std::vector<Split>& bestSplits, std::vector<HistoricalRun>& runs);
+// History — best splits + run history, keyed on the full .history path
+bool            SaveHistory(const std::string& historyPath, const std::vector<Split>& bestSplits, const std::vector<HistoricalRun>& runs);
+bool            LoadHistory(const std::string& historyPath, std::vector<Split>& bestSplits, std::vector<HistoricalRun>& runs);
 
 // Settings
-bool                    SaveSettings(const std::string& addonDir, const Settings& settings);
-bool                    LoadSettings(const std::string& addonDir, Settings& settings);
+bool            SaveSettings(const std::string& addonDir, const Settings& settings);
+bool            LoadSettings(const std::string& addonDir, Settings& settings);
+
+// Route tree — recursive scan of addonDir
+RouteFolder     BuildRouteTree(const std::string& addonDir);
 
 // Utils
-std::vector<RouteFile>  ListRoutes(const std::string& addonDir);
-std::string             GetAddonDir();
-std::string             GetCurrentDateTimeString();
+std::string     GetAddonDir();
+std::string     GetCurrentDateTimeString();

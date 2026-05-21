@@ -4,3 +4,4 @@
 void RenderTimerOverlay();
 void RenderConfigWindow();
 void RenderHistoryWindow();
+void RenderRouteBrowserWindow();
