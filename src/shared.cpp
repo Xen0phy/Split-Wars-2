@@ -32,3 +32,10 @@ CombatTriggerState              CombatStart;
 std::vector<CombatTriggerState> CombatCheckpoints;
 CombatTriggerState              CombatGoal;
 std::vector<bool>               checkpointTriggered;
+
+bool                            HotbarWindowsHidden      = false;
+bool                            HotbarSavedShowTimer     = false;
+bool                            HotbarSavedShowConfig    = false;
+bool                            HotbarSavedShowHistory   = false;
+bool                            HotbarSavedShowZones     = false;
+bool                            HotbarSavedShowRouteBrowser = false;

@@ -1,7 +1,6 @@
 // renderer.cpp
 #include "renderer.h"
 #include "shared.h"
-#include "imgui.h"
 #include "storage.h"
 #include <cstdio>
 #include <cmath>
@@ -10,21 +9,80 @@
 
 namespace fs = std::filesystem;
 
-static void FormatTime(char* buf, int bufSize, double elapsed)
+static void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis = true)
 {
     int hours   = (int)(elapsed / 3600);
     int minutes = (int)(elapsed / 60) % 60;
     int seconds = (int)(elapsed) % 60;
-    int millis  = (int)(elapsed * 1000) % 1000;
-    snprintf(buf, bufSize, "%02d:%02d:%02d.%03d", hours, minutes, seconds, millis);
+    if (showMillis)
+    {
+        int millis = (int)(elapsed * 1000) % 1000;
+        snprintf(buf, bufSize, "%02d:%02d:%02d.%03d", hours, minutes, seconds, millis);
+    }
+    else
+    {
+        snprintf(buf, bufSize, "%02d:%02d:%02d", hours, minutes, seconds);
+    }
 }
 
-static void FormatDiff(char* buf, int bufSize, double diff)
+// Returns false if the diff should be hidden entirely (far ahead, > 60s).
+static bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit = false)
 {
-    double abs  = std::abs(diff);
+    double abs = diff < 0.0 ? -diff : diff;
+
+    if (isSplit)
+    {
+        // Always show, full format, strip leading zeros
+        int minutes = (int)(abs / 60);
+        int seconds = (int)(abs) % 60;
+        int millis  = (int)(abs * 1000) % 1000;
+        if (diff < 0.0)
+        {
+            if (minutes > 0)
+                snprintf(buf, bufSize, "-%d:%02d.%03d", minutes, seconds, millis);
+            else
+                snprintf(buf, bufSize, "-%d.%03d", seconds, millis);
+        }
+        else
+        {
+            if (minutes > 0)
+                snprintf(buf, bufSize, "+%d:%02d.%03d", minutes, seconds, millis);
+            else
+                snprintf(buf, bufSize, "+%d.%03d", seconds, millis);
+        }
+        return true;
+    }
+
+    // Live comparison
+    if (diff < -60.0)
+        return false;
+
+    if (diff < -10.0)
+    {
+        // 10-60s ahead: seconds only
+        int seconds = (int)(abs) % 60;
+        snprintf(buf, bufSize, "-%d", seconds);
+        return true;
+    }
+
+    if (diff < 0.0)
+    {
+        // Under 10s ahead: seconds + millis
+        int seconds = (int)(abs) % 60;
+        int millis  = (int)(abs * 1000) % 1000;
+        snprintf(buf, bufSize, "-%d.%03d", seconds, millis);
+        return true;
+    }
+
+    // Behind: full format
+    int minutes = (int)(abs / 60);
     int seconds = (int)(abs) % 60;
     int millis  = (int)(abs * 1000) % 1000;
-    snprintf(buf, bufSize, "%s%d.%03d", diff < 0 ? "-" : "+", seconds, millis);
+    if (minutes > 0)
+        snprintf(buf, bufSize, "+%d:%02d.%03d", minutes, seconds, millis);
+    else
+        snprintf(buf, bufSize, "+%d.%03d", seconds, millis);
+    return true;
 }
 
 static ImVec4 TimeColor(double current, double best, bool running)
@@ -56,7 +114,9 @@ static void LoadRouteFile(const RouteFile& rf)
     LoadHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
 
     SpeedrunTimer.Reset();
-    RunFinished = false;
+    RunFinished  = false;
+    CurrentRoute.IsValid = true;
+    PendingStart = false;
 }
 
 void RenderTimerOverlay()
@@ -84,7 +144,7 @@ void RenderTimerOverlay()
 
     if (CompactMode)
     {
-        FormatTime(buf, sizeof(buf), elapsed);
+        FormatTime(buf, sizeof(buf), elapsed, !running);
         ImVec4 color = (running || finished)
             ? TimeColor(elapsed, hasBest ? BestSplits.back().Timestamp : 0.0, running)
             : ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
@@ -125,10 +185,10 @@ void RenderTimerOverlay()
                     ImGui::TableSetColumnIndex(0);
                     if (i < (int)BestSplits.size() && std::abs(diff) > 0.0005)
                     {
-                        FormatDiff(diffBuf, sizeof(diffBuf), diff);
-                        ImGui::TextColored(diff < 0
-                            ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                            : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true))
+                            ImGui::TextColored(diff < 0
+                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
+                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
                     }
                 }
 
@@ -169,15 +229,15 @@ void RenderTimerOverlay()
                     ImGui::TableSetColumnIndex(0);
                     if (hasDiff && std::abs(diff) > 0.0005)
                     {
-                        FormatDiff(diffBuf, sizeof(diffBuf), diff);
-                        ImGui::TextColored(diff < 0
-                            ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                            : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, finished))
+                            ImGui::TextColored(diff < 0
+                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
+                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
                     }
                 }
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                FormatTime(buf, sizeof(buf), segmentTime);
+                FormatTime(buf, sizeof(buf), segmentTime, true);
                 ImGui::TextColored(TimeColor(segmentTime, bestSegmentTime, running), "%s", buf);
 
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
@@ -197,15 +257,15 @@ void RenderTimerOverlay()
                     double totalDiff = elapsed - bestTotal;
                     if (std::abs(totalDiff) > 0.0005)
                     {
-                        FormatDiff(diffBuf, sizeof(diffBuf), totalDiff);
-                        ImGui::TextColored(totalDiff < 0
-                            ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                            : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), totalDiff, finished))
+                            ImGui::TextColored(totalDiff < 0
+                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
+                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
                     }
                 }
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                FormatTime(buf, sizeof(buf), elapsed);
+                FormatTime(buf, sizeof(buf), elapsed, !running);
                 double bestTotal = hasBest ? BestSplits.back().Timestamp : 0.0;
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);
 
@@ -267,9 +327,7 @@ void RenderTimerOverlay()
                     goalSplit.Timestamp = elapsed;
                     BestSplits.push_back(goalSplit);
                 }
-                // Save route back to its original location, history alongside it
-                if (!CurrentRouteFilepath.empty())
-                    SaveRoute(CurrentRouteFilepath, CurrentRoute, CurrentRouteName);
+                // Save history next to route
                 if (!CurrentHistoryPath.empty())
                     SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
                 RunFinished = false;
@@ -487,6 +545,8 @@ void RenderConfigWindow()
             CurrentRouteFilepath = newFP;
             CurrentHistoryPath   = newHP;
             lastSeenFilepath     = newFP;   // prevent re-sync from overwriting the buf
+            BestSplits.clear();
+            HistoryRuns.clear();
         }
     }
     ImGui::SameLine();
@@ -506,8 +566,17 @@ void RenderConfigWindow()
     ImGui::Separator();
 
     // Route table
+    bool hasInteract = CurrentRoute.Start.TriggerType == ETriggerType::CircleInteract ||
+                   CurrentRoute.Goal.TriggerType  == ETriggerType::CircleInteract;
+    for (const auto& cp : CurrentRoute.Checkpoints)
+        if (cp.Point.TriggerType == ETriggerType::CircleInteract)
+            { hasInteract = true; break; }
+
     float footerReserve = ImGui::GetFrameHeightWithSpacing() * 2.0f
                         + ImGui::GetStyle().ItemSpacing.y * 3.0f + 1.0f;
+    if (hasInteract)
+        footerReserve += ImGui::GetFrameHeightWithSpacing() * 1.0f;
+
     ImGui::BeginChild("##route_scroll", ImVec2(0, -footerReserve));
     if (ImGui::BeginTable("route_table", 10,
         ImGuiTableFlags_Borders |
@@ -715,6 +784,14 @@ void RenderConfigWindow()
         PendingStart = false;
     }
 
+    if (hasInteract)
+    {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.0f, 1.0f));
+        ImGui::TextWrapped("Interact trigger detected - ensure Interact button is set and passthrough is enabled in Nexus -> Keybinds.");
+        ImGui::PopStyleColor();
+    }
+
     ImGui::End();
 }
 
@@ -734,6 +811,30 @@ void RenderHistoryWindow()
     }
     else
     {
+        if (ImGui::Button("Clear History"))
+            ImGui::OpenPopup("##confirmclear");
+
+        if (ImGui::BeginPopup("##confirmclear"))
+        {
+            ImGui::Text("Clear all history?");
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            if (ImGui::Button("Yes, clear"))
+            {
+                HistoryRuns.clear();
+                if (!CurrentHistoryPath.empty())
+                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+                ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+
+        ImGui::Separator();
+
         double fastestTime = -1.0;
         for (const auto& r : HistoryRuns)
             if (fastestTime < 0.0 || r.TotalTime < fastestTime)
@@ -751,6 +852,8 @@ void RenderHistoryWindow()
             ImGui::TableHeadersRow();
 
             char buf[32];
+            int removeIndex = -1;
+
             for (int i = 0; i < (int)HistoryRuns.size(); i++)
             {
                 const HistoricalRun& run = HistoryRuns[i];
@@ -822,17 +925,32 @@ void RenderHistoryWindow()
                     ImGui::EndTooltip();
                 }
 
-                ImGui::SameLine();
-                char setLabel[32]; snprintf(setLabel, sizeof(setLabel), "Set as best##%d", i);
-                if (ImGui::SmallButton(setLabel))
+                char popupId[32]; snprintf(popupId, sizeof(popupId), "##ctx_%d", i);
+                if (ImGui::BeginPopupContextItem(popupId))
                 {
-                    BestSplits = run.Splits;
-                    if (!CurrentHistoryPath.empty())
-                        SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                    if (ImGui::MenuItem("Set as best"))
+                    {
+                        BestSplits = run.Splits;
+                        if (!CurrentHistoryPath.empty())
+                            SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                    }
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    if (ImGui::MenuItem("Delete Run"))
+                        removeIndex = i;
+                    ImGui::EndPopup();
                 }
             }
 
             ImGui::EndTable();
+
+            if (removeIndex >= 0)
+            {
+                HistoryRuns.erase(HistoryRuns.begin() + removeIndex);
+                if (!CurrentHistoryPath.empty())
+                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+            }
         }
     }
 

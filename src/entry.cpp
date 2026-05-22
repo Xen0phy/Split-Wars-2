@@ -1,7 +1,7 @@
 #include "shared.h"
-#include "imgui.h"
 #include "renderer.h"
 #include "worldrender.h"
+#include "hotbar_icon.h"
 
 AddonDefinition_t AddonDef{};
 
@@ -10,6 +10,7 @@ void AddonUnload();
 void AddonRender();
 void AddonOptions();
 void HandleIdentityUpdate(void* aEventArgs);
+static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease);
 
 static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
 {
@@ -82,6 +83,36 @@ static void OnSplitModeKey         (const char* aIdentifier, bool aIsRelease) { 
 static void OnCompactModeKey       (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode      = !CompactMode;      }
 static void OnShowRouteBrowserKey  (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowRouteBrowser = !ShowRouteBrowser; }
 
+static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
+{
+    if (aIsRelease) return;
+    if (!HotbarWindowsHidden)
+    {
+        // Save current visibility and hide everything
+        HotbarSavedShowTimer        = ShowTimer;
+        HotbarSavedShowConfig       = ShowConfig;
+        HotbarSavedShowHistory      = ShowHistory;
+        HotbarSavedShowZones        = ShowZones;
+        HotbarSavedShowRouteBrowser = ShowRouteBrowser;
+        ShowTimer        = false;
+        ShowConfig       = false;
+        ShowHistory      = false;
+        ShowZones        = false;
+        ShowRouteBrowser = false;
+        HotbarWindowsHidden = true;
+    }
+    else
+    {
+        // Restore saved visibility
+        ShowTimer        = HotbarSavedShowTimer;
+        ShowConfig       = HotbarSavedShowConfig;
+        ShowHistory      = HotbarSavedShowHistory;
+        ShowZones        = HotbarSavedShowZones;
+        ShowRouteBrowser = HotbarSavedShowRouteBrowser;
+        HotbarWindowsHidden = false;
+    }
+}
+
 static void OnResetTimerKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
@@ -98,8 +129,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.APIVersion       = NEXUS_API_VERSION;
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
-    AddonDef.Version.Minor    = 13;
-    AddonDef.Version.Build    = 3;
+    AddonDef.Version.Minor    = 14;
+    AddonDef.Version.Build    = 0;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
     AddonDef.Description      = "A speedrun timer with coordinate-based triggers.";
@@ -162,34 +193,56 @@ void AddonLoad(AddonAPI_t* aApi)
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
-    APIDefs->InputBinds_RegisterWithStruct("Interact",             OnInteractKey,           Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Start/Stop",           OnStartStopKey,          Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Add/Call Checkpoint",  OnCheckpointKey,         Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show Timer",           OnShowTimerKey,          Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show Config",          OnShowConfigKey,         Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show History",         OnShowHistoryKey,        Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Show Zones",           OnShowZonesKey,          Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Split Mode",           OnSplitModeKey,          Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Compact Mode",         OnCompactModeKey,        Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Browse Routes",        OnShowRouteBrowserKey,   Keybind_t{});
-    APIDefs->InputBinds_RegisterWithStruct("Reset Timer",          OnResetTimerKey,         Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Show Timer",           OnShowTimerKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Interact",             OnInteractKey,           Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Start/Stop",           OnStartStopKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Reset Timer",          OnResetTimerKey,         Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Show Route Browser",   OnShowRouteBrowserKey,   Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Show Route Config",    OnShowConfigKey,         Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Show Route History",   OnShowHistoryKey,        Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Toggle Split Mode",    OnSplitModeKey,          Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Toggle Compact Mode",  OnCompactModeKey,        Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Add/Call Checkpoint",  OnCheckpointKey,         Keybind_t{});
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Show Zones",           OnShowZonesKey,          Keybind_t{});
+
+    // Load hotbar icon textures from embedded memory and register QuickAccess shortcut
+    APIDefs->Textures_GetOrCreateFromMemory(
+        "TEX_SW2_HOTBAR",
+        (void*)g_HotbarIconData,
+        g_HotbarIconData_size
+    );
+    APIDefs->Textures_GetOrCreateFromMemory(
+        "TEX_SW2_HOTBAR_HOVER",
+        (void*)g_HotbarIconHoverData,
+        g_HotbarIconHoverData_size
+    );
+    APIDefs->QuickAccess_Add(
+        "QA_SW2_HIDE_TOGGLE",
+        "TEX_SW2_HOTBAR",
+        "TEX_SW2_HOTBAR_HOVER",
+        "SW2 Toggle Hide All Windows",
+        "Split Wars 2: Hide/Restore Windows"
+    );
+    APIDefs->InputBinds_RegisterWithStruct("SW2 Toggle Hide All Windows", OnHotbarToggleKey, Keybind_t{});
 }
 
 void AddonUnload()
 {
     SaveSettings(AddonDir, GatherSettings());
-
-    APIDefs->InputBinds_Deregister("Interact");
-    APIDefs->InputBinds_Deregister("Start/Stop");
-    APIDefs->InputBinds_Deregister("Add/Call Checkpoint");
-    APIDefs->InputBinds_Deregister("Show Timer");
-    APIDefs->InputBinds_Deregister("Show Config");
-    APIDefs->InputBinds_Deregister("Show History");
-    APIDefs->InputBinds_Deregister("Show Zones");
-    APIDefs->InputBinds_Deregister("Split Mode");
-    APIDefs->InputBinds_Deregister("Compact Mode");
-    APIDefs->InputBinds_Deregister("Browse Routes");
-    APIDefs->InputBinds_Deregister("Reset Timer");
+    
+    APIDefs->InputBinds_Deregister("SW2 Show Timer");
+    APIDefs->InputBinds_Deregister("SW2 Interact");
+    APIDefs->InputBinds_Deregister("SW2 Start/Stop");
+    APIDefs->InputBinds_Deregister("SW2 Reset Timer");
+    APIDefs->InputBinds_Deregister("SW2 Show Route Browser");
+    APIDefs->InputBinds_Deregister("SW2 Show Route Config");
+    APIDefs->InputBinds_Deregister("SW2 Show Route History");
+    APIDefs->InputBinds_Deregister("SW2 Toggle Split Mode");
+    APIDefs->InputBinds_Deregister("SW2 Toggle Compact Mode");
+    APIDefs->InputBinds_Deregister("SW2 Add/Call Checkpoint");
+    APIDefs->InputBinds_Deregister("SW2 Show Zones");
+    APIDefs->QuickAccess_Remove("QA_SW2_HIDE_TOGGLE");
+    APIDefs->InputBinds_Deregister("SW2 Toggle Hide All Windows");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
@@ -470,7 +523,7 @@ void AddonRender()
                             ? CombatStart.dropTime
                             : SpeedrunTimer.GetElapsedSeconds();
                         Split s;
-                        strncpy(s.Name, "Arena End", sizeof(s.Name) - 1);
+                        strncpy(s.Name, "Start Combat End", sizeof(s.Name) - 1);
                         s.Timestamp = t;
                         SpeedrunTimer.AddSplitAt(s);
                     }
@@ -503,7 +556,9 @@ void AddonRender()
                                 if (risingEdge && inCircle)
                                 {
                                     CombatCheckpoints[i] = { true, ECombatState::Armed };
-                                    SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
+                                    char splitStartName[68];
+                                    snprintf(splitStartName, sizeof(splitStartName), "%s Combat Start", CurrentRoute.Checkpoints[i].Name);
+                                    SpeedrunTimer.AddSplit(splitStartName);
                                 }
                             }
                             else
@@ -525,7 +580,7 @@ void AddonRender()
                         CombatCheckpoints[i].dropTime > 0.0)
                     {
                         Split s;
-                        strncpy(s.Name, CurrentRoute.Checkpoints[i].Name, sizeof(s.Name) - 1);
+                        snprintf(s.Name, sizeof(s.Name), "%s Combat End", CurrentRoute.Checkpoints[i].Name);
                         s.Timestamp = CombatCheckpoints[i].dropTime;
                         SpeedrunTimer.AddSplitAt(s);
                     }
@@ -575,7 +630,7 @@ void AddonRender()
                             {
                                 CombatGoal.active = true;
                                 CombatGoal.state  = ECombatState::Armed;
-                                SpeedrunTimer.AddSplit("Arena");
+                                SpeedrunTimer.AddSplit("Goal Comabt Start");
                             }
                         }
                     }
@@ -592,9 +647,9 @@ void AddonRender()
             else
             {
                 bool goalOnCorrectMap = CurrentRoute.Goal.MapID == 0 ||
-                    CurrentRoute.Goal.TriggerType == ETriggerType::MapChange
+                    (CurrentRoute.Goal.TriggerType == ETriggerType::MapChange
                     ? true
-                    : currMapID == CurrentRoute.Goal.MapID;
+                    : currMapID == CurrentRoute.Goal.MapID);
                 goalTriggered = goalOnCorrectMap &&
                     PointTriggered(prevPos, currPos, prevMapID, currMapID, CurrentRoute.Goal);
             }
@@ -650,17 +705,27 @@ void AddonRender()
 void AddonOptions()
 {
     ImGui::Checkbox("Show Timer",         &ShowTimer);
-    ImGui::Checkbox("Show Config Window", &ShowConfig);
+    Tooltip("Toggles the speedrun timer overlay.");
+    ImGui::Checkbox("Show Route Config", &ShowConfig);
+    Tooltip("Toggles the route configuration window.");
     ImGui::Checkbox("Show History",       &ShowHistory);
+    Tooltip("Toggles the history window.");
     ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
+    Tooltip("Toggles the route file browser.");
     ImGui::Checkbox("Show Checkpoints",   &ShowZones);
+    Tooltip("Toggles the visibilits of checkpoints.");
     ImGui::Checkbox("Show Debug Overlay", &ShowDebug);
+    Tooltip("Toggles debugging text which is not fully implemented");
     ImGui::Separator();
     ImGui::Checkbox("Split Mode",         &SplitMode);
+    Tooltip("Toggles individual or overall split times");
     ImGui::Checkbox("Compact Mode",       &CompactMode);
+    Tooltip("Reduces the timer to one line.");
     ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
+    Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
     ImGui::Separator();
     ImGui::Text("Max History Runs");
+    Tooltip("Set an amount between 1 and 100.");
     ImGui::SetNextItemWidth(80.0f);
     ImGui::InputInt("##maxruns", &MaxHistoryRuns, 0, 0);
     if (MaxHistoryRuns < 1)   MaxHistoryRuns = 1;

@@ -43,3 +43,11 @@ extern CombatTriggerState               CombatStart;
 extern std::vector<CombatTriggerState>  CombatCheckpoints;
 extern CombatTriggerState               CombatGoal;
 extern std::vector<bool>                checkpointTriggered;
+
+// Hotbar (QuickAccess) hide-all toggle state
+extern bool                             HotbarWindowsHidden;
+extern bool                             HotbarSavedShowTimer;
+extern bool                             HotbarSavedShowConfig;
+extern bool                             HotbarSavedShowHistory;
+extern bool                             HotbarSavedShowZones;
+extern bool                             HotbarSavedShowRouteBrowser;

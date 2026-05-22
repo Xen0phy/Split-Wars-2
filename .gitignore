@@ -9,3 +9,4 @@ build/
 *.gz
 *.tar
 *.tar.gz
+*.png
