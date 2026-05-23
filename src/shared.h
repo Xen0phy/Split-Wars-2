@@ -21,7 +21,8 @@ extern bool                             ShowZones;
 extern bool                             ShowTimer;
 extern bool                             ShowConfig;
 extern bool                             ShowDebug;
-extern bool                             SplitMode;
+enum class TimerMode { Segment = 0, Split = 1, LiveSplit = 2 };
+extern TimerMode                        TimerDisplayMode;
 extern bool                             CompactMode;
 extern bool                             ShowHistory;
 extern bool                             ShowGrandTotal;
@@ -34,6 +35,7 @@ extern std::string                      CurrentRouteFilepath;   // full path to 
 extern std::string                      CurrentHistoryPath;     // full path to the sibling .history
 extern std::string                      AddonDir;
 extern bool                             RunFinished;
+extern double                           DisplayedGrandTotal;  // shown in overlay; frozen at goal for MapChange runs
 extern bool                             PendingStart;
 extern std::atomic<bool>                InteractKeyPressed;
 extern std::mutex                       KeybindMutex;
@@ -43,6 +45,12 @@ extern CombatTriggerState               CombatStart;
 extern std::vector<CombatTriggerState>  CombatCheckpoints;
 extern CombatTriggerState               CombatGoal;
 extern std::vector<bool>                checkpointTriggered;
+extern bool                             WasInCircleStart;
+extern std::vector<bool>                WasInCheckpoint;
+
+// Resets both timers, all trigger states, and all per-frame tracking.
+// Call this wherever the run needs to start clean.
+void FullReset();
 
 // Hotbar (QuickAccess) hide-all toggle state
 extern bool                             HotbarWindowsHidden;

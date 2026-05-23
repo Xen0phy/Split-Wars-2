@@ -11,7 +11,7 @@ bool                            ShowZones           = true;
 bool                            ShowTimer           = true;
 bool                            ShowConfig          = true;
 bool                            ShowDebug           = false;
-bool                            SplitMode           = true;
+TimerMode                       TimerDisplayMode     = TimerMode::Split;
 bool                            CompactMode         = false;
 bool                            ShowHistory         = false;
 bool                            ShowGrandTotal      = false;
@@ -24,6 +24,7 @@ std::string                     CurrentRouteFilepath;
 std::string                     CurrentHistoryPath;
 std::string                     AddonDir;
 bool                            RunFinished         = false;
+double                          DisplayedGrandTotal = 0.0;
 bool                            PendingStart        = false;
 std::atomic<bool>               InteractKeyPressed  = false;
 std::mutex                      KeybindMutex;
@@ -32,6 +33,22 @@ CombatTriggerState              CombatStart;
 std::vector<CombatTriggerState> CombatCheckpoints;
 CombatTriggerState              CombatGoal;
 std::vector<bool>               checkpointTriggered;
+bool                            WasInCircleStart    = false;
+std::vector<bool>               WasInCheckpoint;
+
+void FullReset()
+{
+    SpeedrunTimer.Reset();
+    GrandTimer.Reset();
+    RunFinished      = false;
+    PendingStart     = false;
+    WasInCircleStart = false;
+    CombatStart      = {};
+    CombatGoal       = {};
+    CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
+    checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
+    WasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+}
 
 bool                            HotbarWindowsHidden      = false;
 bool                            HotbarSavedShowTimer     = false;

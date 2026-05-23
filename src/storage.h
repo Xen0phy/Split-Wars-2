@@ -35,7 +35,7 @@ struct Settings
     bool    ShowConfig          = true;
     bool    ShowZones           = true;
     bool    ShowDebug           = false;
-    bool    SplitMode           = true;
+    int     TimerDisplayMode    = 1;    // 0=Segment, 1=Split, 2=LiveSplit
     bool    CompactMode         = false;
     bool    ShowHistory         = false;
     bool    ShowGrandTotal      = false;

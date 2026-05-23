@@ -113,10 +113,8 @@ static void LoadRouteFile(const RouteFile& rf)
     HistoryRuns.clear();
     LoadHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
 
-    SpeedrunTimer.Reset();
-    RunFinished  = false;
+    FullReset();
     CurrentRoute.IsValid = true;
-    PendingStart = false;
 }
 
 void RenderTimerOverlay()
@@ -134,7 +132,7 @@ void RenderTimerOverlay()
 
     const auto& splits    = SpeedrunTimer.GetSplits();
     double      elapsed   = SpeedrunTimer.GetElapsedSeconds();
-    double      grand     = GrandTimer.GetElapsedSeconds();
+    double      grand     = DisplayedGrandTotal;
     bool        running   = SpeedrunTimer.IsRunning();
     bool        finished  = SpeedrunTimer.IsFinished();
     bool        hasBest   = !BestSplits.empty();
@@ -162,21 +160,31 @@ void RenderTimerOverlay()
 
             for (int i = 0; i < numSplits; i++)
             {
-                double splitTime = SplitMode
-                    ? (i == 0 ? splits[i].Timestamp : splits[i].Timestamp - splits[i-1].Timestamp)
-                    : splits[i].Timestamp;
+                double splitTime = (TimerDisplayMode == TimerMode::Split)
+                    ? splits[i].Timestamp
+                    : (i == 0 ? splits[i].Timestamp : splits[i].Timestamp - splits[i-1].Timestamp);
 
                 double bestSplitTime = 0.0;
                 double bestTimestamp = 0.0;
                 if (hasBest && i < (int)BestSplits.size())
                 {
                     bestTimestamp = BestSplits[i].Timestamp;
-                    bestSplitTime = SplitMode
-                        ? (i == 0 ? BestSplits[i].Timestamp : BestSplits[i].Timestamp - BestSplits[i-1].Timestamp)
-                        : BestSplits[i].Timestamp;
+                    // Diff is always cumulative for Split and LiveSplit; per-segment only for Segment.
+                    if (TimerDisplayMode == TimerMode::Segment)
+                        bestSplitTime = (i == 0 ? BestSplits[i].Timestamp : BestSplits[i].Timestamp - BestSplits[i-1].Timestamp);
+                    else
+                        bestSplitTime = BestSplits[i].Timestamp;
                 }
+                // For LiveSplit the diff uses cumulative best but display time is segment,
+                // so we compare the current cumulative elapsed against the best cumulative timestamp.
+                double diffCurrent = (TimerDisplayMode == TimerMode::LiveSplit)
+                    ? splits[i].Timestamp
+                    : splitTime;
+                double diffBest = (TimerDisplayMode == TimerMode::LiveSplit)
+                    ? (hasBest && i < (int)BestSplits.size() ? BestSplits[i].Timestamp : 0.0)
+                    : bestSplitTime;
                 double diff = (hasBest && i < (int)BestSplits.size())
-                    ? splitTime - bestSplitTime : 0.0;
+                    ? diffCurrent - diffBest : 0.0;
 
                 ImGui::TableNextRow();
 
@@ -194,7 +202,7 @@ void RenderTimerOverlay()
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 FormatTime(buf, sizeof(buf), splitTime);
-                ImGui::TextColored(TimeColor(splitTime, bestSplitTime, false), "%s", buf);
+                ImGui::TextColored(TimeColor(diffCurrent, diffBest, false), "%s", buf);
 
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
                 ImGui::TextDisabled("%s", splits[i].Name);
@@ -208,19 +216,26 @@ void RenderTimerOverlay()
             if (running || (finished && !goalIsAllCheckpoints && !manualStop))
             {
                 double segmentStart = numSplits > 0 ? splits[numSplits-1].Timestamp : 0.0;
-                double segmentTime  = SplitMode ? (elapsed - segmentStart) : elapsed;
+                double segmentTime = (TimerDisplayMode == TimerMode::Split)
+                    ? elapsed
+                    : (elapsed - segmentStart);
 
                 double bestSegmentTime = 0.0;
                 bool   hasDiff = hasBest && numSplits < (int)BestSplits.size();
                 if (hasDiff)
                 {
-                    bestSegmentTime = SplitMode
-                        ? (numSplits == 0
+                    if (TimerDisplayMode == TimerMode::Segment)
+                        bestSegmentTime = (numSplits == 0
                             ? BestSplits[0].Timestamp
-                            : BestSplits[numSplits].Timestamp - BestSplits[numSplits-1].Timestamp)
-                        : BestSplits[numSplits].Timestamp;
+                            : BestSplits[numSplits].Timestamp - BestSplits[numSplits-1].Timestamp);
+                    else
+                        bestSegmentTime = BestSplits[numSplits].Timestamp;
                 }
-                double diff = hasDiff ? segmentTime - bestSegmentTime : 0.0;
+                // For LiveSplit: diff uses cumulative elapsed vs cumulative best,
+                // but we display the segment duration.
+                double diffCurSeg  = (TimerDisplayMode == TimerMode::LiveSplit) ? elapsed      : segmentTime;
+                double diffBestSeg = (TimerDisplayMode == TimerMode::LiveSplit) ? bestSegmentTime : bestSegmentTime;
+                double diff = hasDiff ? diffCurSeg - diffBestSeg : 0.0;
 
                 ImGui::TableNextRow();
 
@@ -238,7 +253,7 @@ void RenderTimerOverlay()
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 FormatTime(buf, sizeof(buf), segmentTime, true);
-                ImGui::TextColored(TimeColor(segmentTime, bestSegmentTime, running), "%s", buf);
+                ImGui::TextColored(TimeColor(diffCurSeg, diffBestSeg, running), "%s", buf);
 
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
                 if (finished)
@@ -341,7 +356,7 @@ void RenderTimerOverlay()
 
             if (ImGui::Button("Reset Timer"))
             {
-                SpeedrunTimer.Reset();
+                FullReset();
                 RunFinished = false;
             }
         }
@@ -760,10 +775,9 @@ void RenderConfigWindow()
         CurrentRouteName     = "New Route";
         CurrentRouteFilepath.clear();
         CurrentHistoryPath.clear();
-        // routeNameBuf and saveDirBuf will re-sync on next frame via lastSeenFilepath check
-        SpeedrunTimer.Reset();
-        RunFinished  = false;
-        PendingStart = false;
+        BestSplits.clear();
+        HistoryRuns.clear();
+        FullReset();
     }
 
     ImGui::Spacing();
@@ -772,17 +786,11 @@ void RenderConfigWindow()
     if (ImGui::Button("Activate Route"))
     {
         CurrentRoute.IsValid = true;
-        SpeedrunTimer.Reset();
-        RunFinished  = false;
-        PendingStart = false;
+        FullReset();
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Timer"))
-    {
-        SpeedrunTimer.Reset();
-        RunFinished  = false;
-        PendingStart = false;
-    }
+        FullReset();
 
     if (hasInteract)
     {
@@ -900,10 +908,10 @@ void RenderHistoryWindow()
 
                         for (int s = 0; s < splitsToShow; s++)
                         {
-                            double splitTime = SplitMode
-                                ? (s == 0 ? run.Splits[s].Timestamp
-                                    : run.Splits[s].Timestamp - run.Splits[s-1].Timestamp)
-                                : run.Splits[s].Timestamp;
+                            double splitTime = (TimerDisplayMode == TimerMode::Split)
+                                ? run.Splits[s].Timestamp
+                                : (s == 0 ? run.Splits[s].Timestamp
+                                    : run.Splits[s].Timestamp - run.Splits[s-1].Timestamp);
 
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);

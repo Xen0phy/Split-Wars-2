@@ -225,7 +225,7 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"show_config",         settings.ShowConfig},
             {"show_zones",          settings.ShowZones},
             {"show_debug",          settings.ShowDebug},
-            {"split_mode",          settings.SplitMode},
+            {"timer_display_mode",      settings.TimerDisplayMode},
             {"compact_mode",        settings.CompactMode},
             {"show_history",        settings.ShowHistory},
             {"show_grand_total",    settings.ShowGrandTotal},
@@ -255,7 +255,7 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.ShowConfig         = j.value("show_config",        true);
         settings.ShowZones          = j.value("show_zones",         true);
         settings.ShowDebug          = j.value("show_debug",         false);
-        settings.SplitMode          = j.value("split_mode",         true);
+        settings.TimerDisplayMode   = j.value("timer_display_mode",  1);
         settings.CompactMode        = j.value("compact_mode",       false);
         settings.ShowHistory        = j.value("show_history",       false);
         settings.ShowGrandTotal     = j.value("show_grand_total",   false);
