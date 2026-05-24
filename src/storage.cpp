@@ -1,5 +1,12 @@
 // storage.cpp
+/* also includes 
+#include "Nexus.h"
+#include "Mumble.h"
+#include "timer.h"
+#include "route.h"
 #include "storage.h"
+  through shared.h*/
+#include "shared.h"
 #include "nlohmann_json.hpp"
 #include <fstream>
 #include <windows.h>
@@ -122,6 +129,33 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 
         route.IsValid = true;
         return true;
+    }
+    catch (const nlohmann::json::parse_error& e)
+    {
+        if (APIDefs)
+        {
+            // Extract line number from e.what() for user-friendly message
+            std::string what(e.what());
+            std::string lineInfo = "unknown line";
+            size_t linePos = what.find("line ");
+            if (linePos != std::string::npos)
+            {
+                size_t numStart = linePos + 5;
+                size_t numEnd   = what.find(',', numStart);
+                if (numEnd != std::string::npos)
+                    lineInfo = "line " + what.substr(numStart, numEnd - numStart);
+            }
+    
+            // User-friendly warning
+            std::string filename = fs::path(filepath).filename().string();
+            std::string friendly = "Something is wrong in " + filename + " around " + lineInfo + ". Please check for missing quotes, colons or brackets.";
+            APIDefs->Log(LOGL_WARNING, "Split Wars 2", friendly.c_str());
+    
+            // Full detail for debugging
+            if (ShowDebug)
+                APIDefs->Log(LOGL_DEBUG, "Split Wars 2", e.what());
+        }
+        return false;
     }
     catch (...) { return false; }
 }
@@ -311,22 +345,14 @@ static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
                 node.SubFolders.push_back(BuildFolderNode(entry.path(), rootDir));
             }
             else if (entry.is_regular_file() &&
-                     entry.path().extension() == ".json" &&
-                     entry.path().filename() != "settings.json")
+                    entry.path().extension() == ".json" &&
+                    entry.path().filename() != "settings.json")
             {
-                std::ifstream file(entry.path());
-                if (!file.is_open()) continue;
-
-                try
-                {
-                    json j = json::parse(file);
-                    RouteFile rf;
-                    rf.Name        = j["name"].get<std::string>();
-                    rf.Filepath    = entry.path().string();
-                    rf.HistoryPath = HistoryPathFromJsonPath(rf.Filepath);
-                    node.Routes.push_back(rf);
-                }
-                catch (...) { /* skip malformed files */ }
+                RouteFile rf;
+                rf.Name        = entry.path().stem().string();  // filename without extension
+                rf.Filepath    = entry.path().string();
+                rf.HistoryPath = HistoryPathFromJsonPath(rf.Filepath);
+                node.Routes.push_back(rf);
             }
         }
     }

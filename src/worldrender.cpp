@@ -194,25 +194,4 @@ void RenderZones()
 
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
         renderPoint(CurrentRoute.Checkpoints[i].Point, 1.0f, 1.0f, 1.0f, 160.0f + i * 80.0f);
-
-    if (ShowDebug)
-    {
-        static unsigned int prevMapID = 0;
-        unsigned int        curMapID  = MumbleLink->Context.MapID;
-
-        ImDrawList* dl    = ImGui::GetForegroundDrawList();
-        float       lineH = ImGui::GetTextLineHeight() + 2.0f;
-        float       x     = 10.0f;
-        float       y     = 10.0f;
-        char        buf[64];
-
-        snprintf(buf, sizeof(buf), "prevMapID: %u", prevMapID);
-        dl->AddText(ImVec2(x, y),          IM_COL32(255, 200, 0, 255), buf);
-        snprintf(buf, sizeof(buf), "currMapID: %u", curMapID);
-        dl->AddText(ImVec2(x, y + lineH),  IM_COL32(255, 200, 0, 255), buf);
-        snprintf(buf, sizeof(buf), "startMapID: %u", CurrentRoute.Start.MapID);
-        dl->AddText(ImVec2(x, y + lineH*2), IM_COL32(255, 200, 0, 255), buf);
-
-        prevMapID = curMapID;
-    }
 }

@@ -1,5 +1,4 @@
-#include "shared.h"
-#include "renderer.h"
+#include "renderer_shared.h"
 #include "worldrender.h"
 #include "hotbar_icon.h"
 
@@ -10,7 +9,6 @@ void AddonUnload();
 void AddonRender();
 void AddonOptions();
 void HandleIdentityUpdate(void* aEventArgs);
-static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease);
 
 static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
 {
@@ -69,18 +67,21 @@ static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
     }
 }
 
-static void OnShowTimerKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowTimer        = !ShowTimer;        }
-static void OnShowConfigKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowConfig       = !ShowConfig;       }
-static void OnShowHistoryKey       (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowHistory      = !ShowHistory;      }
-static void OnShowZonesKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowZones        = !ShowZones;        }
-static void OnCycleTimerModeKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3); }
-static void OnCompactModeKey       (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode      = !CompactMode;      }
-static void OnShowRouteBrowserKey  (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowRouteBrowser = !ShowRouteBrowser; }
+static void OnShowTimerKey          (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowTimer        = !ShowTimer;        }
+static void OnShowConfigKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowConfig       = !ShowConfig;       }
+static void OnShowHistoryKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowHistory      = !ShowHistory;      }
+static void OnShowZonesKey          (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowZones        = !ShowZones;        }
+static void OnCycleTimerModeKey     (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3); }
+static void OnCompactModeKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode      = !CompactMode;      }
+static void OnShowRouteBrowserKey   (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowRouteBrowser = !ShowRouteBrowser; }
 
 static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
-    if (!HotbarWindowsHidden)
+
+    bool anyVisible = ShowTimer || ShowConfig || ShowHistory || ShowZones || ShowRouteBrowser;
+
+    if (anyVisible)
     {
         // Save current visibility and hide everything
         HotbarSavedShowTimer        = ShowTimer;
@@ -97,12 +98,15 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
     }
     else
     {
-        // Restore saved visibility
-        ShowTimer        = HotbarSavedShowTimer;
-        ShowConfig       = HotbarSavedShowConfig;
-        ShowHistory      = HotbarSavedShowHistory;
-        ShowZones        = HotbarSavedShowZones;
-        ShowRouteBrowser = HotbarSavedShowRouteBrowser;
+        // Restore saved visibility, or fall back to defaults if nothing was saved
+        bool nothingToRestore = !HotbarSavedShowTimer && !HotbarSavedShowConfig &&
+                                !HotbarSavedShowHistory && !HotbarSavedShowZones &&
+                                !HotbarSavedShowRouteBrowser;
+        ShowTimer        = nothingToRestore ? true  : HotbarSavedShowTimer;
+        ShowConfig       = nothingToRestore ? true  : HotbarSavedShowConfig;
+        ShowHistory      = nothingToRestore ? false : HotbarSavedShowHistory;
+        ShowZones        = nothingToRestore ? false : HotbarSavedShowZones;
+        ShowRouteBrowser = nothingToRestore ? false : HotbarSavedShowRouteBrowser;
         HotbarWindowsHidden = false;
     }
 }
@@ -120,8 +124,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.APIVersion       = NEXUS_API_VERSION;
     AddonDef.Name             = "Split Wars 2";
     AddonDef.Version.Major    = 0;
-    AddonDef.Version.Minor    = 14;
-    AddonDef.Version.Build    = 5;
+    AddonDef.Version.Minor    = 15;
+    AddonDef.Version.Build    = 2;
     AddonDef.Version.Revision = 0;
     AddonDef.Author           = "Xenophy";
     AddonDef.Description      = "A speedrun timer with coordinate-based triggers.";
@@ -162,6 +166,17 @@ static Settings GatherSettings()
     s.ShowRouteBrowser = ShowRouteBrowser;
     s.MaxHistoryRuns   = MaxHistoryRuns;
     return s;
+}
+
+static void AddonQuickAccessMenu()
+{
+    bool anyVisible = ShowTimer || ShowConfig || ShowHistory || ShowZones || ShowRouteBrowser;
+
+    if (ImGui::MenuItem("Timer",         nullptr, &ShowTimer))        {}
+    if (ImGui::MenuItem("Route Config",  nullptr, &ShowConfig))       {}
+    if (ImGui::MenuItem("History",       nullptr, &ShowHistory))      {}
+    if (ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser)) {}
+    if (ImGui::MenuItem("Checkpoints",   nullptr, &ShowZones))        {}
 }
 
 void AddonLoad(AddonAPI_t* aApi)
@@ -214,7 +229,9 @@ void AddonLoad(AddonAPI_t* aApi)
         "SW2 Toggle Hide All Windows",
         "Split Wars 2: Hide/Restore Windows"
     );
+    APIDefs->QuickAccess_AddContextMenu("QA_SW2_CTXMENU", "QA_SW2_HIDE_TOGGLE", AddonQuickAccessMenu);
     APIDefs->InputBinds_RegisterWithStruct("SW2 Toggle Hide All Windows", OnHotbarToggleKey, Keybind_t{});
+    APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 loaded.");
 }
 
 void AddonUnload()
@@ -234,6 +251,7 @@ void AddonUnload()
     APIDefs->InputBinds_Deregister("SW2 Show Zones");
     APIDefs->QuickAccess_Remove("QA_SW2_HIDE_TOGGLE");
     APIDefs->InputBinds_Deregister("SW2 Toggle Hide All Windows");
+    APIDefs->QuickAccess_RemoveContextMenu("QA_SW2_CTXMENU");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
@@ -671,6 +689,14 @@ void AddonRender()
         GrandTimer.Start();
     }
 
+    if (ShowDebug && !isLoading && currMapID != prevMapID)
+    {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Map changed: %u -> %u (startMapID: %u)",
+            prevMapID, currMapID, CurrentRoute.Start.MapID);
+        APIDefs->Log(LOGL_DEBUG, "Split Wars 2", buf);
+    }
+
     prevPos = currPos;
     if (!isLoading)
         prevMapID = currMapID;
@@ -697,7 +723,7 @@ void AddonOptions()
     Tooltip("Toggles the route file browser.");
     ImGui::Checkbox("Show Checkpoints",   &ShowZones);
     Tooltip("Toggles the visibility of checkpoints.");
-    ImGui::Checkbox("Show Debug Overlay", &ShowDebug);
+    ImGui::Checkbox("Show Debug", &ShowDebug);
     Tooltip("Toggles debugging text which is not fully implemented");
     ImGui::Separator();
     const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
