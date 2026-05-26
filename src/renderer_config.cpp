@@ -301,8 +301,10 @@ void RenderConfigWindow()
         ImGui::EndTable();
 
         if (removeIndex >= 0)
+        {        
             CurrentRoute.Checkpoints.erase(CurrentRoute.Checkpoints.begin() + removeIndex);
-        FullReset();
+            FullReset();
+        }
     }
 
     ImGui::EndChild();

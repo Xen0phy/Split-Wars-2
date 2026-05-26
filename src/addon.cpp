@@ -18,7 +18,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Version.Major      = 0;
     AddonDef.Version.Minor      = 15;
     AddonDef.Version.Build      = 6;
-    AddonDef.Version.Revision   = 2;
+    AddonDef.Version.Revision   = 3;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
     AddonDef.Load               = AddonLoad;
