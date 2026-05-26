@@ -8,7 +8,7 @@
 > [!NOTE]
 > **Requirements & Installation**
 >
-> - Requires the [Nexus](https://raidcore.gg/Nexus) addon loader and Guild Wars 2 with Mumble Link enabled (on by default)
+> - Requires the [Nexus](https://raidcore.gg/Nexus) addon loader and Guild Wars 2
 > - Download the latest `.dll` from [Releases](../../releases) and place it in your Nexus addons folder (`Guild Wars 2/addons`)
 > - In Nexus, find Split Wars 2 in the addon list and press **Load**
 
