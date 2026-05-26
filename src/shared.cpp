@@ -17,7 +17,7 @@ bool                            ShowHistory         = false;
 bool                            ShowGrandTotal      = false;
 bool                            ShowRouteBrowser    = false;
 int                             MaxHistoryRuns      = 10;
-std::vector<Split>              BestSplits;
+std::vector<Split>              BestRun;
 std::vector<HistoricalRun>      HistoryRuns;
 std::string                     CurrentRouteName    = "New Route";
 std::string                     CurrentRouteFilepath;

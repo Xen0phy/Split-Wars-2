@@ -19,7 +19,7 @@ void RenderTimerOverlay()
     double      grand     = DisplayedGrandTotal;
     bool        running   = SpeedrunTimer.IsRunning();
     bool        finished  = SpeedrunTimer.IsFinished();
-    bool        hasBest   = !BestSplits.empty();
+    bool        hasBest   = !BestRun.empty();
     int         numSplits = (int)splits.size();
     char        buf[32];
     char        diffBuf[32];
@@ -28,7 +28,7 @@ void RenderTimerOverlay()
     {
         FormatTime(buf, sizeof(buf), elapsed, !running);
         ImVec4 color = (running || finished)
-            ? TimeColor(elapsed, hasBest ? BestSplits.back().Timestamp : 0.0, running)
+            ? TimeColor(elapsed, hasBest ? BestRun.back().Timestamp : 0.0, running)
             : ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
         ImGui::TextColored(color, "%s", buf);
     }
@@ -50,21 +50,21 @@ void RenderTimerOverlay()
 
                 double bestSplitTime = 0.0;
                 double bestTimestamp = 0.0;
-                if (hasBest && i < (int)BestSplits.size())
+                if (hasBest && i < (int)BestRun.size())
                 {
-                    bestTimestamp = BestSplits[i].Timestamp;
+                    bestTimestamp = BestRun[i].Timestamp;
                     if (TimerDisplayMode == TimerMode::Segment)
-                        bestSplitTime = (i == 0 ? BestSplits[i].Timestamp : BestSplits[i].Timestamp - BestSplits[i-1].Timestamp);
+                        bestSplitTime = (i == 0 ? BestRun[i].Timestamp : BestRun[i].Timestamp - BestRun[i-1].Timestamp);
                     else
-                        bestSplitTime = BestSplits[i].Timestamp;
+                        bestSplitTime = BestRun[i].Timestamp;
                 }
                 double diffCurrent = (TimerDisplayMode == TimerMode::LiveSplit)
                     ? splits[i].Timestamp
                     : splitTime;
                 double diffBest = (TimerDisplayMode == TimerMode::LiveSplit)
-                    ? (hasBest && i < (int)BestSplits.size() ? BestSplits[i].Timestamp : 0.0)
+                    ? (hasBest && i < (int)BestRun.size() ? BestRun[i].Timestamp : 0.0)
                     : bestSplitTime;
-                double diff = (hasBest && i < (int)BestSplits.size())
+                double diff = (hasBest && i < (int)BestRun.size())
                     ? diffCurrent - diffBest : 0.0;
 
                 ImGui::TableNextRow();
@@ -72,7 +72,7 @@ void RenderTimerOverlay()
                 if (hasBest)
                 {
                     ImGui::TableSetColumnIndex(0);
-                    if (i < (int)BestSplits.size() && std::abs(diff) > 0.0005)
+                    if (i < (int)BestRun.size() && std::abs(diff) > 0.0005)
                     {
                         if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true))
                             ImGui::TextColored(diff < 0
@@ -89,7 +89,8 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("%s", splits[i].Name);
             }
 
-            bool goalIsAllCheckpoints = CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints;
+            const Checkpoint* goalCp = GetGoal(CurrentRoute);
+            bool goalIsAllCheckpoints = goalCp && goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
 
             bool manualStop = finished && numSplits > 0 &&
                               strcmp(splits[numSplits - 1].Name, "Manual Stop") == 0;
@@ -102,15 +103,15 @@ void RenderTimerOverlay()
                     : (elapsed - segmentStart);
 
                 double bestSegmentTime = 0.0;
-                bool   hasDiff = hasBest && numSplits < (int)BestSplits.size();
+                bool   hasDiff = hasBest && numSplits < (int)BestRun.size();
                 if (hasDiff)
                 {
                     if (TimerDisplayMode == TimerMode::Segment)
                         bestSegmentTime = (numSplits == 0
-                            ? BestSplits[0].Timestamp
-                            : BestSplits[numSplits].Timestamp - BestSplits[numSplits-1].Timestamp);
+                            ? BestRun[0].Timestamp
+                            : BestRun[numSplits].Timestamp - BestRun[numSplits-1].Timestamp);
                     else
-                        bestSegmentTime = BestSplits[numSplits].Timestamp;
+                        bestSegmentTime = BestRun[numSplits].Timestamp;
                 }
                 double diffCurSeg  = (TimerDisplayMode == TimerMode::LiveSplit) ? elapsed          : segmentTime;
                 double diffBestSeg = (TimerDisplayMode == TimerMode::LiveSplit) ? bestSegmentTime   : bestSegmentTime;
@@ -147,7 +148,7 @@ void RenderTimerOverlay()
                 if (hasBest)
                 {
                     ImGui::TableSetColumnIndex(0);
-                    double bestTotal = BestSplits.back().Timestamp;
+                    double bestTotal = BestRun.back().Timestamp;
                     double totalDiff = elapsed - bestTotal;
                     if (std::abs(totalDiff) > 0.0005)
                     {
@@ -160,7 +161,7 @@ void RenderTimerOverlay()
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 FormatTime(buf, sizeof(buf), elapsed, !running);
-                double bestTotal = hasBest ? BestSplits.back().Timestamp : 0.0;
+                double bestTotal = hasBest ? BestRun.back().Timestamp : 0.0;
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);
 
                 if (ImGui::IsItemHovered() && grand > 0.0)
@@ -212,16 +213,16 @@ void RenderTimerOverlay()
 
             if (ImGui::Button("Save as best"))
             {
-                BestSplits = splits;
-                if (BestSplits.empty() || strcmp(BestSplits.back().Name, "Goal") != 0)
+                BestRun = splits;
+                if (BestRun.empty() || strcmp(BestRun.back().Name, "Goal") != 0)
                 {
                     Split goalSplit;
                     strncpy(goalSplit.Name, "Goal", sizeof(goalSplit.Name) - 1);
                     goalSplit.Timestamp = elapsed;
-                    BestSplits.push_back(goalSplit);
+                    BestRun.push_back(goalSplit);
                 }
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, 0);
                 RunFinished = false;
             }
 

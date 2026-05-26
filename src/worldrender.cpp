@@ -2,6 +2,7 @@
 #include "worldrender.h"
 #include "shared.h"
 #include "imgui.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -70,29 +71,57 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
     if (!MumbleLink) return;
 
     ImDrawList* dl    = ImGui::GetForegroundDrawList();
-    ImU32       color = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 200);
+
+    // Fade out rings when camera is close to the center
+    float camDx    = MumbleLink->CameraPosition.X - point.X;
+    float camDy    = MumbleLink->CameraPosition.Y - point.Y;
+    float camDz    = MumbleLink->CameraPosition.Z - point.Z;
+    float camDist  = std::sqrt(camDx*camDx + camDy*camDy + camDz*camDz);
+    float fadeStart = point.Radius * 1.5f;
+    float fadeEnd   = point.Radius * 0.8f;
+    float alpha     = std::clamp((camDist - fadeEnd) / (fadeStart - fadeEnd), 0.0f, 1.0f);
+
+    ImU32 color = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), (int)(200 * alpha));
 
     const int steps = 64;
-    float prevSx = 0, prevSy = 0;
-    bool  prevValid = false;
 
-    for (int i = 0; i <= steps; i++)
+    // Draw two rings of which one is acting like a billboard.
+    // Each ring gets its own prev state so rings don't connect to each other.
+    auto DrawRing = [&](auto getPoint)
     {
-        float angle = (float)i / steps * 2.0f * 3.14159265f;
-        float wx = point.X + std::cos(angle) * point.Radius;
-        float wy = point.Y;
-        float wz = point.Z + std::sin(angle) * point.Radius;
+        float prevSx = 0, prevSy = 0;
+        bool  prevValid = false;
 
-        float sx, sy;
-        bool valid = WorldToScreen(wx, wy, wz, sx, sy);
+        for (int i = 0; i <= steps; i++)
+        {
+            float angle = (float)i / steps * 2.0f * 3.14159265f;
+            auto [wx, wy, wz] = getPoint(angle);
 
-        if (valid && prevValid)
-            dl->AddLine(ImVec2(prevSx, prevSy), ImVec2(sx, sy), color, 2.0f);
+            float sx, sy;
+            bool valid = WorldToScreen(wx, wy, wz, sx, sy);
 
-        prevSx    = sx;
-        prevSy    = sy;
-        prevValid = valid;
-    }
+            if (valid && prevValid)
+                dl->AddLine(ImVec2(prevSx, prevSy), ImVec2(sx, sy), color, 2.0f);
+
+            prevSx    = sx;
+            prevSy    = sy;
+            prevValid = valid;
+        }
+    };
+
+    // Horizontal ring (XZ plane)
+    DrawRing([&](float a) { return std::make_tuple(point.X + std::cos(a) * point.Radius, point.Y, point.Z + std::sin(a) * point.Radius); });
+
+    // Vertical ring always facing the camera (rotates around Y axis only)
+    float dx = MumbleLink->CameraPosition.X - point.X;
+    float dz = MumbleLink->CameraPosition.Z - point.Z;
+    float dlen = std::sqrt(dx*dx + dz*dz);
+    if (dlen > 0.0001f) { dx /= dlen; dz /= dlen; }
+    DrawRing([&](float a) { return std::make_tuple(
+        point.X + std::cos(a) * (-dz) * point.Radius,
+        point.Y + std::sin(a) * point.Radius,
+        point.Z + std::cos(a) * dx * point.Radius
+    ); });
 
     if (ShowDebug)
     {
@@ -171,13 +200,14 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
 void RenderZones()
 {
     if (!MumbleLink || !ShowZones) return;
+    if (MumbleLink->Context.IsMapOpen) return;
 
     unsigned int currMapID = MumbleLink->Context.MapID;
 
     auto shouldRender = [&](const RoutePoint& p) -> bool {
         if (!RoutePointIsSet(p)) return false;
-        if (p.TriggerType == ETriggerType::MapChange) return false; // nothing to draw
-        if (p.MapID == 0) return true; // no map filter
+        if (p.TriggerType == ETriggerType::MapChange) return false;
+        if (p.MapID == 0) return true;
         return currMapID == p.MapID;
     };
 
@@ -189,9 +219,18 @@ void RenderZones()
             RenderZoneCircle(p, r, g, b, dbgOffset);
     };
 
-    renderPoint(CurrentRoute.Start, 0.2f, 1.0f, 0.2f, 0.0f);
-    renderPoint(CurrentRoute.Goal,  0.2f, 0.5f, 1.0f, 80.0f);
+    Checkpoint* start = GetStart(CurrentRoute);
+    Checkpoint* goal  = GetGoal(CurrentRoute);
 
+    if (start) renderPoint(start->Point, 0.2f, 1.0f, 0.2f, 0.0f);
+    if (goal)  renderPoint(goal->Point,  0.2f, 0.5f, 1.0f, 80.0f);
+
+    int dbgIdx = 0;
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
-        renderPoint(CurrentRoute.Checkpoints[i].Point, 1.0f, 1.0f, 1.0f, 160.0f + i * 80.0f);
+    {
+        const Checkpoint& cp = CurrentRoute.Checkpoints[i];
+        if (cp.IsStart || cp.IsGoal) continue; // already rendered above
+        renderPoint(cp.Point, 1.0f, 1.0f, 1.0f, 160.0f + dbgIdx * 80.0f);
+        dbgIdx++;
+    }
 }

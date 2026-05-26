@@ -28,7 +28,7 @@ extern bool                             ShowHistory;
 extern bool                             ShowGrandTotal;
 extern bool                             ShowRouteBrowser;
 extern int                              MaxHistoryRuns;
-extern std::vector<Split>               BestSplits;
+extern std::vector<Split>               BestRun;
 extern std::vector<HistoricalRun>       HistoryRuns;
 extern std::string                      CurrentRouteName;
 extern std::string                      CurrentRouteFilepath;   // full path to the loaded .json

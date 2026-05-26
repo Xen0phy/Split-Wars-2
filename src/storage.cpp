@@ -1,11 +1,4 @@
 // storage.cpp
-/* also includes 
-#include "Nexus.h"
-#include "Mumble.h"
-#include "timer.h"
-#include "route.h"
-#include "storage.h"
-  through shared.h*/
 #include "shared.h"
 #include "nlohmann_json.hpp"
 #include <fstream>
@@ -76,29 +69,27 @@ static void DeserializePoint(const json& j, RoutePoint& p)
 
 // --- Route ---
 
-bool SaveRoute(const std::string& filepath, const Route& route, const std::string& routeName)
+bool SaveRoute(const std::string& filepath, const Route& route)
 {
     try
     {
         fs::create_directories(fs::path(filepath).parent_path());
 
-        json j;
-        j["name"]  = routeName;
-        j["start"] = SerializePoint(route.Start);
-        j["goal"]  = SerializePoint(route.Goal);
-
-        json cps = json::array();
+        json j = json::array();
         for (const auto& cp : route.Checkpoints)
         {
             json cpj = SerializePoint(cp.Point);
-            cpj["name"] = cp.Name;
-            cps.push_back(cpj);
+            cpj["name"]     = cp.Name;
+            cpj["is_start"] = cp.IsStart;
+            cpj["is_goal"]  = cp.IsGoal;
+            j.push_back(cpj);
         }
-        j["checkpoints"] = cps;
 
         std::ofstream file(filepath);
         if (!file.is_open()) return false;
         file << j.dump(4);
+        if (ShowDebug)
+            APIDefs->Log(LOGL_DEBUG, "Split Wars 2", ("Route saved: " + fs::path(filepath).stem().string()).c_str());
         return true;
     }
     catch (...) { return false; }
@@ -112,29 +103,113 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
         if (!file.is_open()) return false;
 
         json j = json::parse(file);
-        routeName = j["name"].get<std::string>();
+        std::string filename = fs::path(filepath).filename().string();
+        routeName = fs::path(filepath).stem().string();
 
-        DeserializePoint(j["start"], route.Start);
-        DeserializePoint(j["goal"],  route.Goal);
+        // --- Structural validation ---
 
+        // Old SW2 format used an object with "start", "goal", "checkpoints" keys
+        if (j.is_object())
+        {
+            if (APIDefs)
+            {
+                std::string msg = filename + " uses an older route format and cannot be loaded. Please recreate the route.";
+                APIDefs->Log(LOGL_WARNING, "Split Wars 2", msg.c_str());
+            }
+            return false;
+        }
+
+        // Completely foreign file — not an array at all
+        if (!j.is_array())
+        {
+            if (APIDefs)
+            {
+                std::string msg = "JSON structure of file \"" + filename + "\" is unsupported to load as route.";
+                APIDefs->Log(LOGL_WARNING, "Split Wars 2", msg.c_str());
+            }
+            return false;
+        }
+
+        // --- Per-entry validation ---
+        const char* requiredFields[] = { "mapid", "x", "y", "z", "radius" };
+        for (int i = 0; i < (int)j.size(); i++)
+        {
+            const auto& cp = j[i];
+
+            // Check all required fields are present
+            for (const char* field : requiredFields)
+            {
+                if (!cp.contains(field))
+                {
+                    if (APIDefs)
+                    {
+                        std::string msg = filename + ": entry " + std::to_string(i) +
+                            " is missing required field \"" + field + "\".";
+                        APIDefs->Log(LOGL_WARNING, "Split Wars 2", msg.c_str());
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // --- Load entries ---
         route.Checkpoints.clear();
-        for (const auto& cp : j["checkpoints"])
+        for (const auto& cp : j)
         {
             Checkpoint c;
-            std::string name = cp["name"].get<std::string>();
+            std::string name = cp.value("name", "Unnamed");
             strncpy(c.Name, name.c_str(), sizeof(c.Name) - 1);
+            c.IsStart = cp.value("is_start", false);
+            c.IsGoal  = cp.value("is_goal",  false);
             DeserializePoint(cp, c.Point);
             route.Checkpoints.push_back(c);
         }
 
+        // --- Sanity check: only one start and one goal allowed ---
+        // If multiple are found (e.g. manual JSON edit), keep the first and auto-correct the rest
+        bool foundStart = false;
+        bool foundGoal  = false;
+        for (auto& cp : route.Checkpoints)
+        {
+            if (cp.IsStart)
+            {
+                if (foundStart)
+                {
+                    cp.IsStart = false;
+                    if (APIDefs)
+                        APIDefs->Log(LOGL_WARNING, "Split Wars 2",
+                            (filename + ": multiple start checkpoints found, keeping the first.").c_str());
+                }
+                foundStart = true;
+            }
+            if (cp.IsGoal)
+            {
+                if (foundGoal)
+                {
+                    cp.IsGoal = false;
+                    if (APIDefs)
+                        APIDefs->Log(LOGL_WARNING, "Split Wars 2",
+                            (filename + ": multiple goal checkpoints found, keeping the first.").c_str());
+                }
+                foundGoal = true;
+            }
+        }
+
         route.IsValid = true;
+
+        if (APIDefs)
+        {
+            if (ShowDebug)
+                APIDefs->Log(LOGL_DEBUG, "Split Wars 2", ("Route loaded: " + routeName).c_str());
+        }
+
         return true;
     }
     catch (const nlohmann::json::parse_error& e)
     {
         if (APIDefs)
         {
-            // Extract line number from e.what() for user-friendly message
+            // Extract line number from e.what() for a user-friendly message
             std::string what(e.what());
             std::string lineInfo = "unknown line";
             size_t linePos = what.find("line ");
@@ -145,13 +220,11 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
                 if (numEnd != std::string::npos)
                     lineInfo = "line " + what.substr(numStart, numEnd - numStart);
             }
-    
-            // User-friendly warning
+
             std::string filename = fs::path(filepath).filename().string();
             std::string friendly = "Something is wrong in " + filename + " around " + lineInfo + ". Please check for missing quotes, colons or brackets.";
             APIDefs->Log(LOGL_WARNING, "Split Wars 2", friendly.c_str());
-    
-            // Full detail for debugging
+
             if (ShowDebug)
                 APIDefs->Log(LOGL_DEBUG, "Split Wars 2", e.what());
         }
@@ -165,19 +238,14 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 // so the historyPath is the full absolute path (e.g. "…/Fractals/Nightmare.history").
 // This means two routes with identical display names in different folders
 // will never collide.
-
-bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestSplits, const std::vector<HistoricalRun>& runs)
+bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestRun, const std::vector<HistoricalRun>& runs, int bestRunIndex)
 {
     try
     {
         fs::create_directories(fs::path(historyPath).parent_path());
 
         json j;
-
-        json bs = json::array();
-        for (const auto& s : bestSplits)
-            bs.push_back({ {"name", s.Name}, {"timestamp", s.Timestamp} });
-        j["best_splits"] = bs;
+        j["best_run_index"] = bestRunIndex;
 
         json history = json::array();
         for (const auto& run : runs)
@@ -203,7 +271,7 @@ bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestS
     catch (...) { return false; }
 }
 
-bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestSplits, std::vector<HistoricalRun>& runs)
+bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun, std::vector<HistoricalRun>& runs)
 {
     try
     {
@@ -211,16 +279,6 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestSplits,
         if (!file.is_open()) return false;
 
         json j = json::parse(file);
-
-        bestSplits.clear();
-        for (const auto& s : j["best_splits"])
-        {
-            Split split;
-            std::string name = s["name"].get<std::string>();
-            strncpy(split.Name, name.c_str(), sizeof(split.Name) - 1);
-            split.Timestamp = s["timestamp"];
-            bestSplits.push_back(split);
-        }
 
         runs.clear();
         for (const auto& rj : j["history"])
@@ -241,6 +299,11 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestSplits,
             runs.push_back(run);
         }
 
+        bestRun.clear();
+        int bestIndex = j.value("best_run_index", -1);
+        if (bestIndex >= 0 && bestIndex < (int)runs.size())
+            bestRun = runs[bestIndex].Splits;
+
         return true;
     }
     catch (...) { return false; }
@@ -259,7 +322,7 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"show_config",         settings.ShowConfig},
             {"show_zones",          settings.ShowZones},
             {"show_debug",          settings.ShowDebug},
-            {"timer_display_mode",      settings.TimerDisplayMode},
+            {"timer_display_mode",  settings.TimerDisplayMode},
             {"compact_mode",        settings.CompactMode},
             {"show_history",        settings.ShowHistory},
             {"show_grand_total",    settings.ShowGrandTotal},
@@ -289,7 +352,7 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.ShowConfig         = j.value("show_config",        true);
         settings.ShowZones          = j.value("show_zones",         true);
         settings.ShowDebug          = j.value("show_debug",         false);
-        settings.TimerDisplayMode   = j.value("timer_display_mode",  1);
+        settings.TimerDisplayMode   = j.value("timer_display_mode", 1);
         settings.CompactMode        = j.value("compact_mode",       false);
         settings.ShowHistory        = j.value("show_history",       false);
         settings.ShowGrandTotal     = j.value("show_grand_total",   false);
@@ -349,7 +412,7 @@ static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
                     entry.path().filename() != "settings.json")
             {
                 RouteFile rf;
-                rf.Name        = entry.path().stem().string();  // filename without extension
+                rf.Name        = entry.path().stem().string();
                 rf.Filepath    = entry.path().string();
                 rf.HistoryPath = HistoryPathFromJsonPath(rf.Filepath);
                 node.Routes.push_back(rf);

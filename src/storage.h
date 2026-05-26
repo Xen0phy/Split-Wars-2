@@ -44,12 +44,12 @@ struct Settings
 };
 
 // Route — no times, safe to share
-bool            SaveRoute(const std::string& filepath, const Route& route, const std::string& routeName);
+bool            SaveRoute(const std::string& filepath, const Route& route);
 bool            LoadRoute(const std::string& filepath, Route& route, std::string& routeName);
 
 // History — best splits + run history, keyed on the full .history path
-bool            SaveHistory(const std::string& historyPath, const std::vector<Split>& bestSplits, const std::vector<HistoricalRun>& runs);
-bool            LoadHistory(const std::string& historyPath, std::vector<Split>& bestSplits, std::vector<HistoricalRun>& runs);
+bool            SaveHistory(const std::string& historyPath, const std::vector<Split>& bestRun, const std::vector<HistoricalRun>& runs, int bestRunIndex = -1);
+bool            LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun, std::vector<HistoricalRun>& runs);
 
 // Settings
 bool            SaveSettings(const std::string& addonDir, const Settings& settings);

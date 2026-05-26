@@ -98,9 +98,9 @@ void LoadRouteFile(const RouteFile& rf)
     CurrentRouteFilepath = rf.Filepath;
     CurrentHistoryPath   = rf.HistoryPath;
 
-    BestSplits.clear();
+    BestRun.clear();
     HistoryRuns.clear();
-    LoadHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns);
 
     FullReset();
     CurrentRoute.IsValid = true;

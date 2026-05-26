@@ -30,7 +30,7 @@ void RenderHistoryWindow()
             {
                 HistoryRuns.clear();
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, -1);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -64,9 +64,9 @@ void RenderHistoryWindow()
             {
                 const HistoricalRun& run = HistoryRuns[i];
 
-                bool isActiveBest = !BestSplits.empty() &&
+                bool isActiveBest = !BestRun.empty() &&
                     !run.Splits.empty() &&
-                    std::abs(run.TotalTime - BestSplits.back().Timestamp) < 0.001;
+                    std::abs(run.TotalTime - BestRun.back().Timestamp) < 0.001;
 
                 bool isFastest = std::abs(run.TotalTime - fastestTime) < 0.001;
 
@@ -98,7 +98,8 @@ void RenderHistoryWindow()
                         ImGui::TableSetupColumn("Split", ImGuiTableColumnFlags_WidthStretch);
                         ImGui::TableSetupColumn("Time",  ImGuiTableColumnFlags_WidthFixed, 100.0f);
 
-                        bool tooltipGoalIsAllCheckpoints = CurrentRoute.Goal.TriggerType == ETriggerType::AllCheckpoints;
+                        const Checkpoint* tooltipGoalCp = GetGoal(CurrentRoute);
+                        bool tooltipGoalIsAllCheckpoints = tooltipGoalCp && tooltipGoalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
                         int  splitsToShow = (int)run.Splits.size();
                         if (tooltipGoalIsAllCheckpoints && splitsToShow > 0 &&
                             strcmp(run.Splits.back().Name, "Goal") == 0)
@@ -136,9 +137,9 @@ void RenderHistoryWindow()
                 {
                     if (ImGui::MenuItem("Set as best"))
                     {
-                        BestSplits = run.Splits;
+                        BestRun = run.Splits;
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                            SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, i);
                     }
                     ImGui::Spacing();
                     ImGui::Separator();
@@ -154,11 +155,25 @@ void RenderHistoryWindow()
             if (removeIndex >= 0)
             {
                 HistoryRuns.erase(HistoryRuns.begin() + removeIndex);
+            
+                // Recalculate best run index since deletion may have shifted it
+                int bestIndex = -1;
+                if (!BestRun.empty())
+                {
+                    for (int i = 0; i < (int)HistoryRuns.size(); i++)
+                    {
+                        if (std::abs(HistoryRuns[i].TotalTime - BestRun.back().Timestamp) < 0.001)
+                        {
+                            bestIndex = i;
+                            break;
+                        }
+                    }
+                }
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestSplits, HistoryRuns);
+                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, bestIndex);
             }
         }
     }
-
+    
     ImGui::End();
 }

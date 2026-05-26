@@ -24,7 +24,7 @@ ImVec4 TimeColor(double current, double best, bool running);
 // Loads a route file and updates all shared state (CurrentRoute, history, etc.)
 void LoadRouteFile(const RouteFile& rf);
 
-// Add tooltips for mouse hover
+// Add tooltips for mouse hover with small delay
 inline void Tooltip(const char* text, float delaySeconds = 0.5f)
 {
     if (ImGui::IsItemHovered())
