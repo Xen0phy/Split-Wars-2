@@ -1,6 +1,19 @@
 // renderer_shared.cpp
+// Implements the utility functions shared across all renderer_*.cpp files:
+//   • FormatTime   — formats a seconds value into a HH:MM:SS[.mmm] string
+//   • FormatDiff   — formats a signed time delta with context-aware precision
+//   • TimeColor    — returns the green/red/white colour for a split time cell
+//   • LoadRouteFile — loads a route + its history from disk into the global state
+
 #include "renderer_shared.h"
 
+// ---------------------------------------------------------------------------
+// FormatTime
+// ---------------------------------------------------------------------------
+// Converts a raw elapsed-seconds value into a human-readable time string.
+// With showMillis = true  → "HH:MM:SS.mmm"  (used on the live timer)
+// With showMillis = false → "HH:MM:SS"       (used in history/tooltip tables)
+// ---------------------------------------------------------------------------
 void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis)
 {
     int hours   = (int)(elapsed / 3600);
@@ -17,14 +30,33 @@ void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis)
     }
 }
 
-// Returns false if the diff should be hidden entirely (far ahead, > 60s).
+// ---------------------------------------------------------------------------
+// FormatDiff
+// ---------------------------------------------------------------------------
+// Formats a signed time delta (current - best) into a compact +/- string.
+// Returns false if the diff should be hidden entirely (see below).
+//
+// Two display modes, controlled by isSplit:
+//
+//   isSplit = true  (used for completed split rows in the timer)
+//     Always shown, full precision, leading zeros stripped.
+//     e.g. "-1:02.345" or "-5.123" or "+12.000"
+//
+//   isSplit = false  (used for the live "ahead/behind" indicator)
+//     Applies progressive detail reduction to keep the display clean:
+//       • More than 60 s ahead   → hidden entirely (return false); the run is
+//         so far ahead that showing a diff would just be noise.
+//       • 10–60 s ahead          → whole seconds only, e.g. "-42"
+//       • 0–10 s ahead           → seconds + millis,  e.g. "-5.123"
+//       • Any amount behind      → full format,        e.g. "+1:02.345"
+// ---------------------------------------------------------------------------
 bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
 {
     double abs = diff < 0.0 ? -diff : diff;
 
     if (isSplit)
     {
-        // Always show, full format, strip leading zeros
+        // Completed split — always show with full precision, strip leading zeros.
         int minutes = (int)(abs / 60);
         int seconds = (int)(abs) % 60;
         int millis  = (int)(abs * 1000) % 1000;
@@ -45,10 +77,11 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
         return true;
     }
 
-    // Live comparison
+    // Live comparison — hide when more than 60 s ahead to reduce visual clutter.
     if (diff < -60.0)
         return false;
 
+    // 10–60 s ahead: whole seconds only (millis are noise at this margin).
     if (diff < -10.0)
     {
         int seconds = (int)(abs) % 60;
@@ -56,6 +89,7 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
         return true;
     }
 
+    // 0–10 s ahead: seconds + millis for fine-grained feedback.
     if (diff < 0.0)
     {
         int seconds = (int)(abs) % 60;
@@ -64,7 +98,7 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
         return true;
     }
 
-    // Behind: full format
+    // Behind by any amount: full format so the player knows exactly how much to recover.
     int minutes = (int)(abs / 60);
     int seconds = (int)(abs) % 60;
     int millis  = (int)(abs * 1000) % 1000;
@@ -75,17 +109,44 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// TimeColor
+// ---------------------------------------------------------------------------
+// Returns the ImGui colour to use when drawing a split time cell:
+//   White  — the segment/split is still in progress (running = true)
+//   Green  — no best time to compare against yet, or current <= best
+//   Red    — current time is slower than the best time for this split
+// ---------------------------------------------------------------------------
 ImVec4 TimeColor(double current, double best, bool running)
 {
     if (running)
-        return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+        return ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // White — still running
     if (best <= 0.0)
-        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f);
+        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f); // Green — no best to beat yet
     if (current <= best)
-        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f);
-    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f); // Green — ahead of or matched best
+    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);     // Red   — behind best
 }
 
+// ---------------------------------------------------------------------------
+// LoadRouteFile
+// ---------------------------------------------------------------------------
+// Loads a route from disk, replaces the active route and history in global
+// state, and resets the timer.  Called from the route browser when the player
+// clicks a route entry.
+//
+// On a successful load:
+//   1. The new route and its display name replace CurrentRoute / CurrentRouteName.
+//   2. The file paths are updated so subsequent saves go to the right place.
+//   3. History is loaded from the paired .history file (BestRun and HistoryRuns).
+//   4. FullReset() resyncs all trigger-state arrays to the new route length
+//      and clears the timer.
+//   5. IsValid is set to true so AddonRender() immediately starts evaluating
+//      the route's triggers.
+//
+// If LoadRoute() fails (file missing, parse error, etc.) we return early and
+// leave the previous route untouched.
+// ---------------------------------------------------------------------------
 void LoadRouteFile(const RouteFile& rf)
 {
     Route       newRoute;

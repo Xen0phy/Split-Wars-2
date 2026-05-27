@@ -1,19 +1,40 @@
+// addon.cpp
+// This is the main entry point for the Split Wars 2 Nexus addon.
+// It handles:
+//   - Registering the addon with the Nexus loader (name, version, author, etc.)
+//   - Loading and saving settings on startup/shutdown
+//   - Registering all keybinds and their callback functions
+//   - The per-frame render loop: loading screen detection, trigger evaluation
+//     (start / checkpoint / goal), and dispatching to the individual UI windows
+//   - The Nexus options panel (checkboxes, mode buttons, etc.)
+
 #include "renderer_shared.h"
 #include "worldrender.h"
 #include "hotbar_icon.h"
 
+// The global addon descriptor filled in by GetAddonDef() and handed to Nexus.
 AddonDefinition_t AddonDef{};
 
+// Forward declarations — these functions are defined later in this file.
 void AddonLoad(AddonAPI_t* aApi);
 void AddonUnload();
 void AddonRender();
 void AddonOptions();
 void HandleIdentityUpdate(void* aEventArgs);
 
+// ---------------------------------------------------------------------------
+// GetAddonDef
+// ---------------------------------------------------------------------------
+// Nexus calls this function when it first discovers the DLL.
+// We fill out every field of the AddonDefinition_t struct here so Nexus
+// knows who we are, what version we are, and which callbacks to call.
+// The function is exported as a plain C symbol so Nexus can find it
+// regardless of C++ name mangling.
+// ---------------------------------------------------------------------------
 extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 {
-    AddonDef.Signature          = 0x53573200;
-    AddonDef.APIVersion         = NEXUS_API_VERSION;
+    AddonDef.Signature          = 0x53573200;           // Unique numeric ID for this addon
+    AddonDef.APIVersion         = NEXUS_API_VERSION;    // Nexus API version this addon was built against
     AddonDef.Name               = "Split Wars 2";
     AddonDef.Version.Major      = 0;
     AddonDef.Version.Minor      = 15;
@@ -21,25 +42,39 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Version.Revision   = 3;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
-    AddonDef.Load               = AddonLoad;
-    AddonDef.Unload             = AddonUnload;
+    AddonDef.Load               = AddonLoad;            // Called once when the addon is loaded
+    AddonDef.Unload             = AddonUnload;          // Called once when the addon is unloaded
     AddonDef.Flags              = AF_None;
-    AddonDef.Provider           = UP_GitHub;
+    AddonDef.Provider           = UP_GitHub;            // Where Nexus should look for updates
     AddonDef.UpdateLink         = "https://github.com/Xen0phy/Split-Wars-2";
 
     return &AddonDef;
 }
 
+// ---------------------------------------------------------------------------
+// Keybind callbacks
+// Each function below is called by Nexus whenever the matching keybind
+// fires.  The aIsRelease parameter is true when the key is released and
+// false when it is first pressed.  Most actions should fire on press
+// (aIsRelease == false), not on release.
+// ---------------------------------------------------------------------------
+
+// "Interact" key — sets a one-frame flag that the trigger system reads to
+// detect CircleInteract checkpoint activations.
 static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
 {
     if (!aIsRelease)
         InteractKeyPressed = true;
 }
 
+// "Start/Stop" key — if the timer is already running this acts as a manual
+// stop: it adds a final "Manual Stop" split, stops both timers, records the
+// run in history, and saves to disk.  If the timer is not running it resets
+// everything and starts a fresh run with a "Manual Start" split.
 static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
-    std::lock_guard<std::mutex> lock(KeybindMutex);
+    std::lock_guard<std::mutex> lock(KeybindMutex); // Prevent racing with AddonRender()
     if (SpeedrunTimer.IsRunning())
     {
         SpeedrunTimer.AddSplit("Manual Stop");
@@ -52,9 +87,9 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
         run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
         run.GrandTotal = GrandTimer.GetElapsedSeconds();
         run.Splits     = SpeedrunTimer.GetSplits();
-        HistoryRuns.insert(HistoryRuns.begin(), run);
+        HistoryRuns.insert(HistoryRuns.begin(), run);   // Newest run goes to the top
         if ((int)HistoryRuns.size() > MaxHistoryRuns)
-            HistoryRuns.resize(MaxHistoryRuns);
+            HistoryRuns.resize(MaxHistoryRuns);          // Trim the list to the configured cap
         if (!CurrentHistoryPath.empty())
             SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, -1);
     }
@@ -67,6 +102,11 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
     }
 }
 
+// "Checkpoint" key — two different behaviours:
+//   • Timer running  → record a manual "Manual Checkpoint" split right now.
+//   • Timer stopped  → capture the player's current world position and map ID
+//                      and append it as a new checkpoint to the active route.
+//                      This is the in-game "place a checkpoint here" workflow.
 static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
@@ -87,14 +127,21 @@ static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
     }
 }
 
+// Simple toggle keybinds — each one just flips the matching boolean on press.
 static void OnShowTimerKey          (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowTimer        = !ShowTimer;        }
 static void OnShowConfigKey         (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowConfig       = !ShowConfig;       }
 static void OnShowHistoryKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowHistory      = !ShowHistory;      }
 static void OnShowZonesKey          (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowZones        = !ShowZones;        }
+// Cycles through the three timer display modes (Segment → LiveSplit → Split → …)
 static void OnCycleTimerModeKey     (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3); }
 static void OnCompactModeKey        (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) CompactMode      = !CompactMode;      }
 static void OnShowRouteBrowserKey   (const char* aIdentifier, bool aIsRelease) { if (!aIsRelease) ShowRouteBrowser = !ShowRouteBrowser; }
 
+// "Toggle Hide All Windows" key — used by the hotbar button and its keybind.
+// If any Split Wars 2 window is currently visible, hide all of them and save
+// which ones were open so they can be restored later.  If nothing is visible,
+// restore the previously saved state (or fall back to sensible defaults if
+// this is the first press).
 static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
@@ -131,6 +178,7 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
     }
 }
 
+// "Reset Timer" key — immediately resets the run without recording history.
 static void OnResetTimerKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
@@ -138,6 +186,14 @@ static void OnResetTimerKey(const char* aIdentifier, bool aIsRelease)
     FullReset();
 }
 
+// ---------------------------------------------------------------------------
+// Settings helpers
+// These two functions translate between the flat Settings struct (which is
+// what gets serialised to disk) and the individual global booleans / enums
+// used throughout the rest of the code.
+// ---------------------------------------------------------------------------
+
+// Push a loaded Settings object into the global variables.
 static void ApplySettings(const Settings& s)
 {
     ShowTimer        = s.ShowTimer;
@@ -152,6 +208,7 @@ static void ApplySettings(const Settings& s)
     MaxHistoryRuns   = s.MaxHistoryRuns;
 }
 
+// Snapshot the current global variables into a Settings struct ready for saving.
 static Settings GatherSettings()
 {
     Settings s;
@@ -168,6 +225,13 @@ static Settings GatherSettings()
     return s;
 }
 
+// ---------------------------------------------------------------------------
+// AddonQuickAccessMenu
+// ---------------------------------------------------------------------------
+// Draws the right-click context menu that appears when the player right-clicks
+// the Split Wars 2 icon in the Nexus Quick Access bar.  Each item is a
+// checkbox-style menu entry that toggles the matching window directly.
+// ---------------------------------------------------------------------------
 static void AddonQuickAccessMenu()
 {
     bool anyVisible = ShowTimer || ShowConfig || ShowHistory || ShowZones || ShowRouteBrowser;
@@ -179,6 +243,13 @@ static void AddonQuickAccessMenu()
     if (ImGui::MenuItem("Checkpoints",   nullptr, &ShowZones))        {}
 }
 
+// ---------------------------------------------------------------------------
+// Keybind registration table
+// ---------------------------------------------------------------------------
+// All keybinds are listed here in one place.  AddonLoad() and AddonUnload()
+// iterate over this array to register / deregister them all in one loop,
+// avoiding the need to touch both functions when a new keybind is added.
+// ---------------------------------------------------------------------------
 using KeybindHandler = void(*)(const char*, bool);
 static const struct { const char* ID; KeybindHandler Fn; } Keybinds[] =
 {
@@ -196,28 +267,53 @@ static const struct { const char* ID; KeybindHandler Fn; } Keybinds[] =
     { "SW2 Toggle Hide All Windows",OnHotbarToggleKey     },
 };
 
+// ---------------------------------------------------------------------------
+// AddonLoad
+// ---------------------------------------------------------------------------
+// Called once by Nexus after the DLL is loaded.  This is where we do all
+// one-time setup:
+//   1. Store the API pointer and hook into ImGui's allocator so our ImGui
+//      calls share the same heap as the host process.
+//   2. Grab the MumbleLink shared-memory pointer (player position / map data).
+//   3. Load persisted settings from disk if a settings file exists.
+//   4. Register the render and options callbacks with Nexus.
+//   5. Subscribe to the identity-updated event (for camera FOV changes).
+//   6. Upload the hotbar icon textures and add the Quick Access button.
+//   7. Register all keybinds.
+// ---------------------------------------------------------------------------
 void AddonLoad(AddonAPI_t* aApi)
 {
     APIDefs = aApi;
 
+    // Point ImGui at the host's context and memory allocator so all ImGui
+    // state is shared — without this, font atlases and style settings would
+    // be duplicated and potentially crash.
     ImGui::SetCurrentContext((ImGuiContext*)APIDefs->ImguiContext);
     ImGui::SetAllocatorFunctions(
         (void* (*)(size_t, void*))APIDefs->ImguiMalloc,
         (void(*)(void*, void*))APIDefs->ImguiFree
     );
 
+    // MumbleLink is a shared-memory block that GW2 writes every frame with
+    // player position, map ID, combat state, etc.
     MumbleLink = (Mumble::Data*)APIDefs->DataLink_Get("DL_MUMBLE_LINK");
     AddonDir   = GetAddonDir();
 
+    // Apply persisted settings if a settings file is found; otherwise the
+    // compiled-in defaults from shared.h remain active.
     Settings s;
     if (LoadSettings(AddonDir, s))
         ApplySettings(s);
 
+    // Register the per-frame render callback and the Nexus options panel callback.
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
+
+    // Subscribe to identity updates so we can keep CameraFOV in sync.
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
 
-    // Load hotbar icon textures from embedded memory and register QuickAccess shortcut
+    // Load hotbar icon textures from embedded memory and register QuickAccess shortcut.
+    // The icon images are baked into hotbar_icon.h as byte arrays at compile time.
     APIDefs->Textures_GetOrCreateFromMemory(
         "TEX_SW2_HOTBAR",
         (void*)g_HotbarIconData,
@@ -228,6 +324,8 @@ void AddonLoad(AddonAPI_t* aApi)
         (void*)g_HotbarIconHoverData,
         g_HotbarIconHoverData_size
     );
+    // The Quick Access button uses the hotbar toggle keybind action so a left-click
+    // on the icon triggers the same show/hide behaviour as the keybind.
     APIDefs->QuickAccess_Add(
         "QA_SW2_HIDE_TOGGLE",
         "TEX_SW2_HOTBAR",
@@ -237,19 +335,27 @@ void AddonLoad(AddonAPI_t* aApi)
     );
     APIDefs->QuickAccess_AddContextMenu("QA_SW2_CTXMENU", "QA_SW2_HIDE_TOGGLE", AddonQuickAccessMenu);
 
-    //Register all the keybinds
+    // Register all keybinds defined in the table above.
     for (auto& kb : Keybinds)
     APIDefs->InputBinds_RegisterWithStruct(kb.ID, kb.Fn, Keybind_t{});
 
-    //Info in Nexus log
     APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 loaded.");
 }
 
+// ---------------------------------------------------------------------------
+// AddonUnload
+// ---------------------------------------------------------------------------
+// Called by Nexus just before the DLL is unloaded (e.g. on game exit or when
+// the user disables the addon).  We mirror everything done in AddonLoad:
+// save settings, deregister all keybinds, remove the Quick Access button,
+// and unsubscribe from events and render callbacks so no dangling pointers
+// remain inside Nexus after our DLL is gone.
+// ---------------------------------------------------------------------------
 void AddonUnload()
 {
     SaveSettings(AddonDir, GatherSettings());
     
-    //Unregister all the keybinds
+    // Deregister all keybinds.
     for (auto& kb : Keybinds)
         APIDefs->InputBinds_Deregister(kb.ID);
 
@@ -261,6 +367,13 @@ void AddonUnload()
     APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 unloaded.");
 }
 
+// ---------------------------------------------------------------------------
+// HandleIdentityUpdate
+// ---------------------------------------------------------------------------
+// Nexus fires this event whenever the player's identity changes (character
+// swap, FOV slider, etc.).  We only care about FOV so we can pass it on to
+// the world-space overlay renderer (worldrender.cpp).
+// ---------------------------------------------------------------------------
 void HandleIdentityUpdate(void* aEventArgs)
 {
     if (!aEventArgs) return;
@@ -268,6 +381,18 @@ void HandleIdentityUpdate(void* aEventArgs)
     CameraFOV = identity->FOV;
 }
 
+// ---------------------------------------------------------------------------
+// PointTriggered  (file-private helper)
+// ---------------------------------------------------------------------------
+// Checks whether a single RoutePoint was triggered this frame given the
+// player's previous and current position/map.  The check depends on the
+// trigger type configured for that point:
+//
+//   Plane          — the player's movement vector crossed the trigger plane
+//   MapChange      — the player was on the configured map and just left it
+//   CircleInteract — the player is inside the radius AND pressed Interact
+//   Circle (default) — the player is inside the radius
+// ---------------------------------------------------------------------------
 static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
                             unsigned int prevMapID, unsigned int currMapID,
                             const RoutePoint& point)
@@ -286,39 +411,51 @@ static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
     }
 }
 
-// Called every frame by Nexus. Handles loading screen detection, all start/checkpoint/goal
-// trigger logic, and dispatches to the individual render windows. Timer mutations are
-// guarded by KeybindMutex so this function and the keybind callbacks can't race each other.
+// ---------------------------------------------------------------------------
+// AddonRender
+// ---------------------------------------------------------------------------
+// Called every frame by Nexus. Handles loading screen detection, all
+// start/checkpoint/goal trigger logic, and dispatches to the individual
+// render windows. Timer mutations are guarded by KeybindMutex so this
+// function and the keybind callbacks can't race each other.
+// ---------------------------------------------------------------------------
 void AddonRender()
 {
     if (!MumbleLink) return;
 
-    // --- Per-frame state (persists between calls) ---
+    // --- Per-frame state (persists between calls via static locals) ---
     static unsigned int lastUITick       = 0;
     static bool         wasLoading       = false;
     static Vector3      prevPos          = {0, 0, 0};
     static unsigned int prevMapID        = 0;
     static bool         prevInCombat     = false;
-    static double       pendingGrandStop = -1.0;  // holds GrandTimer snapshot for MapChange goals
+    static double       pendingGrandStop = -1.0;  // Holds GrandTimer snapshot for MapChange goals
 
-    // Snapshot current game state for this frame
+    // Snapshot current game state for this frame.
     Vector3      currPos      = MumbleLink->AvatarPosition;
     unsigned int currMapID    = MumbleLink->Context.MapID;
     bool         currInCombat = MumbleLink->Context.IsInCombat;
 
     // -------------------------------------------------------------------------
-    // CombatArena trigger helper
+    // CombatArena trigger helper (lambda, defined inline for access to frame state)
+    //
     // Advances a CombatTriggerState one frame and returns true when the
-    // combat segment is considered finished (player left combat or the zone).
+    // combat segment is considered finished.  A segment is "finished" when:
+    //   • The player leaves the zone while still in combat, OR
+    //   • The player drops combat inside the zone and a 2-second grace period
+    //     expires without combat resuming (catches brief combat drops mid-fight)
+    //
+    // The state machine has two states: Armed (in combat) and GracePending
+    // (combat dropped, timer running until either re-enter combat or grace expires).
     // -------------------------------------------------------------------------
     auto TickCombat = [&](CombatTriggerState& cs, const RoutePoint& point,
                           bool onCorrectMap, bool inCircle) -> bool
     {
-        constexpr double GraceDuration = 2.0;
+        constexpr double GraceDuration = 2.0; // seconds to wait after combat drops
 
         if (cs.finished) return false;
 
-        // Not yet active — wait for a rising combat edge inside the zone
+        // Not yet active — wait for a rising combat edge inside the zone.
         if (!cs.active)
         {
             bool risingEdge = currInCombat && !prevInCombat;
@@ -330,17 +467,17 @@ void AddonRender()
             return false;
         }
 
-        // Armed: player is in combat inside the zone
+        // Armed: player is in combat inside the zone.
         if (cs.state == ECombatState::Armed)
         {
-            // Left the zone while still in combat — trigger immediately
+            // Left the zone while still in combat — trigger immediately.
             if (!inCircle)
             {
                 cs.active   = false;
                 cs.finished = true;
                 return true;
             }
-            // Dropped combat while still in zone — start grace period
+            // Dropped combat while still in zone — start grace period.
             if (!currInCombat)
             {
                 cs.state      = ECombatState::GracePending;
@@ -350,17 +487,17 @@ void AddonRender()
             return false;
         }
 
-        // GracePending: combat dropped, waiting to see if it comes back
+        // GracePending: combat dropped, waiting to see if it comes back.
         else if (cs.state == ECombatState::GracePending)
         {
-            // Still out of combat and inside the zone — check if grace period expired
+            // Still out of combat and inside the zone — check if grace period expired.
             if (!currInCombat && inCircle)
             {
                 auto elapsed = std::chrono::duration<double>(
                     std::chrono::steady_clock::now() - cs.graceStart).count();
                 if (elapsed >= GraceDuration)
                 {
-                    // Grace period expired — combat segment is done
+                    // Grace period expired — combat segment is done.
                     cs.active   = false;
                     cs.finished = true;
                     return true;
@@ -368,7 +505,7 @@ void AddonRender()
                 return false;
             }
 
-            // Re-entered combat before grace expired — go back to Armed
+            // Re-entered combat before grace expired — go back to Armed.
             if (currInCombat && inCircle)
             {
                 cs.state    = ECombatState::Armed;
@@ -376,7 +513,7 @@ void AddonRender()
                 return false;
             }
 
-            // Left the zone during grace period — trigger
+            // Left the zone during grace period — trigger immediately.
             cs.active   = false;
             cs.finished = true;
             return true;
@@ -387,11 +524,14 @@ void AddonRender()
 
     // -------------------------------------------------------------------------
     // Loading screen detection
-    // UITick freezes while a load screen is active.
+    // MumbleLink's UITick counter increments every frame while the game is
+    // rendering.  If it hasn't changed since last frame the game is on a
+    // loading screen and we should pause the run timer.
     // -------------------------------------------------------------------------
     bool isLoading = (MumbleLink->UITick == lastUITick);
     lastUITick     = MumbleLink->UITick;
 
+    // Convenience pointers to the designated start and goal checkpoints.
     Checkpoint* startCp = GetStart(CurrentRoute);
     Checkpoint* goalCp  = GetGoal(CurrentRoute);
 
@@ -407,8 +547,9 @@ void AddonRender()
         {
             SpeedrunTimer.Pause();
 
-            // For MapChange goals: snapshot the GrandTimer now (before the map
-            // actually changes) so load screen time is excluded from grand total.
+            // Special case for MapChange goals: if the goal fires on the map
+            // transition itself, snapshot the GrandTimer now (before the map
+            // actually changes) so load-screen time is excluded from the grand total.
             if (SpeedrunTimer.IsRunning() && goalCp &&
                 goalCp->Point.TriggerType == ETriggerType::MapChange &&
                 goalCp->Point.MapID != 0 &&
@@ -421,14 +562,17 @@ void AddonRender()
         {
             SpeedrunTimer.Resume();
 
-            // If we didn't actually leave the goal map, discard the snapshot
+            // If we didn't actually leave the goal map (e.g. a mid-run load
+            // screen on the same map), discard the snapshot.
             if (pendingGrandStop >= 0.0 && goalCp && currMapID == goalCp->Point.MapID)
                 pendingGrandStop = -1.0;
         }
 
     if (CurrentRoute.IsValid)
     {
-        // Keep the parallel trigger-state arrays in sync with the route length
+        // Keep the parallel trigger-state arrays in sync with the route length.
+        // These arrays track per-checkpoint state: was the player inside last
+        // frame, has the checkpoint already fired this run, and combat state.
         if (WasInCheckpoint.size() != CurrentRoute.Checkpoints.size())
         {
             WasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
@@ -441,7 +585,9 @@ void AddonRender()
         {
             RoutePoint& startPt = startCp->Point;
 
-            // Circle: reset when player enters, start when they leave
+            // Circle start: reset when the player enters the zone, then
+            // start the timer when they leave it.  This lets the player
+            // stand in the start zone to reset and walk out to begin.
             if (startPt.TriggerType == ETriggerType::Circle)
             {
                 bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
@@ -459,7 +605,7 @@ void AddonRender()
 
                 WasInCircleStart = inStart;
             }
-            // Plane: start when player crosses the trigger plane
+            // Plane start: start the timer the moment the player crosses the plane.
             else if (startPt.TriggerType == ETriggerType::Plane)
             {
                 bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
@@ -472,7 +618,9 @@ void AddonRender()
                     GrandTimer.Start();
                 }
             }
-            // Map Change: queue a start for after the load screen clears
+            // MapChange start: the trigger fires on the map-transition event, but the
+            // actual start is deferred (PendingStart flag) until the load screen clears
+            // so the timer begins at the moment gameplay resumes, not mid-load.
             else if (startPt.TriggerType == ETriggerType::MapChange)
             {
                 bool justLeft = (prevMapID == startPt.MapID) && (currMapID != startPt.MapID);
@@ -482,7 +630,7 @@ void AddonRender()
                     PendingStart = true;
                 }
             }
-            // Circle Interact: start when player presses interact inside the zone
+            // CircleInteract start: start when the player presses Interact inside the zone.
             else if (startPt.TriggerType == ETriggerType::CircleInteract)
             {
                 bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
@@ -495,17 +643,21 @@ void AddonRender()
                     GrandTimer.Start();
                 }
             }
-            // Combat Arena: start on rising combat edge inside the zone
+            // CombatArena start: start on a rising combat edge (not-in-combat → in-combat)
+            // while the player is inside the configured zone.
             else if (startPt.TriggerType == ETriggerType::CombatArena)
             {
                 bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
                 bool inCircle = onCorrectMap && IsWithinRange(currPos, startPt);
 
-                // Auto-rearm once a previous combat segment fully resolved
+                // Once a previous combat segment fully resolved, re-arm so the player
+                // can start another run without a manual reset.
                 if (CombatStart.finished && !SpeedrunTimer.IsRunning())
                     CombatStart = {};
 
-                // True when start and goal share the exact same zone (single-arena run)
+                // Detect whether start and goal are the exact same zone.
+                // If so, the goal tracker needs to be armed at the same time as the
+                // start tracker (since both share one physical combat area).
                 bool sameArea = goalCp &&
                     goalCp->Point.TriggerType == ETriggerType::CombatArena &&
                     goalCp->Point.MapID  == startPt.MapID  &&
@@ -525,7 +677,7 @@ void AddonRender()
                         CombatStart.active = true;
                         CombatStart.state  = ECombatState::Armed;
 
-                        // For single-arena runs arm the goal tracker at the same time
+                        // For single-arena runs, arm the goal tracker at the same time.
                         if (sameArea)
                         {
                             CombatGoal.active = true;
@@ -536,7 +688,7 @@ void AddonRender()
                 else if (SpeedrunTimer.IsRunning() && CombatStart.active)
                 {
                     // Separate start/goal zones: tick the start combat tracker
-                    // and record a split when it finishes
+                    // and record a "Combat End" split when the start-zone fight finishes.
                     if (!sameArea)
                     {
                         bool finished = TickCombat(CombatStart, startPt, onCorrectMap, inCircle);
@@ -560,12 +712,14 @@ void AddonRender()
         {
             for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
             {
-                // Start and goal are handled separately
+                // The start and goal are handled by their own dedicated blocks above/below.
                 if (CurrentRoute.Checkpoints[i].IsStart || CurrentRoute.Checkpoints[i].IsGoal)
                     continue;
 
                 const RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
 
+                // MapChange checkpoints don't need to be on a specific map (the
+                // trigger is the act of leaving), so we skip the map filter for them.
                 bool onCorrectMap = cp.TriggerType == ETriggerType::MapChange ||
                                     cp.MapID == 0 ||
                                     currMapID == cp.MapID;
@@ -575,8 +729,9 @@ void AddonRender()
                 {
                     if (cp.TriggerType == ETriggerType::CombatArena)
                     {
-                        // Combat checkpoints record a "Combat Start" split on
-                        // entry and a "Combat End" split when the segment finishes
+                        // CombatArena checkpoints record a "Combat Start" split when
+                        // the player first enters combat in the zone, and a "Combat End"
+                        // split when the combat segment finishes.
                         bool inCircle = IsWithinRange(currPos, cp);
                         if (!CombatCheckpoints[i].finished)
                         {
@@ -603,14 +758,17 @@ void AddonRender()
                     }
                 }
 
-                // Record the split — Circle triggers require the player to have
-                // been outside the zone first to prevent re-triggering on entry
+                // Record the split.
+                // Circle triggers require the player to have been *outside* the zone
+                // last frame (WasInCheckpoint[i] == false) to prevent the split from
+                // firing again the moment the player re-enters an already-passed circle.
                 if (triggered && !checkpointTriggered[i] &&
                     (cp.TriggerType != ETriggerType::Circle || !WasInCheckpoint[i]))
                 {
                     if (cp.TriggerType == ETriggerType::CombatArena &&
                         CombatCheckpoints[i].dropTime > 0.0)
                     {
+                        // Back-date the split to when combat actually dropped.
                         Split s;
                         snprintf(s.Name, sizeof(s.Name), "%s Combat End", CurrentRoute.Checkpoints[i].Name);
                         s.Timestamp = CombatCheckpoints[i].dropTime;
@@ -623,8 +781,8 @@ void AddonRender()
                     checkpointTriggered[i] = true;
                 }
 
-                // Track whether the player was inside a circle zone last frame
-                // (used to enforce the exit-before-retrigger rule above)
+                // Track whether the player was inside a circle zone last frame.
+                // Only circle types use this flag; other types reset it to false.
                 WasInCheckpoint[i] = (cp.TriggerType == ETriggerType::Circle && onCorrectMap)
                     ? IsWithinRange(currPos, cp)
                     : false;
@@ -637,7 +795,8 @@ void AddonRender()
             {
                 RoutePoint& goalPt = goalCp->Point;
 
-                // All Checkpoints: fires once every non-start/non-goal checkpoint is hit
+                // AllCheckpoints goal: fires once every non-start/non-goal checkpoint
+                // has been triggered at least once this run.
                 if (goalPt.TriggerType == ETriggerType::AllCheckpoints)
                 {
                     bool allDone = !CurrentRoute.Checkpoints.empty();
@@ -649,12 +808,14 @@ void AddonRender()
                     }
                     goalTriggered = allDone;
                 }
-                // Combat Arena goal: tick the combat tracker, same logic as checkpoints
+                // CombatArena goal: tick the combat tracker and stop the run when
+                // the goal combat segment finishes.
                 else if (goalPt.TriggerType == ETriggerType::CombatArena)
                 {
                     bool onCorrectMap = goalPt.MapID == 0 || currMapID == goalPt.MapID;
                     bool inCircle = onCorrectMap && IsWithinRange(currPos, goalPt);
 
+                    // Detect whether goal and start share the same zone (single-arena).
                     bool sameArea = startCp &&
                         startCp->Point.TriggerType == ETriggerType::CombatArena &&
                         startCp->Point.MapID  == goalPt.MapID  &&
@@ -667,7 +828,8 @@ void AddonRender()
                     {
                         if (!CombatGoal.active)
                         {
-                            // Only arm independently if goal is a different zone to start
+                            // Only arm independently if this is a different zone from start.
+                            // Same-zone goal trackers are armed alongside the start (see above).
                             if (!sameArea)
                             {
                                 bool risingEdge = currInCombat && !prevInCombat;
@@ -691,7 +853,7 @@ void AddonRender()
                         }
                     }
                 }
-                // All other goal types (Circle, Plane, MapChange, CircleInteract)
+                // All other goal types (Circle, Plane, MapChange, CircleInteract).
                 else
                 {
                     bool goalOnCorrectMap = goalPt.MapID == 0 ||
@@ -705,6 +867,8 @@ void AddonRender()
                 // --- Run finished ---
                 if (goalTriggered)
                 {
+                    // For CombatArena goals we have a back-dated stop time; use it so
+                    // the final split time reflects when combat actually ended.
                     if (goalPt.TriggerType == ETriggerType::CombatArena && goalTime > 0.0)
                         SpeedrunTimer.StopAt(goalTime);
                     else
@@ -715,6 +879,8 @@ void AddonRender()
                     HistoricalRun run;
                     run.Date       = GetCurrentDateTimeString();
                     run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
+                    // Use the pre-load-screen snapshot for grand total if available,
+                    // otherwise use the live GrandTimer value.
                     run.GrandTotal = (pendingGrandStop >= 0.0)
                         ? pendingGrandStop
                         : GrandTimer.GetElapsedSeconds();
@@ -722,7 +888,8 @@ void AddonRender()
                     pendingGrandStop    = -1.0;
                     run.Splits          = SpeedrunTimer.GetSplits();
 
-                    // Ensure the goal checkpoint itself appears as the final split
+                    // Ensure the goal checkpoint itself appears as the final split entry
+                    // even if the goal trigger type doesn't naturally produce one.
                     if (run.Splits.empty() || strcmp(run.Splits.back().Name, goalCp->Name) != 0)
                     {
                         Split goalSplit;
@@ -741,7 +908,8 @@ void AddonRender()
             }
         }
 
-        // MapChange start: deferred until the load screen has cleared
+        // MapChange start: deferred until the load screen has fully cleared so the
+        // timer starts the moment the player can actually move, not during the black screen.
         if (PendingStart && !isLoading)
         {
             FullReset();
@@ -749,23 +917,24 @@ void AddonRender()
             GrandTimer.Start();
         }
     }
-    } // KeybindMutex
+    } // KeybindMutex released here
 
     // -------------------------------------------------------------------------
     // Update the grand total overlay value outside the lock — read-only here.
     // -------------------------------------------------------------------------
 
-    // Run was manually reset or never started — clear overlay
+    // Run was manually reset or never started — clear overlay.
     if (!SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
     {
         pendingGrandStop    = -1.0;
         DisplayedGrandTotal = 0.0;
     }
-    // Run in progress — keep the overlay ticking (frozen if pending snapshot exists)
+    // Run in progress — keep the overlay ticking (frozen if a pending snapshot exists).
     else if (SpeedrunTimer.IsRunning())
         DisplayedGrandTotal = (pendingGrandStop >= 0.0) ? pendingGrandStop : GrandTimer.GetElapsedSeconds();
 
-    // Debug: log map transitions to the Nexus log panel
+    // Debug: log map transitions to the Nexus log panel so route authors can
+    // identify the correct MapID values when building routes.
     if (ShowDebug && !isLoading && currMapID != prevMapID)
     {
         char buf[128];
@@ -778,10 +947,12 @@ void AddonRender()
     // --- Advance per-frame tracking state for next frame ---
     wasLoading   = isLoading;
     prevPos      = currPos;
+    // Only update prevMapID when not loading — this keeps the MapChange trigger
+    // stable across load screens (prevMapID still reflects the map we came from).
     if (!isLoading)
         prevMapID = currMapID;
     prevInCombat       = currInCombat;
-    InteractKeyPressed = false;
+    InteractKeyPressed = false; // Consumed — clear for next frame
 
     // --- Draw overlays ---
     RenderZones();
@@ -791,6 +962,13 @@ void AddonRender()
     RenderRouteBrowserWindow();
 }
 
+// ---------------------------------------------------------------------------
+// AddonOptions
+// ---------------------------------------------------------------------------
+// Draws the Split Wars 2 section inside the Nexus options panel.
+// All the standard ImGui widgets write directly into the global booleans and
+// enums; the "Save Settings" button at the bottom persists them to disk.
+// ---------------------------------------------------------------------------
 void AddonOptions()
 {
     ImGui::Checkbox("Show Timer",         &ShowTimer);
@@ -806,6 +984,9 @@ void AddonOptions()
     ImGui::Checkbox("Show Debug", &ShowDebug);
     Tooltip("Toggles debugging text which is not fully implemented");
     ImGui::Separator();
+
+    // Cycle button — label reflects the current mode so the player always
+    // knows what clicking it will do.
     const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
                                : (TimerDisplayMode == TimerMode::LiveSplit) ? "Mode: LiveSplit"
                                :                                               "Mode: Split";
@@ -824,6 +1005,8 @@ void AddonOptions()
     ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
     Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
     ImGui::Separator();
+
+    // Max History Runs — clamped to [1, 100].
     ImGui::Text("Max History Runs");
     Tooltip("Set an amount between 1 and 100.");
     ImGui::SetNextItemWidth(80.0f);
@@ -831,6 +1014,7 @@ void AddonOptions()
     if (MaxHistoryRuns < 1)   MaxHistoryRuns = 1;
     if (MaxHistoryRuns > 100) MaxHistoryRuns = 100;
     ImGui::Separator();
+
     if (ImGui::Button("Save Settings"))
         SaveSettings(AddonDir, GatherSettings());
 }

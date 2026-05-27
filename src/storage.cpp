@@ -1,4 +1,19 @@
 // storage.cpp
+// All disk I/O for Split Wars 2: routes, history, settings, and the route
+// folder tree used by the browser window.
+//
+// File layout under the addon directory (e.g. "…/addons/Split Wars 2/"):
+//   settings.json          — UI preferences (window visibility, timer mode, etc.)
+//   MyRoute.json           — a saved route (array of checkpoint objects)
+//   MyRoute.history        — run history for that route (paired by name)
+//   SubFolder/OtherRoute.json
+//   SubFolder/OtherRoute.history
+//
+// All functions swallow exceptions and return false on failure so callers
+// don't need try/catch blocks.  Errors that are actionable by the user
+// (bad JSON, old format, missing required fields) are logged to the Nexus
+// log panel with a friendly message.
+
 #include "shared.h"
 #include "nlohmann_json.hpp"
 #include <fstream>
@@ -11,6 +26,16 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+// ---------------------------------------------------------------------------
+// GetAddonDir
+// ---------------------------------------------------------------------------
+// Returns the directory the addon DLL lives in, with "\\Split Wars 2" appended.
+// e.g. "C:\Program Files\Guild Wars 2\addons\Split Wars 2"
+//
+// Uses GetModuleHandleEx with the FROM_ADDRESS flag to locate our own DLL
+// by passing the address of this very function as a landmark — a reliable
+// trick that doesn't depend on knowing the DLL's name at compile time.
+// ---------------------------------------------------------------------------
 std::string GetAddonDir()
 {
     char path[MAX_PATH];
@@ -18,7 +43,7 @@ std::string GetAddonDir()
     GetModuleHandleExA(
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
         GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        (LPCSTR)&GetAddonDir,
+        (LPCSTR)&GetAddonDir, // Use this function's own address as the landmark
         &hm
     );
     GetModuleFileNameA(hm, path, sizeof(path));
@@ -29,6 +54,14 @@ std::string GetAddonDir()
     return dir + "\\Split Wars 2";
 }
 
+// ---------------------------------------------------------------------------
+// GetCurrentDateTimeString
+// ---------------------------------------------------------------------------
+// Returns a "YYYY-MM-DD HH:MM" timestamp string for the current local time.
+// Used to stamp each HistoricalRun when it is recorded.
+// Minutes are the finest granularity — seconds would rarely be useful in a
+// history list and would make the column wider for no benefit.
+// ---------------------------------------------------------------------------
 std::string GetCurrentDateTimeString()
 {
     time_t now = time(nullptr);
@@ -41,6 +74,15 @@ std::string GetCurrentDateTimeString()
     return std::string(buf);
 }
 
+// ---------------------------------------------------------------------------
+// SerializePoint / DeserializePoint  (file-private helpers)
+// ---------------------------------------------------------------------------
+// Convert a RoutePoint to/from a JSON object.
+//
+// PlaneWidth and PlaneAngle use j.value() with defaults on load so that
+// older route files that pre-date these fields still load correctly —
+// they'll just get the default plane geometry (10 m wide, 0° angle).
+// ---------------------------------------------------------------------------
 static json SerializePoint(const RoutePoint& p)
 {
     return {
@@ -63,12 +105,22 @@ static void DeserializePoint(const json& j, RoutePoint& p)
     p.Z           = j["z"];
     p.Radius      = j["radius"];
     p.TriggerType = (ETriggerType)j.value("trigger_type", 0);
-    p.PlaneWidth  = j.value("plane_width", 10.0f);
-    p.PlaneAngle  = j.value("plane_angle", 0.0f);
+    p.PlaneWidth  = j.value("plane_width", 10.0f); // Default: 10 m wide
+    p.PlaneAngle  = j.value("plane_angle", 0.0f);  // Default: facing north
 }
 
-// --- Route ---
+// ===========================================================================
+// Route  —  SaveRoute / LoadRoute
+// ===========================================================================
 
+// ---------------------------------------------------------------------------
+// SaveRoute
+// ---------------------------------------------------------------------------
+// Serialises the route's checkpoint list to a JSON array and writes it to
+// filepath, creating any missing parent directories first.
+// Each array element contains the checkpoint's spatial data (via
+// SerializePoint) plus its name and start/goal flags.
+// ---------------------------------------------------------------------------
 bool SaveRoute(const std::string& filepath, const Route& route)
 {
     try
@@ -87,7 +139,7 @@ bool SaveRoute(const std::string& filepath, const Route& route)
 
         std::ofstream file(filepath);
         if (!file.is_open()) return false;
-        file << j.dump(4);
+        file << j.dump(4); // Pretty-print with 4-space indent for human readability
         if (ShowDebug)
             APIDefs->Log(LOGL_DEBUG, "Split Wars 2", ("Route saved: " + fs::path(filepath).stem().string()).c_str());
         return true;
@@ -95,6 +147,23 @@ bool SaveRoute(const std::string& filepath, const Route& route)
     catch (...) { return false; }
 }
 
+// ---------------------------------------------------------------------------
+// LoadRoute
+// ---------------------------------------------------------------------------
+// Reads and validates a route .json file, populating route and routeName.
+//
+// Validation pipeline:
+//   1. Structural check — must be a JSON array (not an object, which would
+//      indicate the old SW2 format that used "start"/"goal"/"checkpoints" keys).
+//   2. Per-entry field check — every entry must have mapid, x, y, z, radius.
+//      Missing fields likely indicate a hand-edited or truncated file.
+//   3. Duplicate start/goal correction — if a manually edited file has more
+//      than one start or goal flag, only the first is kept and a warning is
+//      logged so the user knows the file was auto-corrected.
+//
+// Parse errors extract the line number from nlohmann's error message and
+// produce a plain-English log entry pointing the user at the right line.
+// ---------------------------------------------------------------------------
 bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName)
 {
     try
@@ -104,11 +173,12 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 
         json j = json::parse(file);
         std::string filename = fs::path(filepath).filename().string();
-        routeName = fs::path(filepath).stem().string();
+        routeName = fs::path(filepath).stem().string(); // File name without extension = route display name
 
         // --- Structural validation ---
 
-        // Old SW2 format used an object with "start", "goal", "checkpoints" keys
+        // The old SW2 format was an object with "start", "goal", "checkpoints" keys.
+        // We can't migrate it automatically so we reject it with a clear message.
         if (j.is_object())
         {
             if (APIDefs)
@@ -119,7 +189,7 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
             return false;
         }
 
-        // Completely foreign file — not an array at all
+        // Completely foreign file — not a JSON array at all.
         if (!j.is_array())
         {
             if (APIDefs)
@@ -130,13 +200,13 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
             return false;
         }
 
-        // --- Per-entry validation ---
+        // --- Per-entry field validation ---
+        // These five fields are always required; plane_width/angle and
+        // trigger_type are optional (they have safe defaults in DeserializePoint).
         const char* requiredFields[] = { "mapid", "x", "y", "z", "radius" };
         for (int i = 0; i < (int)j.size(); i++)
         {
             const auto& cp = j[i];
-
-            // Check all required fields are present
             for (const char* field : requiredFields)
             {
                 if (!cp.contains(field))
@@ -165,8 +235,9 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
             route.Checkpoints.push_back(c);
         }
 
-        // --- Sanity check: only one start and one goal allowed ---
-        // If multiple are found (e.g. manual JSON edit), keep the first and auto-correct the rest
+        // --- Duplicate start/goal correction ---
+        // Keep the first occurrence of each flag and clear the rest, logging
+        // a warning so the user knows the file needed correcting.
         bool foundStart = false;
         bool foundGoal  = false;
         for (auto& cp : route.Checkpoints)
@@ -197,11 +268,8 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 
         route.IsValid = true;
 
-        if (APIDefs)
-        {
-            if (ShowDebug)
-                APIDefs->Log(LOGL_DEBUG, "Split Wars 2", ("Route loaded: " + routeName).c_str());
-        }
+        if (APIDefs && ShowDebug)
+            APIDefs->Log(LOGL_DEBUG, "Split Wars 2", ("Route loaded: " + routeName).c_str());
 
         return true;
     }
@@ -209,7 +277,8 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
     {
         if (APIDefs)
         {
-            // Extract line number from e.what() for a user-friendly message
+            // Extract the line number from nlohmann's error message so we can
+            // point the user at the exact location of the syntax error.
             std::string what(e.what());
             std::string lineInfo = "unknown line";
             size_t linePos = what.find("line ");
@@ -222,23 +291,43 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
             }
 
             std::string filename = fs::path(filepath).filename().string();
-            std::string friendly = "Something is wrong in " + filename + " around " + lineInfo + ". Please check for missing quotes, colons or brackets.";
+            std::string friendly = "Something is wrong in " + filename + " around " + lineInfo +
+                ". Please check for missing quotes, colons or brackets.";
             APIDefs->Log(LOGL_WARNING, "Split Wars 2", friendly.c_str());
 
             if (ShowDebug)
-                APIDefs->Log(LOGL_DEBUG, "Split Wars 2", e.what());
+                APIDefs->Log(LOGL_DEBUG, "Split Wars 2", e.what()); // Full technical error in debug mode
         }
         return false;
     }
     catch (...) { return false; }
 }
 
-// --- History ---
-// History is always stored as a sibling .history file next to the .json,
-// so the historyPath is the full absolute path (e.g. "…/Fractals/Nightmare.history").
-// This means two routes with identical display names in different folders
-// will never collide.
-bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestRun, const std::vector<HistoricalRun>& runs, int bestRunIndex)
+// ===========================================================================
+// History  —  SaveHistory / LoadHistory
+// ===========================================================================
+// History is stored in a .history file that lives alongside its .json route.
+// Using a full absolute path (rather than just a name) means two routes with
+// the same display name in different sub-folders never collide.
+
+// ---------------------------------------------------------------------------
+// SaveHistory
+// ---------------------------------------------------------------------------
+// Writes the full run history and the index of the designated best run to
+// the .history file.  bestRunIndex = -1 means no best run is set.
+//
+// Format:
+//   {
+//     "best_run_index": 0,
+//     "history": [
+//       { "date": "…", "total_time": 123.4, "grand_total": 130.0,
+//         "splits": [ { "name": "…", "timestamp": 45.6 }, … ] },
+//       …
+//     ]
+//   }
+// ---------------------------------------------------------------------------
+bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestRun,
+                 const std::vector<HistoricalRun>& runs, int bestRunIndex)
 {
     try
     {
@@ -271,7 +360,17 @@ bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestR
     catch (...) { return false; }
 }
 
-bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun, std::vector<HistoricalRun>& runs)
+// ---------------------------------------------------------------------------
+// LoadHistory
+// ---------------------------------------------------------------------------
+// Reads the .history file and populates runs and bestRun.
+// grand_total uses j.value() with a 0.0 default so history files saved
+// before the grand total feature was added still load without errors.
+// The best run is resolved by index: bestRun is set to the splits of the
+// run at best_run_index, or left empty if the index is -1 or out of range.
+// ---------------------------------------------------------------------------
+bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
+                 std::vector<HistoricalRun>& runs)
 {
     try
     {
@@ -286,7 +385,7 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun, st
             HistoricalRun run;
             run.Date       = rj["date"].get<std::string>();
             run.TotalTime  = rj["total_time"];
-            run.GrandTotal = rj.value("grand_total", 0.0);
+            run.GrandTotal = rj.value("grand_total", 0.0); // Default 0 for older history files
 
             for (const auto& s : rj["splits"])
             {
@@ -299,6 +398,7 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun, st
             runs.push_back(run);
         }
 
+        // Resolve the best run by index — copy its splits into bestRun.
         bestRun.clear();
         int bestIndex = j.value("best_run_index", -1);
         if (bestIndex >= 0 && bestIndex < (int)runs.size())
@@ -309,8 +409,15 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun, st
     catch (...) { return false; }
 }
 
-// --- Settings ---
+// ===========================================================================
+// Settings  —  SaveSettings / LoadSettings
+// ===========================================================================
 
+// ---------------------------------------------------------------------------
+// SaveSettings
+// ---------------------------------------------------------------------------
+// Writes all user preferences to settings.json in the addon directory.
+// ---------------------------------------------------------------------------
 bool SaveSettings(const std::string& addonDir, const Settings& settings)
 {
     try
@@ -318,16 +425,16 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
         fs::create_directories(addonDir);
 
         json j = {
-            {"show_timer",          settings.ShowTimer},
-            {"show_config",         settings.ShowConfig},
-            {"show_zones",          settings.ShowZones},
-            {"show_debug",          settings.ShowDebug},
-            {"timer_display_mode",  settings.TimerDisplayMode},
-            {"compact_mode",        settings.CompactMode},
-            {"show_history",        settings.ShowHistory},
-            {"show_grand_total",    settings.ShowGrandTotal},
-            {"show_route_browser",  settings.ShowRouteBrowser},
-            {"max_history_runs",    settings.MaxHistoryRuns}
+            {"show_timer",         settings.ShowTimer},
+            {"show_config",        settings.ShowConfig},
+            {"show_zones",         settings.ShowZones},
+            {"show_debug",         settings.ShowDebug},
+            {"timer_display_mode", settings.TimerDisplayMode},
+            {"compact_mode",       settings.CompactMode},
+            {"show_history",       settings.ShowHistory},
+            {"show_grand_total",   settings.ShowGrandTotal},
+            {"show_route_browser", settings.ShowRouteBrowser},
+            {"max_history_runs",   settings.MaxHistoryRuns}
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -339,6 +446,13 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
     catch (...) { return false; }
 }
 
+// ---------------------------------------------------------------------------
+// LoadSettings
+// ---------------------------------------------------------------------------
+// Reads settings.json and fills the Settings struct.
+// Every field uses j.value() with a sensible default so a settings file that
+// pre-dates a newly added option still loads cleanly.
+// ---------------------------------------------------------------------------
 bool LoadSettings(const std::string& addonDir, Settings& settings)
 {
     try
@@ -348,24 +462,31 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         if (!file.is_open()) return false;
 
         json j = json::parse(file);
-        settings.ShowTimer          = j.value("show_timer",         true);
-        settings.ShowConfig         = j.value("show_config",        true);
-        settings.ShowZones          = j.value("show_zones",         true);
-        settings.ShowDebug          = j.value("show_debug",         false);
-        settings.TimerDisplayMode   = j.value("timer_display_mode", 1);
-        settings.CompactMode        = j.value("compact_mode",       false);
-        settings.ShowHistory        = j.value("show_history",       false);
-        settings.ShowGrandTotal     = j.value("show_grand_total",   false);
-        settings.ShowRouteBrowser   = j.value("show_route_browser", false);
-        settings.MaxHistoryRuns     = j.value("max_history_runs",   10);
+        settings.ShowTimer        = j.value("show_timer",         true);
+        settings.ShowConfig       = j.value("show_config",        true);
+        settings.ShowZones        = j.value("show_zones",         true);
+        settings.ShowDebug        = j.value("show_debug",         false);
+        settings.TimerDisplayMode = j.value("timer_display_mode", 1);
+        settings.CompactMode      = j.value("compact_mode",       false);
+        settings.ShowHistory      = j.value("show_history",       false);
+        settings.ShowGrandTotal   = j.value("show_grand_total",   false);
+        settings.ShowRouteBrowser = j.value("show_route_browser", false);
+        settings.MaxHistoryRuns   = j.value("max_history_runs",   10);
         return true;
     }
     catch (...) { return false; }
 }
 
-// --- Route tree ---
+// ===========================================================================
+// Route tree  —  BuildRouteTree
+// ===========================================================================
 
-// Derives the .history path from a .json path: same location, swaps extension.
+// ---------------------------------------------------------------------------
+// HistoryPathFromJsonPath  (file-private helper)
+// ---------------------------------------------------------------------------
+// Derives the .history file path from a .json path by swapping the extension.
+// e.g. "…/Routes/Fractals/Nightmare.json" → "…/Routes/Fractals/Nightmare.history"
+// ---------------------------------------------------------------------------
 static std::string HistoryPathFromJsonPath(const std::string& jsonPath)
 {
     fs::path p(jsonPath);
@@ -373,31 +494,42 @@ static std::string HistoryPathFromJsonPath(const std::string& jsonPath)
     return p.string();
 }
 
-// Recursively builds a RouteFolder for the given directory.
-// Subfolders become RouteFolder children; .json files (excluding settings.json)
-// become RouteFile entries sorted alphabetically.
+// ---------------------------------------------------------------------------
+// BuildFolderNode  (file-private recursive helper)
+// ---------------------------------------------------------------------------
+// Recursively scans a directory and returns a RouteFolder node containing:
+//   SubFolders — one child RouteFolder per sub-directory (recursive)
+//   Routes     — one RouteFile per .json file (excluding settings.json)
+//
+// Entries are sorted: directories first (alphabetical), then files
+// (alphabetical) — matching the convention most file browsers use.
+//
+// settings.json is excluded because it lives in the root addon directory and
+// is not a route file; including it would show it as a selectable route.
+// ---------------------------------------------------------------------------
 static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
 {
     RouteFolder node;
     node.FolderName = dir.filename().string();
     node.FolderPath = dir.string();
 
-    // If this is the root, use a friendlier display name
+    // The root node gets an empty name; the browser renders it as "[ root ]".
     if (dir == rootDir)
         node.FolderName = "";
 
     try
     {
+        // Collect all entries first so we can sort them before processing.
         std::vector<fs::directory_entry> entries;
         for (const auto& entry : fs::directory_iterator(dir))
             entries.push_back(entry);
 
-        // Sort: directories first (alphabetical), then files (alphabetical)
+        // Sort: directories before files; alphabetical within each group.
         std::sort(entries.begin(), entries.end(), [](const fs::directory_entry& a, const fs::directory_entry& b)
         {
             bool aDir = a.is_directory();
             bool bDir = b.is_directory();
-            if (aDir != bDir) return aDir > bDir;
+            if (aDir != bDir) return aDir > bDir; // Directories sort before files
             return a.path().filename().string() < b.path().filename().string();
         });
 
@@ -408,11 +540,11 @@ static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
                 node.SubFolders.push_back(BuildFolderNode(entry.path(), rootDir));
             }
             else if (entry.is_regular_file() &&
-                    entry.path().extension() == ".json" &&
-                    entry.path().filename() != "settings.json")
+                     entry.path().extension() == ".json" &&
+                     entry.path().filename() != "settings.json") // Exclude the settings file
             {
                 RouteFile rf;
-                rf.Name        = entry.path().stem().string();
+                rf.Name        = entry.path().stem().string(); // Display name = filename without extension
                 rf.Filepath    = entry.path().string();
                 rf.HistoryPath = HistoryPathFromJsonPath(rf.Filepath);
                 node.Routes.push_back(rf);
@@ -424,6 +556,13 @@ static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
     return node;
 }
 
+// ---------------------------------------------------------------------------
+// BuildRouteTree
+// ---------------------------------------------------------------------------
+// Public entry point: scans the entire addon directory and returns the root
+// RouteFolder.  Returns an empty RouteFolder if the directory doesn't exist
+// yet (e.g. first launch before any routes have been saved).
+// ---------------------------------------------------------------------------
 RouteFolder BuildRouteTree(const std::string& addonDir)
 {
     fs::path root(addonDir);
