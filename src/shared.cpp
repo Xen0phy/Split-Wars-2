@@ -52,8 +52,9 @@ int       MaxHistoryRuns   = 10;               // How many runs to keep in the h
 // ---------------------------------------------------------------------------
 // History / best run data
 // ---------------------------------------------------------------------------
-std::vector<Split>         BestRun;     // Splits of the run designated as the best; used for diffs
-std::vector<HistoricalRun> HistoryRuns; // All recorded runs for the current route, newest first
+std::vector<Split>         BestRun;      // Splits of the run designated as the best; used for diffs
+std::vector<HistoricalRun> HistoryRuns;  // All recorded runs for the current route, newest first
+int                        BestRunIndex = -1; // Index into HistoryRuns of the best run; -1 = none set
 
 // ---------------------------------------------------------------------------
 // Per-run state flags
@@ -61,6 +62,7 @@ std::vector<HistoricalRun> HistoryRuns; // All recorded runs for the current rou
 bool   RunFinished         = false; // Set when a goal trigger fires; cleared after post-run UI actions
 double DisplayedGrandTotal = 0.0;   // Grand total shown in the overlay; updated each frame in AddonRender()
 bool   PendingStart        = false; // Set on a MapChange start trigger; cleared when the load screen ends
+double pendingGrandStop    = -1.0;  // GrandTimer snapshot taken at MapChange goal detection; -1.0 = no snapshot pending.
 
 // ---------------------------------------------------------------------------
 // Thread-safety
@@ -103,6 +105,8 @@ void FullReset()
 {
     SpeedrunTimer.Reset();
     GrandTimer.Reset();
+    DisplayedGrandTotal = 0.0;
+    pendingGrandStop = -1.0;
     RunFinished      = false;
     PendingStart     = false;
     WasInCircleStart = false;

@@ -25,6 +25,7 @@ void RenderTimerOverlay();
 void RenderConfigWindow();
 void RenderHistoryWindow();
 void RenderRouteBrowserWindow();
+void RenderDebugWindow();
 
 // ---------------------------------------------------------------------------
 // Time formatting helpers (implemented in renderer_shared.cpp)

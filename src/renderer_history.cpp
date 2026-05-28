@@ -46,9 +46,10 @@ void RenderHistoryWindow()
             if (ImGui::Button("Yes, clear"))
             {
                 HistoryRuns.clear();
-                // Persist the now-empty history to disk so it stays clear after a reload.
+                BestRun.clear();
+                BestRunIndex = -1;
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, -1);
+                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -93,19 +94,13 @@ void RenderHistoryWindow()
             {
                 const HistoricalRun& run = HistoryRuns[i];
 
-                // Check whether this run is the currently active "best run".
-                // We match by comparing the final split timestamp rather than storing
-                // a direct index, so the match survives saves/reloads.
-                bool isActiveBest = !BestRun.empty() &&
-                    !run.Splits.empty() &&
-                    std::abs(run.TotalTime - BestRun.back().Timestamp) < 0.001;
-
                 bool isFastest = std::abs(run.TotalTime - fastestTime) < 0.001;
 
                 ImGui::TableNextRow();
-
+                
+                // Check whether this run is the currently active "best run".
                 // Highlight the active best run row with a subtle green background.
-                if (isActiveBest)
+                if (i == BestRunIndex)
                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
                         IM_COL32(50, 80, 50, 150));
 
@@ -193,10 +188,10 @@ void RenderHistoryWindow()
                 {
                     if (ImGui::MenuItem("Set as best"))
                     {
-                        BestRun = run.Splits;
-                        // Persist immediately so the best run survives a reload.
+                        BestRun      = run.Splits;
+                        BestRunIndex = i; // Store the index directly — no timestamp matching needed
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, i);
+                            SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
                     }
                     ImGui::Spacing();
                     ImGui::Separator();
@@ -218,22 +213,24 @@ void RenderHistoryWindow()
             if (removeIndex >= 0)
             {
                 HistoryRuns.erase(HistoryRuns.begin() + removeIndex);
-            
-                // Re-locate the best run by matching its final split timestamp.
-                int bestIndex = -1;
-                if (!BestRun.empty())
+
+                // Adjust BestRunIndex using simple arithmetic — no timestamp
+                // matching needed now that we track the index directly.
+                if (BestRunIndex == removeIndex)
                 {
-                    for (int i = 0; i < (int)HistoryRuns.size(); i++)
-                    {
-                        if (std::abs(HistoryRuns[i].TotalTime - BestRun.back().Timestamp) < 0.001)
-                        {
-                            bestIndex = i;
-                            break;
-                        }
-                    }
+                    // The best run itself was deleted — clear it.
+                    BestRun.clear();
+                    BestRunIndex = -1;
                 }
+                else if (BestRunIndex > removeIndex)
+                {
+                    // A run before the best run was deleted — shift the index down by one.
+                    BestRunIndex--;
+                }
+                // If BestRunIndex < removeIndex the best run is unaffected.
+
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, bestIndex);
+                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
             }
         }
     }

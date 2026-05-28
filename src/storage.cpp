@@ -40,12 +40,14 @@ std::string GetAddonDir()
 {
     char path[MAX_PATH];
     HMODULE hm = nullptr;
-    GetModuleHandleExA(
+    if (!GetModuleHandleExA(
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
         GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        (LPCSTR)&GetAddonDir, // Use this function's own address as the landmark
-        &hm
-    );
+        (LPCSTR)&GetAddonDir,
+        &hm) && APIDefs)
+    {
+        APIDefs->Log(LOGL_WARNING, "Split Wars 2", "GetModuleHandleExA failed — addon directory may be incorrect.");
+    }
     GetModuleFileNameA(hm, path, sizeof(path));
 
     std::string fullPath(path);
@@ -370,7 +372,7 @@ bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestR
 // run at best_run_index, or left empty if the index is -1 or out of range.
 // ---------------------------------------------------------------------------
 bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
-                 std::vector<HistoricalRun>& runs)
+                 std::vector<HistoricalRun>& runs, int& outBestIndex)
 {
     try
     {
@@ -401,8 +403,9 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
         // Resolve the best run by index — copy its splits into bestRun.
         bestRun.clear();
         int bestIndex = j.value("best_run_index", -1);
-        if (bestIndex >= 0 && bestIndex < (int)runs.size())
-            bestRun = runs[bestIndex].Splits;
+        outBestIndex  = (bestIndex >= 0 && bestIndex < (int)runs.size()) ? bestIndex : -1;
+        if (outBestIndex >= 0)
+            bestRun = runs[outBestIndex].Splits;
 
         return true;
     }

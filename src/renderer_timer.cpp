@@ -299,18 +299,10 @@ void RenderTimerOverlay()
 
             if (ImGui::Button("Save as best"))
             {
-                BestRun = splits;
-                // Ensure the best run always ends with a "Goal" split so the
-                // timestamp-based best-run matching in history works correctly.
-                if (BestRun.empty() || strcmp(BestRun.back().Name, "Goal") != 0)
-                {
-                    Split goalSplit;
-                    strncpy(goalSplit.Name, "Goal", sizeof(goalSplit.Name) - 1);
-                    goalSplit.Timestamp = elapsed;
-                    BestRun.push_back(goalSplit);
-                }
+                BestRun      = splits;
+                BestRunIndex = 0; // Newest run is always inserted at index 0
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, 0);
+                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
                 RunFinished = false;
             }
 

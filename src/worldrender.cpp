@@ -21,7 +21,6 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 // ---------------------------------------------------------------------------
 // WorldToScreen  (file-private)
@@ -45,7 +44,7 @@
 //   5. Apply a perspective divide using the horizontal FOV, then remap
 //      from [-1,1] NDC to pixel coordinates.
 // ---------------------------------------------------------------------------
-static bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
+bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
 {
     Vector3 camPos   = MumbleLink->CameraPosition;
     Vector3 camFront = MumbleLink->CameraFront;
@@ -221,40 +220,6 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
             point.Y + std::sin(a) * point.Radius,          // Vertical component
             point.Z + std::cos(a) *  dx   * point.Radius); // Perpendicular on Z
     });
-
-    // --- Debug overlay (only shown when ShowDebug is on) ---
-    // Draws the centre dot and coordinate text so route authors can verify
-    // that the checkpoint is placed at the right world position.
-    if (ShowDebug)
-    {
-        float sx, sy;
-        bool valid = WorldToScreen(point.X, point.Y, point.Z, sx, sy);
-
-        float lineH = ImGui::GetTextLineHeight() + 2.0f;
-        float dbgX  = 400.0f;
-        float dbgY  = 100.0f + debugOffsetY;
-
-        char buf[128];
-        snprintf(buf, sizeof(buf), "CENTER: %s", valid ? "VALID" : "INVALID");
-        dl->AddText(ImVec2(dbgX, dbgY), IM_COL32(255,255,0,255), buf);
-
-        snprintf(buf, sizeof(buf), "pos: %.1f %.1f %.1f", point.X, point.Y, point.Z);
-        dl->AddText(ImVec2(dbgX, dbgY + lineH), IM_COL32(255,255,0,255), buf);
-
-        snprintf(buf, sizeof(buf), "cam: %.1f %.1f %.1f",
-            MumbleLink->CameraPosition.X,
-            MumbleLink->CameraPosition.Y,
-            MumbleLink->CameraPosition.Z);
-        dl->AddText(ImVec2(dbgX, dbgY + lineH*2), IM_COL32(255,255,0,255), buf);
-
-        snprintf(buf, sizeof(buf), "screen: %.1f %.1f", sx, sy);
-        dl->AddText(ImVec2(dbgX, dbgY + lineH*3), IM_COL32(255,255,0,255), buf);
-
-        // Draw a filled dot at the projected centre position
-        if (valid)
-            dl->AddCircleFilled(ImVec2(sx, sy), 10.0f,
-                IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 255));
-    }
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,14 @@
 #include "route.h"
 
 // ---------------------------------------------------------------------------
+// WorldToScreen
+// ---------------------------------------------------------------------------
+// Projects a world-space point (wx, wy, wz) onto screen space (sx, sy).
+// Returns false when the point is behind the camera or far off-screen.
+// ---------------------------------------------------------------------------
+bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy);
+
+// ---------------------------------------------------------------------------
 // RenderZoneCircle
 // ---------------------------------------------------------------------------
 // Draws two projected rings (one horizontal, one vertical billboard) around

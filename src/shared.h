@@ -77,6 +77,11 @@ extern int  MaxHistoryRuns; // Cap on how many runs are kept in the history list
 // ---------------------------------------------------------------------------
 extern std::vector<Split>         BestRun;     // Splits of the designated best run; drives the diff column
 extern std::vector<HistoricalRun> HistoryRuns; // All recorded runs, newest first
+// Index of the best run inside HistoryRuns (-1 = none set).
+// Stored as a plain int so SaveHistory can write it to the .history file
+// without the fragile timestamp-matching that was used previously.
+// Updated whenever the best run changes and adjusted after deletions.
+extern int BestRunIndex;
 
 // ---------------------------------------------------------------------------
 // Per-run state flags
@@ -84,6 +89,7 @@ extern std::vector<HistoricalRun> HistoryRuns; // All recorded runs, newest firs
 extern bool   RunFinished;         // Set when a goal trigger fires; cleared by post-run UI actions
 extern double DisplayedGrandTotal; // Grand total shown in the overlay; frozen at goal for MapChange runs
 extern bool   PendingStart;        // Queued MapChange start; fires once the load screen clears
+extern double pendingGrandStop;    // GrandTimer snapshot taken at MapChange goal detection; -1.0 = no snapshot pending.
 
 // ---------------------------------------------------------------------------
 // Thread-safety

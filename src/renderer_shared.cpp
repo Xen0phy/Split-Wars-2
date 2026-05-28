@@ -161,7 +161,8 @@ void LoadRouteFile(const RouteFile& rf)
 
     BestRun.clear();
     HistoryRuns.clear();
-    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns);
+    BestRunIndex = -1;
+    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
 
     FullReset();
     CurrentRoute.IsValid = true;

@@ -38,7 +38,10 @@ void Timer::Start()
 void Timer::Stop()
 {
     if (!m_Running) return;
-    m_StopTime = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (m_Paused)
+        m_PausedDuration += std::chrono::duration<double>(now - m_PauseTime).count();
+    m_StopTime = now;
     m_Running  = false;
     m_Finished = true;
     m_Paused   = false;
@@ -85,7 +88,7 @@ void Timer::Pause()
 void Timer::Resume()
 {
     if (!m_Running || !m_Paused) return;
-    auto now          = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
     m_PausedDuration += std::chrono::duration<double>(now - m_PauseTime).count();
     m_Paused          = false;
 }
