@@ -11,6 +11,7 @@
 // The window is only drawn when ShowDebug is true.
 // All data is read directly from shared globals — no copies are made.
 
+#include "imgui.h"
 #include "renderer_shared.h"
 #include "shared.h"
 #include "worldrender.h"
@@ -89,6 +90,7 @@ void RenderDebugWindow()
         // whether RTAPI is connected, useful when debugging position discrepancies.
         ImGui::Text("Source: %s", GS.ActiveSource == EDataSource::RTAPI ? "RTAPI" : "Mumble");
         ImGui::Text("RTAPI: %s",  GS.RTAPIAvailable ? "Available" : "Unavailable");
+        ImGui::Text("FOV: %f", GS.FOV);
 
         // --- Timer column ---
         ImGui::TableSetColumnIndex(1);

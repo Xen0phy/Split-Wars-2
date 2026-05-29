@@ -84,6 +84,7 @@ extern GameState GS;
 // Called once per frame at the top of AddonRender() to populate GS.
 // ---------------------------------------------------------------------------
 void UpdateGameState();
+void SetMumbleFOV(float fov);
 
 // ---------------------------------------------------------------------------
 // Timers
@@ -95,7 +96,6 @@ extern Timer GrandTimer;    // Wall-clock timer; includes load screen time
 // Route state
 // ---------------------------------------------------------------------------
 extern Route       CurrentRoute;
-extern float       CameraFOV;            // Camera field of view in radians; kept in sync via identity event
 extern std::string CurrentRouteName;     // Display name of the active route
 extern std::string CurrentRouteFilepath; // Full path to the loaded .json file; empty if unsaved
 extern std::string CurrentHistoryPath;   // Full path to the paired .history file

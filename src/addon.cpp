@@ -21,7 +21,6 @@ void AddonLoad(AddonAPI_t* aApi);
 void AddonUnload();
 void AddonRender();
 void AddonOptions();
-void HandleIdentityUpdate(void* aEventArgs);
 
 // ---------------------------------------------------------------------------
 // GetAddonDef
@@ -39,7 +38,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name               = "Split Wars 2";
     AddonDef.Version.Major      = 0;
     AddonDef.Version.Minor      = 17;
-    AddonDef.Version.Build      = 0;
+    AddonDef.Version.Build      = 1;
     AddonDef.Version.Revision   = 1;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
@@ -305,6 +304,21 @@ static const struct { const char* ID; KeybindHandler Fn; } Keybinds[] =
 };
 
 // ---------------------------------------------------------------------------
+// HandleIdentityUpdate
+// ---------------------------------------------------------------------------
+// Nexus fires this event whenever the player's identity changes (character
+// swap, FOV slider, etc.).  We only care about FOV so we can pass it on to
+// the world-space overlay renderer (worldrender.cpp).
+// ---------------------------------------------------------------------------
+void HandleIdentityUpdate(void* aEventArgs)
+{
+    if (!aEventArgs) return;
+    Mumble::Identity* identity = (Mumble::Identity*)aEventArgs;
+    SetMumbleFOV(identity->FOV);
+}
+
+
+// ---------------------------------------------------------------------------
 // AddonLoad
 // ---------------------------------------------------------------------------
 // Called once by Nexus after the DLL is loaded.  This is where we do all
@@ -362,7 +376,7 @@ void AddonLoad(AddonAPI_t* aApi)
     // Register the per-frame render callback and the Nexus options panel callback.
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
-
+ 
     // Subscribe to identity updates so we can keep CameraFOV in sync.
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
 
@@ -428,20 +442,6 @@ void AddonUnload()
 }
 
 // ---------------------------------------------------------------------------
-// HandleIdentityUpdate
-// ---------------------------------------------------------------------------
-// Nexus fires this event whenever the player's identity changes (character
-// swap, FOV slider, etc.).  We only care about FOV so we can pass it on to
-// the world-space overlay renderer (worldrender.cpp).
-// ---------------------------------------------------------------------------
-void HandleIdentityUpdate(void* aEventArgs)
-{
-    if (!aEventArgs) return;
-    Mumble::Identity* identity = (Mumble::Identity*)aEventArgs;
-    CameraFOV = identity->FOV;
-}
-
-// ---------------------------------------------------------------------------
 // PointTriggered  (file-private helper)
 // ---------------------------------------------------------------------------
 // Checks whether a single RoutePoint was triggered this frame given the
@@ -485,7 +485,6 @@ void AddonRender()
     UpdateGameState(); // populate GS from whichever source is active
 
     // --- Per-frame state (persists between calls via static locals) ---
-    static unsigned int lastUITick       = 0;
     static bool         wasLoading       = false;
     static Vector3      prevPos          = {0, 0, 0};
     static unsigned int prevMapID        = 0;

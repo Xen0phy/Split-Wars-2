@@ -92,7 +92,8 @@ bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
     // Step 5 — perspective projection.
     ImGuiIO& io  = ImGui::GetIO();
     float aspect = io.DisplaySize.x / io.DisplaySize.y;
-    float f      = 1.0f / std::tan(CameraFOV * 0.5f);
+    float fov = (GS.FOV > 0.01f) ? GS.FOV : 0.873f;
+    float f   = 1.0f / std::tan(fov * 0.5f);
 
     float px =  vx * (f / aspect) / vz;
     float py = -vy * f / vz;
@@ -173,32 +174,6 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
     float fadeEnd   = point.Radius * 0.8f;
     float alpha = std::clamp((camDist - fadeEnd) / (fadeStart - fadeEnd), 0.0f, 1.0f);
 
-    const int steps = 64;
-
-    // --- Wireframe rings ---
-    auto DrawRing = [&](auto getPoint, int ringAlpha)
-    {
-        float prevSx = 0, prevSy = 0;
-        bool  prevValid = false;
-        ImU32 color = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), ringAlpha);
-
-        for (int i = 0; i <= steps; i++)
-        {
-            float angle = (float)i / steps * 2.0f * 3.14159265f;
-            auto [wx, wy, wz] = getPoint(angle);
-
-            float sx, sy;
-            bool valid = WorldToScreen(wx, wy, wz, sx, sy);
-
-            if (valid && prevValid)
-                dl->AddLine(ImVec2(prevSx, prevSy), ImVec2(sx, sy), color, 2.0f);
-
-            prevSx    = sx;
-            prevSy    = sy;
-            prevValid = valid;
-        }
-    };
-
     if (point.DotSphereCount > 0)
     {
         const float PI = 3.14159265f;
@@ -264,6 +239,31 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
     {
         // --- Default mode ---
         // Horizontal ring + filled base band.
+        const int steps = 64;
+
+        // --- Wireframe rings ---
+        auto DrawRing = [&](auto getPoint, int ringAlpha)
+        {
+            float prevSx = 0, prevSy = 0;
+            bool  prevValid = false;
+            ImU32 color = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), ringAlpha);
+    
+            for (int i = 0; i <= steps; i++)
+            {
+                float angle = (float)i / steps * 2.0f * 3.14159265f;
+                auto [wx, wy, wz] = getPoint(angle);
+    
+                float sx, sy;
+                bool valid = WorldToScreen(wx, wy, wz, sx, sy);
+    
+                if (valid && prevValid)
+                    dl->AddLine(ImVec2(prevSx, prevSy), ImVec2(sx, sy), color, 2.0f);
+    
+                prevSx    = sx;
+                prevSy    = sy;
+                prevValid = valid;
+            }
+        };
 
         // Horizontal ring — flat on the XZ plane at point.Y
         DrawRing([&](float a) {
@@ -384,7 +384,7 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float d
 
     // --- Lower band: bottom → mid, fully opaque ---
     // Two triangles forming the solid quad.
-    if (v0 && v1 && v2 && v3)
+    /*if (v0 && v1 && v2 && v3)
     {
         DrawGradientTriangle(dl,
             ImVec2(s0x, s0y), solidColor,
@@ -394,17 +394,17 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float d
             ImVec2(s1x, s1y), solidColor,
             ImVec2(s3x, s3y), solidColor,
             ImVec2(s2x, s2y), solidColor);
-    }
+    }*/
 
     // --- Upper band: mid → top, fading to transparent ---
-    if (v2 && v3 && v4 && v5)
+    if (v0 && v1 && v4 && v5)
     {
         DrawGradientTriangle(dl,
-            ImVec2(s2x, s2y), solidColor,
-            ImVec2(s3x, s3y), solidColor,
+            ImVec2(s0x, s0y), solidColor,
+            ImVec2(s1x, s1y), solidColor,
             ImVec2(s4x, s4y), fadeColor);
         DrawGradientTriangle(dl,
-            ImVec2(s3x, s3y), solidColor,
+            ImVec2(s1x, s1y), solidColor,
             ImVec2(s5x, s5y), fadeColor,
             ImVec2(s4x, s4y), fadeColor);
     }

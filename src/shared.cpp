@@ -41,6 +41,9 @@ GameState GS = {};
 // IsLoading is derived from RTAPI's GameState enum when RTAPI is active;
 // Mumble does not expose a reliable loading flag so it is always false there.
 // ---------------------------------------------------------------------------
+
+static float s_MumbleFOV = 0.873f;              // updated by SetMumbleFOV() via the identity event
+void SetMumbleFOV(float fov) { s_MumbleFOV = fov; }
 void UpdateGameState()
 {
     bool rtapiLive = RTAPIData != nullptr && RTAPIData->GameBuild != 0;
@@ -83,7 +86,7 @@ void UpdateGameState()
         GS.CameraFrontX  = MumbleLink->CameraFront.X;
         GS.CameraFrontY  = MumbleLink->CameraFront.Y;
         GS.CameraFrontZ  = MumbleLink->CameraFront.Z;
-        GS.FOV           = CameraFOV;
+        GS.FOV           = s_MumbleFOV;
         GS.MapID         = MumbleLink->Context.MapID;
         GS.IsInCombat    = MumbleLink->Context.IsInCombat;
         GS.IsMapOpen     = MumbleLink->Context.IsMapOpen;
@@ -91,7 +94,6 @@ void UpdateGameState()
         lastUITick       = MumbleLink->UITick;
     }
 }
-
 // ---------------------------------------------------------------------------
 // Timers
 // ---------------------------------------------------------------------------
@@ -102,7 +104,6 @@ Timer GrandTimer;    // Measures wall-clock run time including load screens
 // Route state
 // ---------------------------------------------------------------------------
 Route       CurrentRoute;
-float       CameraFOV            = 0.873f;      // Radians (~50°); updated via EV_MUMBLE_IDENTITY_UPDATED
 std::string CurrentRouteName     = "New Route"; // Display name shown in the config and history windows
 std::string CurrentRouteFilepath;               // Full path to the loaded .json file; empty if unsaved
 std::string CurrentHistoryPath;                 // Full path to the paired .history file

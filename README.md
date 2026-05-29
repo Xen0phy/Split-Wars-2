@@ -9,6 +9,7 @@
 > **Requirements & Installation**
 >
 > - Requires the [Nexus](https://raidcore.gg/Nexus) addon loader and Guild Wars 2
+>> - Optional: [Real time API](https://github.com/TyrianDeveloperCollective/GW2-RealTime-API-Releases) for more precision.
 > - Download the latest `.dll` from [Releases](../../releases) and place it in your Nexus addons folder (`Guild Wars 2/addons`)
 > - In Nexus, find Split Wars 2 in the addon list and press **Load**
 
@@ -28,7 +29,7 @@ Each checkpoint (including start and goal) supports multiple trigger modes:
 | **Plane** | Fires when you cross a line of configurable width and angle, from either side | Line |
 | **Map Change** | Fires on leaving a specified map | — |
 | **Interact** | Fires when you press your interact key inside a zone | Ring |
-| **Combat (Mumble)** | Arms when you enter the area; fires when you enter combat, then fires again when combat ends (2 s grace period to prevent false out-of-combat triggers) | Ring |
+| **Combat (Native)** | Arms when you enter the area; fires when you enter combat, then fires again when combat ends (2 s grace period to prevent false out-of-combat triggers) | Ring |
 | **All Checkpoints** *(goal only)* | Fires once every non-start/non-goal checkpoint has been triggered | — |
 
 ### 📊 Three Timer Display Modes
@@ -59,7 +60,3 @@ A toggle that collapses the timer window to its minimal footprint.
 
 ### 🔁 Quick Access Hotbar Integration
 Split Wars 2 registers a **Nexus Quick Access** button with a hover state icon. A right-click context menu gives fast access to all windows.
-
----
-
-**Version 0.15.6.2** — initial pre-release · [Releases & Changelog](../../releases)

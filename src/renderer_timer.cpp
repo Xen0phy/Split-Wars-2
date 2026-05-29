@@ -282,6 +282,8 @@ void RenderTimerOverlay()
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 FormatTime(buf, sizeof(buf), grand);
+                float textWidth = ImGui::CalcTextSize(buf).x;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextDisabled("%s", buf); // Dimmed — secondary info
 
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
