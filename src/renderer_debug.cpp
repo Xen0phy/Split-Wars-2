@@ -12,7 +12,9 @@
 // All data is read directly from shared globals — no copies are made.
 
 #include "renderer_shared.h"
+#include "shared.h"
 #include "worldrender.h"
+#include <algorithm>
 
 // Index of the checkpoint currently selected in the left panel.
 // Persists across frames so the selection survives redraws.
@@ -251,6 +253,55 @@ void RenderDebugWindow()
                     ImDrawList* dl = ImGui::GetForegroundDrawList();
                     dl->AddCircleFilled(ImVec2(sx, sy), 10.0f, IM_COL32(255, 255, 0, 255));
                     dl->AddCircle(ImVec2(sx, sy), 12.0f, IM_COL32(0, 0, 0, 200), 0, 2.0f);
+                }
+
+                // Draw a dot on the game world at the projected centre so the author
+                // can visually confirm the checkpoint is placed at the right spot.
+                if (valid)
+                {
+                    ImDrawList* dl = ImGui::GetForegroundDrawList();
+                    dl->AddCircleFilled(ImVec2(sx, sy), 10.0f, IM_COL32(255, 255, 0, 255));
+                    dl->AddCircle(ImVec2(sx, sy), 12.0f, IM_COL32(0, 0, 0, 200), 0, 2.0f);
+                }
+
+                // Occlusion debug
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+                ImGui::Text("Occlusion:");
+
+                float playerSx, playerSy;
+                bool  playerValid = WorldToScreen(
+                    MumbleLink->AvatarPosition.X,
+                    MumbleLink->AvatarPosition.Y + 1.0f,
+                    MumbleLink->AvatarPosition.Z,
+                    playerSx, playerSy);
+
+                // Camera distance to player for occlusion radius scaling
+                float camToPlayerX = MumbleLink->CameraPosition.X - MumbleLink->AvatarPosition.X;
+                float camToPlayerY = MumbleLink->CameraPosition.Y - MumbleLink->AvatarPosition.Y;
+                float camToPlayerZ = MumbleLink->CameraPosition.Z - MumbleLink->AvatarPosition.Z;
+                float camToPlayer  = std::sqrt(camToPlayerX*camToPlayerX + camToPlayerY*camToPlayerY + camToPlayerZ*camToPlayerZ);
+        
+                // Radius in pixels — larger when camera is close, smaller when far
+                float occludeRadius = std::clamp(occludePixelRadius / (camToPlayer * 0.5f), 30.0f, occludePixelClamp);
+
+                ImGui::Text("  Player Screen: %.1f  %.1f", playerSx, playerSy);
+                ImGui::Text("  Player Valid:  %s", playerValid ? "Yes" : "No");
+                ImGui::Text("  Cam->Player:   %.3f m", camToPlayer);
+                ImGui::Text("  Occlude Radius: %.1f px", occludeRadius);
+                ImGui::SetNextItemWidth(80.0f);
+                ImGui::DragFloat("Pixel Radius", &occludePixelRadius, 1.0f, 0.0f, 0.0f, "%.0f");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(80.0f);
+                ImGui::DragFloat("Clamp High", &occludePixelClamp, 1.0f, 0.0f, 0.0f, "%.0f");
+
+                // Draw the occlusion circle on screen so we can see its actual size
+                if (playerValid)
+                {
+                    ImDrawList* dl = ImGui::GetForegroundDrawList();
+                    dl->AddCircle(ImVec2(playerSx, playerSy), occludeRadius,
+                        IM_COL32(255, 100, 0, 180), 0, 1.5f);
                 }
             }
         }

@@ -95,7 +95,8 @@ static json SerializePoint(const RoutePoint& p)
         {"radius",       p.Radius},
         {"trigger_type", (int)p.TriggerType},
         {"plane_width",  p.PlaneWidth},
-        {"plane_angle",  p.PlaneAngle}
+        {"plane_angle",  p.PlaneAngle},
+        {"dot_sphere_count", p.DotSphereCount}
     };
 }
 
@@ -109,6 +110,7 @@ static void DeserializePoint(const json& j, RoutePoint& p)
     p.TriggerType = (ETriggerType)j.value("trigger_type", 0);
     p.PlaneWidth  = j.value("plane_width", 10.0f); // Default: 10 m wide
     p.PlaneAngle  = j.value("plane_angle", 0.0f);  // Default: facing north
+    p.DotSphereCount = j.value("dot_sphere_count", 0);
 }
 
 // ===========================================================================
@@ -428,14 +430,16 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
         fs::create_directories(addonDir);
 
         json j = {
-            {"show_timer",         settings.ShowTimer},
-            {"show_config",        settings.ShowConfig},
-            {"show_zones",         settings.ShowZones},
-            {"show_debug",         settings.ShowDebug},
-            {"timer_display_mode", settings.TimerDisplayMode},
-            {"compact_mode",       settings.CompactMode},
-            {"show_history",       settings.ShowHistory},
-            {"show_grand_total",   settings.ShowGrandTotal},
+            {"show_timer",          settings.ShowTimer},
+            {"show_config",         settings.ShowConfig},
+            {"show_zones",          settings.ShowZones},
+            {"zone_fade_start",     settings.ZoneFadeStart},
+            {"zone_fade_end",       settings.ZoneFadeEnd},
+            {"show_debug",          settings.ShowDebug},
+            {"timer_display_mode",  settings.TimerDisplayMode},
+            {"compact_mode",        settings.CompactMode},
+            {"show_history",        settings.ShowHistory},
+            {"show_grand_total",    settings.ShowGrandTotal},
             {"show_route_browser", settings.ShowRouteBrowser},
             {"max_history_runs",   settings.MaxHistoryRuns}
         };
@@ -468,6 +472,8 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.ShowTimer        = j.value("show_timer",         true);
         settings.ShowConfig       = j.value("show_config",        true);
         settings.ShowZones        = j.value("show_zones",         true);
+        settings.ZoneFadeStart    = j.value("zone_fade_start",    50.0f);
+        settings.ZoneFadeEnd      = j.value("zone_fade_end",      150.0f);
         settings.ShowDebug        = j.value("show_debug",         false);
         settings.TimerDisplayMode = j.value("timer_display_mode", 1);
         settings.CompactMode      = j.value("compact_mode",       false);

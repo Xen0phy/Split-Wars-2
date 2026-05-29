@@ -90,6 +90,8 @@ struct Settings
     bool ShowTimer        = true;
     bool ShowConfig       = true;
     bool ShowZones        = true;
+    float ZoneFadeStart    = 50.0f;
+    float ZoneFadeEnd      = 150.0f;
     bool ShowDebug        = false;
     int  TimerDisplayMode = 1;     // Default: Split mode
     bool CompactMode      = false;

@@ -19,14 +19,25 @@ void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis)
     int hours   = (int)(elapsed / 3600);
     int minutes = (int)(elapsed / 60) % 60;
     int seconds = (int)(elapsed) % 60;
+
     if (showMillis)
     {
         int millis = (int)(elapsed * 1000) % 1000;
-        snprintf(buf, bufSize, "%02d:%02d:%02d.%03d", hours, minutes, seconds, millis);
+        if (hours > 0)
+            snprintf(buf, bufSize, "%d:%02d:%02d.%03d", hours, minutes, seconds, millis);
+        else if (minutes > 0)
+            snprintf(buf, bufSize, "%d:%02d.%03d", minutes, seconds, millis);
+        else
+            snprintf(buf, bufSize, "%d.%03d", seconds, millis);
     }
     else
     {
-        snprintf(buf, bufSize, "%02d:%02d:%02d", hours, minutes, seconds);
+        if (hours > 0)
+            snprintf(buf, bufSize, "%d:%02d:%02d", hours, minutes, seconds);
+        else if (minutes > 0)
+            snprintf(buf, bufSize, "%d:%02d", minutes, seconds);
+        else
+            snprintf(buf, bufSize, "%d", seconds);
     }
 }
 

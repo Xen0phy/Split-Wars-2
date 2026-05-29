@@ -11,6 +11,7 @@
 #include "renderer_shared.h"
 #include "worldrender.h"
 #include "hotbar_icon.h"
+#include <algorithm>
 
 // The global addon descriptor filled in by GetAddonDef() and handed to Nexus.
 AddonDefinition_t AddonDef{};
@@ -38,7 +39,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name               = "Split Wars 2";
     AddonDef.Version.Major      = 0;
     AddonDef.Version.Minor      = 16;
-    AddonDef.Version.Build      = 0;
+    AddonDef.Version.Build      = 4;
     AddonDef.Version.Revision   = 0;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
@@ -201,6 +202,8 @@ static void ApplySettings(const Settings& s)
     ShowTimer        = s.ShowTimer;
     ShowConfig       = s.ShowConfig;
     ShowZones        = s.ShowZones;
+    ZoneFadeEnd      = s.ZoneFadeEnd;
+    ZoneFadeStart    = s.ZoneFadeStart;
     ShowDebug        = s.ShowDebug;
     TimerDisplayMode = (TimerMode)s.TimerDisplayMode;
     CompactMode      = s.CompactMode;
@@ -217,6 +220,8 @@ static Settings GatherSettings()
     s.ShowTimer        = ShowTimer;
     s.ShowConfig       = ShowConfig;
     s.ShowZones        = ShowZones;
+    s.ZoneFadeStart    = ZoneFadeStart;
+    s.ZoneFadeEnd      = ZoneFadeEnd;
     s.ShowDebug        = ShowDebug;
     s.TimerDisplayMode = (int)TimerDisplayMode;
     s.CompactMode      = CompactMode;
@@ -994,20 +999,10 @@ void AddonRender()
 // ---------------------------------------------------------------------------
 void AddonOptions()
 {
+    //Timer related UI
     ImGui::Checkbox("Show Timer",         &ShowTimer);
     Tooltip("Toggles the speedrun timer overlay.");
-    ImGui::Checkbox("Show Route Config", &ShowConfig);
-    Tooltip("Toggles the route configuration window.");
-    ImGui::Checkbox("Show History",       &ShowHistory);
-    Tooltip("Toggles the history window.");
-    ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
-    Tooltip("Toggles the route file browser.");
-    ImGui::Checkbox("Show Checkpoints",   &ShowZones);
-    Tooltip("Toggles the visibility of checkpoints.");
-    ImGui::Checkbox("Show Debug", &ShowDebug);
-    Tooltip("Toggles debugging text which is not fully implemented");
-    ImGui::Separator();
-
+    ImGui::SameLine();
     // Cycle button — label reflects the current mode so the player always
     // knows what clicking it will do.
     const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
@@ -1023,21 +1018,71 @@ void AddonOptions()
             "LiveSplit - Each row shows the time for that segment only.\n"
             "            Diffs still show your overall lead or deficit,\n"
             "            matching the behaviour of LiveSplit.");
-    ImGui::Checkbox("Compact Mode",       &CompactMode);
-    Tooltip("Reduces the timer to one line.");
     ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
     Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
+    ImGui::SameLine();
+    ImGui::Checkbox("Compact Mode",       &CompactMode);
+    Tooltip("Reduces the timer to one line.");
     ImGui::Separator();
 
+    //Route related UI
+    ImGui::Checkbox("Show Route Config", &ShowConfig);
+    Tooltip("Toggles the route configuration window.");
+    ImGui::SameLine();
+    ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
+    Tooltip("Toggles the route file browser.");
+    ImGui::Checkbox("Show History",       &ShowHistory);
+    Tooltip("Toggles the history window.");
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(2.0f, ImGui::GetFrameHeight()));
+    ImGui::SameLine();
     // Max History Runs — clamped to [1, 100].
-    ImGui::Text("Max History Runs");
+    ImGui::Text("Max");
     Tooltip("Set an amount between 1 and 100.");
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(80.0f);
-    ImGui::InputInt("##maxruns", &MaxHistoryRuns, 0, 0);
-    if (MaxHistoryRuns < 1)   MaxHistoryRuns = 1;
-    if (MaxHistoryRuns > 100) MaxHistoryRuns = 100;
+    ImGui::DragInt("##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
     ImGui::Separator();
 
+    //Checkpoint/Zone related UI
+    ImGui::Checkbox("Show Checkpoints",   &ShowZones);
+    Tooltip("Toggles the visibility of checkpoints.");
+    ImGui::SameLine();
+    if (!ShowZones)
+    {
+        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
+    float prevStart = ZoneFadeStart;
+    float prevEnd   = ZoneFadeEnd;
+    ImGui::SetNextItemWidth(80.0f);
+    ImGui::DragFloat("##fadestart", &ZoneFadeStart, 1.0f, 0.0f, 0.0f, "%.0fm");
+    Tooltip("Distance at which zones start fading out (metres)");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80.0f);
+    ImGui::DragFloat("##fadeend", &ZoneFadeEnd, 1.0f, 0.0f, 0.0f, "%.0fm");
+    Tooltip("Distance at which zones are fully hidden (metres)");
+    if (!ShowZones)
+    {
+        ImGui::PopItemFlag();
+        ImGui::PopStyleVar();
+    }
+    // absolute bounds
+    ZoneFadeStart = std::clamp(ZoneFadeStart, 1.0f, 1000.0f);
+    ZoneFadeEnd   = std::clamp(ZoneFadeEnd,   1.0f, 1000.0f);
+    
+    // relationship
+    if (ZoneFadeStart != prevStart && ZoneFadeStart >= ZoneFadeEnd)
+        ZoneFadeEnd = ZoneFadeStart + 1.0f;
+    if (ZoneFadeEnd != prevEnd && ZoneFadeEnd <= ZoneFadeStart)
+        ZoneFadeStart = ZoneFadeEnd - 1.0f;
+    ImGui::Separator();
+    
+    //Debug related UI
+    ImGui::Checkbox("Show Debug", &ShowDebug);
+    Tooltip("Toggles debugging text which is not fully implemented");
+
+    //Save Settings
     if (ImGui::Button("Save Settings"))
         SaveSettings(AddonDir, GatherSettings());
 }

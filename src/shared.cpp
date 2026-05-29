@@ -35,6 +35,8 @@ std::string AddonDir;                            // Base directory of the addon 
 // Each bool controls whether its corresponding ImGui window is drawn.
 // ---------------------------------------------------------------------------
 bool ShowZones        = true;  // Checkpoint zone overlays in the game world
+float ZoneFadeStart   = 50.0f;
+float ZoneFadeEnd     = 150.0f;
 bool ShowTimer        = true;  // The main speedrun timer overlay
 bool ShowConfig       = true;  // The route editor / config window
 bool ShowDebug        = false; // Debug info (map change log, etc.)
@@ -128,3 +130,8 @@ bool HotbarSavedShowConfig       = false;
 bool HotbarSavedShowHistory      = false;
 bool HotbarSavedShowZones        = false;
 bool HotbarSavedShowRouteBrowser = false;
+
+//Debug
+
+float occludePixelRadius = 1000.0f;
+float occludePixelClamp = 300.0f;

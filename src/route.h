@@ -111,14 +111,15 @@ struct CombatTriggerState
 // ---------------------------------------------------------------------------
 struct RoutePoint
 {
-    unsigned int    MapID       = 0;
-    float           X           = 0.0f;
-    float           Y           = 0.0f;
-    float           Z           = 0.0f;
-    float           Radius      = 5.0f;
-    ETriggerType    TriggerType = ETriggerType::Circle;
-    float           PlaneWidth  = 10.0f;
-    float           PlaneAngle  = 0.0f;
+    unsigned int    MapID               = 0;
+    float           X                   = 0.0f;
+    float           Y                   = 0.0f;
+    float           Z                   = 0.0f;
+    float           Radius              = 5.0f;
+    ETriggerType    TriggerType         = ETriggerType::Circle;
+    float           PlaneWidth          = 10.0f;
+    float           PlaneAngle          = 0.0f;
+    int     DotSphereCount      = 0; // Display only: >0 renders as a dot sphere with this many dots
 };
 
 // ---------------------------------------------------------------------------

@@ -43,6 +43,8 @@ extern std::string AddonDir;             // Addon base directory (settings, rout
 // UI visibility flags
 // ---------------------------------------------------------------------------
 extern bool ShowZones;        // Checkpoint zone overlays rendered in the game world
+extern float ZoneFadeStart; // Distance at which zones start fading (metres)
+extern float ZoneFadeEnd;   // Distance at which zones are fully gone (metres)
 extern bool ShowTimer;        // Main speedrun timer overlay
 extern bool ShowConfig;       // Route editor / config window
 extern bool ShowDebug;        // Debug info (map change log, etc.)
@@ -132,3 +134,7 @@ extern bool HotbarSavedShowConfig;
 extern bool HotbarSavedShowHistory;
 extern bool HotbarSavedShowZones;
 extern bool HotbarSavedShowRouteBrowser;
+
+//Debug
+extern float occludePixelRadius;
+extern float occludePixelClamp;

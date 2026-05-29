@@ -148,17 +148,17 @@ void RenderConfigWindow()
     // -------------------------------------------------------------------------
     // Checkpoint table (scrollable)
     // Each row represents one checkpoint.  Columns:
-    //   Name    — editable text field
-    //   S       — "Is Start" checkbox (only one checkpoint may be start)
-    //   G       — "Is Goal" checkbox (only one checkpoint may be goal)
-    //   Trigger — dropdown: Circle / Plane / Map Change / Interact / Combat
-    //             (Goal checkpoints additionally offer "All Checkpoints")
-    //   MapID   — the GW2 map ID the trigger is scoped to (0 = any map)
-    //   X/Y/Z   — world-space coordinates (hidden for Map Change / All Checkpoints)
-    //   R/W     — Radius for circle types; PlaneWidth for Plane type
-    //   Angle   — PlaneAngle for Plane type; "Re-arm" button for Combat type
-    //   Capture — snaps all spatial fields from the player's current position
-    //   Remove  — marks this row for deletion (applied after the table loop)
+    //   Name           — editable text field
+    //   S              — "Is Start" checkbox (only one checkpoint may be start)
+    //   G              — "Is Goal" checkbox (only one checkpoint may be goal)
+    //   Trigger        — dropdown: Circle / Plane / Map Change / Interact / Combat
+    //                    (Goal checkpoints additionally offer "All Checkpoints")
+    //   MapID          — the GW2 map ID the trigger is scoped to (0 = any map)
+    //   X/Y/Z          — world-space coordinates (hidden for Map Change / All Checkpoints)
+    //   R/W            — Radius for circle types; PlaneWidth for Plane type
+    //   Angle/Sphere   — PlaneAngle for Plane; dot count for Circle/Interact; Re-arm for Combat
+    //   Capture        — snaps all spatial fields from the player's current position
+    //   Remove         — marks this row for deletion (applied after the table loop)
     // -------------------------------------------------------------------------
     ImGui::BeginChild("##route_scroll", ImVec2(0, -footerReserve));
     if (ImGui::BeginTable("route_table", 12,
@@ -167,18 +167,18 @@ void RenderConfigWindow()
         ImGuiTableFlags_SizingStretchProp |
         ImGuiTableFlags_ScrollY))
     {
-        ImGui::TableSetupColumn("Name",    ImGuiTableColumnFlags_WidthFixed,   100.0f);
-        ImGui::TableSetupColumn("S",       ImGuiTableColumnFlags_WidthFixed,    20.0f);
-        ImGui::TableSetupColumn("G",       ImGuiTableColumnFlags_WidthFixed,    20.0f);
-        ImGui::TableSetupColumn("Trigger", ImGuiTableColumnFlags_WidthFixed,    90.0f);
-        ImGui::TableSetupColumn("MapID",   ImGuiTableColumnFlags_WidthFixed,    60.0f);
-        ImGui::TableSetupColumn("X",       ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Y",       ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Z",       ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("R/W",     ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Angle",   ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Capture", ImGuiTableColumnFlags_WidthFixed,    50.0f);
-        ImGui::TableSetupColumn("Remove",  ImGuiTableColumnFlags_WidthFixed,    50.0f);
+        ImGui::TableSetupColumn("Name",         ImGuiTableColumnFlags_WidthFixed,    100.0f);
+        ImGui::TableSetupColumn("S",            ImGuiTableColumnFlags_WidthFixed,    20.0f);
+        ImGui::TableSetupColumn("G",            ImGuiTableColumnFlags_WidthFixed,    20.0f);
+        ImGui::TableSetupColumn("Trigger",      ImGuiTableColumnFlags_WidthFixed,    90.0f);
+        ImGui::TableSetupColumn("MapID",        ImGuiTableColumnFlags_WidthFixed,    60.0f);
+        ImGui::TableSetupColumn("X",            ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Y",            ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Z",            ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("R/W",          ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Angle/Sphere", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Capture",      ImGuiTableColumnFlags_WidthFixed,    50.0f);
+        ImGui::TableSetupColumn("Remove",       ImGuiTableColumnFlags_WidthFixed,    50.0f);
         ImGui::TableHeadersRow();
 
         int removeIndex = -1; // Set to a row index if the player clicks a Remove button
@@ -211,6 +211,18 @@ void RenderConfigWindow()
                         other.IsStart = false;
                 }
                 cp.IsStart = isStart;
+            
+                // Make sure Start and Goal can't be set at the same row with those triggers
+                if (cp.IsStart)
+                {
+                    ETriggerType t = point.TriggerType;
+                    if (t == ETriggerType::AllCheckpoints)
+                        cp.IsStart = false; // AllCheckpoints is goal-only, never start
+                    else if (t == ETriggerType::MapChange      ||
+                             t == ETriggerType::CircleInteract ||
+                             t == ETriggerType::Plane)
+                        cp.IsGoal = false; // Can't have both — setting start clears goal
+                }
             }
 
             // --- Goal checkbox ---
@@ -226,6 +238,16 @@ void RenderConfigWindow()
                         other.IsGoal = false;
                 }
                 cp.IsGoal = isGoalVal;
+            
+                // Goal is incompatible with these trigger types — clear it immediately.
+                if (cp.IsGoal)
+                {
+                    ETriggerType t = point.TriggerType;
+                    if (t == ETriggerType::MapChange      ||
+                        t == ETriggerType::CircleInteract ||
+                        t == ETriggerType::Plane)
+                        cp.IsStart = false; // Can't have both — setting goal clears start
+                }
             }
 
             // --- Trigger type dropdown ---
@@ -251,6 +273,23 @@ void RenderConfigWindow()
                 if (point.TriggerType == ETriggerType::AllCheckpoints) displayIndex = 0;
                 if (ImGui::Combo(comboLabel, &displayIndex, triggerTypes, 5))
                     point.TriggerType = (displayIndex == 4) ? ETriggerType::CombatArena : (ETriggerType)displayIndex;
+            }
+
+            // Enforce start/goal compatibility whenever trigger type may have changed
+            ETriggerType t = point.TriggerType;
+            if (t == ETriggerType::AllCheckpoints)
+                cp.IsStart = false;
+            else if (t == ETriggerType::MapChange      ||
+                     t == ETriggerType::CircleInteract ||
+                     t == ETriggerType::Plane)
+            {
+                if (cp.IsStart && cp.IsGoal) cp.IsGoal = false; // resolve conflict, keep start
+            }
+            if (t == ETriggerType::MapChange      ||
+                t == ETriggerType::CircleInteract ||
+                t == ETriggerType::Plane)
+            {
+                if (cp.IsStart && cp.IsGoal) cp.IsGoal = false;
             }
 
             // --- MapID ---
@@ -312,11 +351,14 @@ void RenderConfigWindow()
                 }
             }
 
-            // --- Angle / Re-arm ---
+            // --- Angle / Re-arm / Billboard ---
             // For Plane triggers: editable PlaneAngle (degrees, 0° = north).
             // For CombatArena triggers: a "Re-arm" button that clears the finished
             //   state so the same combat zone can trigger again in the same run
             //   (useful for routes that loop back through a combat arena).
+            // For Circle / CircleInteract: an unnamed checkbox that switches the
+            //   world render from flat rings + base band to a billboard ring with
+            //   inward fade (IsBillboardCircle). Display-only — no trigger change.
             // Hidden for all other trigger types.
             ImGui::TableSetColumnIndex(9);
             if (point.TriggerType == ETriggerType::CombatArena)
@@ -337,6 +379,14 @@ void RenderConfigWindow()
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
                 ImGui::InputFloat(l, &point.PlaneAngle, 0.0f, 0.0f, "%.1f");
+            }
+            else if (point.TriggerType == ETriggerType::Circle ||
+                     point.TriggerType == ETriggerType::CircleInteract)
+            {
+                char l[32]; snprintf(l, sizeof(l), "##dotsphere_%d", i);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputInt(l, &point.DotSphereCount, 0, 0);
+                if (point.DotSphereCount < 0) point.DotSphereCount = 0;
             }
 
             // --- Capture button ---

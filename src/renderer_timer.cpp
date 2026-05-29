@@ -123,16 +123,21 @@ void RenderTimerOverlay()
                     {
                         // isSplit = true: always show full precision for completed splits
                         if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true))
+                        {
+                            float textWidth = ImGui::CalcTextSize(diffBuf).x;
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                             ImGui::TextColored(diff < 0
-                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)  // Green = ahead
-                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), // Red   = behind
-                                "%s", diffBuf);
+                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
+                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                        }
                     }
                 }
 
                 // Time cell
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 FormatTime(buf, sizeof(buf), splitTime);
+                float textWidth = ImGui::CalcTextSize(buf).x;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(diffCurrent, diffBest, false), "%s", buf);
 
                 // Name cell — dimmed so it doesn't compete visually with the time
@@ -193,21 +198,27 @@ void RenderTimerOverlay()
                     if (hasDiff && std::abs(diff) > 0.0005)
                     {
                         if (FormatDiff(diffBuf, sizeof(diffBuf), diff, finished))
+                        {
+                            float textWidth = ImGui::CalcTextSize(diffBuf).x;
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                             ImGui::TextColored(diff < 0
                                 ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                                 : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                        }
                     }
                 }
 
-                // Time cell — always shows milliseconds for the live segment
+                // Time cell — no milliseconds shown while running
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                FormatTime(buf, sizeof(buf), segmentTime, true);
+                FormatTime(buf, sizeof(buf), segmentTime, !running);
+                float textWidth = ImGui::CalcTextSize(buf).x;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(diffCurSeg, diffBestSeg, running), "%s", buf);
 
-                // Name cell — blank while running; "Goal" label when the run is done
+                // Name cell — blank while running; checkpoint name (or "Goal") when the run is done
                 ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
                 if (finished)
-                    ImGui::TextDisabled("Goal");
+                    ImGui::TextDisabled("%s", (goalCp && goalCp->Name[0] != '\0') ? goalCp->Name : "Goal");
             }
 
             // -------------------------------------------------------------------------
@@ -227,16 +238,22 @@ void RenderTimerOverlay()
                     if (std::abs(totalDiff) > 0.0005)
                     {
                         if (FormatDiff(diffBuf, sizeof(diffBuf), totalDiff, finished))
+                        {
+                            float textWidth = ImGui::CalcTextSize(diffBuf).x;
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                             ImGui::TextColored(totalDiff < 0
                                 ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                                 : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                        }
                     }
                 }
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 // Show milliseconds only while running; whole seconds once finished
-                FormatTime(buf, sizeof(buf), elapsed, !running);
                 double bestTotal = hasBest ? BestRun.back().Timestamp : 0.0;
+                FormatTime(buf, sizeof(buf), elapsed, !running);
+                float textWidth = ImGui::CalcTextSize(buf).x;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);
 
                 // Grand total tooltip on hover — only shown when a grand total exists

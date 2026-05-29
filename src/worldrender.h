@@ -33,7 +33,8 @@ bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy);
 //                    multiple visible zones don't overlap their text.
 //                    Defaults to 0; only meaningful when ShowDebug is on.
 // ---------------------------------------------------------------------------
-void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float debugOffsetY = 0.0f);
+void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float debugOffsetY = 0.0f, float distAlpha = 1.0f);
+void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float distAlpha = 1.0f);
 
 // ---------------------------------------------------------------------------
 // RenderZones
