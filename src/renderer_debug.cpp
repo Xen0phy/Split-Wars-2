@@ -153,7 +153,10 @@ void RenderDebugWindow()
 
         bool selected = (s_SelectedCheckpoint == i);
         if (ImGui::Selectable(label.c_str(), selected))
-            s_SelectedCheckpoint = i;
+        {
+            s_SelectedCheckpoint    = i;
+            ZoneRenderSelectedIndex = i; // tell worldrender which checkpoint to time
+        }
     }
     ImGui::EndChild();
 
@@ -284,6 +287,15 @@ void RenderDebugWindow()
                         IM_COL32(255, 100, 0, 180), 0, 1.5f);
                 }
             }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            ImGui::Text("Render Time (1s avg):");
+            if (ZoneRenderSelectedIndex == s_SelectedCheckpoint)
+                ImGui::Text("  %.4f ms", ZoneRenderAvgMs);
+            else
+                ImGui::TextDisabled("  (select a checkpoint to measure)");
         }
 
         ImGui::Spacing();

@@ -209,3 +209,5 @@ bool HotbarSavedShowRouteBrowser = false;
 // ---------------------------------------------------------------------------
 float occludePixelRadius = 1000.0f; // Base pixel radius for the character occlusion circle
 float occludePixelClamp  = 300.0f;  // Maximum pixel radius the occlusion circle can reach
+float ZoneRenderAvgMs          = 0.0f;
+int   ZoneRenderSelectedIndex  = -1;

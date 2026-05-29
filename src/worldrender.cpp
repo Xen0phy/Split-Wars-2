@@ -22,6 +22,8 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cmath>
+#include <deque>
+#include <chrono>
 
 // ---------------------------------------------------------------------------
 // WorldToScreen
@@ -452,11 +454,15 @@ void RenderZones()
         return currMapID == p.MapID;
     };
 
-    auto renderPoint = [&](const RoutePoint& p, float r, float g, float b, float dbgOffset)
+    // Rolling 1-second average render time for the selected debug checkpoint.
+    // The deque and last-known index are kept as statics so they survive frames.
+    static std::deque<std::pair<float,float>> s_timingSamples; // {ms, timestamp}
+    static int s_lastTimedIndex = -1;
+    
+    auto renderPoint = [&](const RoutePoint& p, float r, float g, float b, float dbgOffset, int idx)
     {
         if (!shouldRender(p)) return;
     
-        // Camera distance to zone centre for global fade
         float fdx = GS.CameraX - p.X;
         float fdy = GS.CameraY - p.Y;
         float fdz = GS.CameraZ - p.Z;
@@ -464,24 +470,67 @@ void RenderZones()
         float distAlpha = std::clamp(1.0f - (fdist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
         if (distAlpha <= 0.0f) return;
     
-        if (p.TriggerType == ETriggerType::Plane)
-            RenderZonePlane(p, r, g, b, distAlpha);
+        bool isTimed = ShowDebug && (idx == ZoneRenderSelectedIndex);
+    
+        if (isTimed)
+        {
+            // Clear samples if selection changed.
+            if (s_lastTimedIndex != idx)
+            {
+                s_timingSamples.clear();
+                s_lastTimedIndex = idx;
+            }
+    
+            auto t0 = std::chrono::high_resolution_clock::now();
+    
+            if (p.TriggerType == ETriggerType::Plane)
+                RenderZonePlane(p, r, g, b, distAlpha);
+            else
+                RenderZoneCircle(p, r, g, b, dbgOffset, distAlpha);
+    
+            float ms = std::chrono::duration<float, std::milli>(
+                std::chrono::high_resolution_clock::now() - t0).count();
+    
+            float now = (float)ImGui::GetTime();
+            s_timingSamples.push_back({ ms, now });
+    
+            // Drop samples older than 1 second.
+            while (!s_timingSamples.empty() && (now - s_timingSamples.front().second) > 1.0f)
+                s_timingSamples.pop_front();
+    
+            // Update the shared average.
+            float sum = 0.0f;
+            for (auto& s : s_timingSamples) sum += s.first;
+            ZoneRenderAvgMs = s_timingSamples.empty() ? 0.0f : sum / (float)s_timingSamples.size();
+        }
         else
-            RenderZoneCircle(p, r, g, b, dbgOffset, distAlpha);
+        {
+            if (p.TriggerType == ETriggerType::Plane)
+                RenderZonePlane(p, r, g, b, distAlpha);
+            else
+                RenderZoneCircle(p, r, g, b, dbgOffset, distAlpha);
+        }
     };
+
+    int startIdx = -1, goalIdx = -1;
+    for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
+    {
+        if (CurrentRoute.Checkpoints[i].IsStart) startIdx = i;
+        if (CurrentRoute.Checkpoints[i].IsGoal)  goalIdx  = i;
+    }
 
     Checkpoint* start = GetStart(CurrentRoute);
     Checkpoint* goal  = GetGoal(CurrentRoute);
 
-    if (start) renderPoint(start->Point, 0.2f, 1.0f, 0.2f, 0.0f);
-    if (goal)  renderPoint(goal->Point,  0.2f, 0.5f, 1.0f, 80.0f);
+    if (start) renderPoint(start->Point, 0.2f, 1.0f, 0.2f, 0.0f,  startIdx);
+    if (goal)  renderPoint(goal->Point,  0.2f, 0.5f, 1.0f, 80.0f, goalIdx);
 
     int dbgIdx = 0;
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
     {
         const Checkpoint& cp = CurrentRoute.Checkpoints[i];
         if (cp.IsStart || cp.IsGoal) continue;
-        renderPoint(cp.Point, 1.0f, 1.0f, 1.0f, 160.0f + dbgIdx * 80.0f);
+        renderPoint(cp.Point, 1.0f, 1.0f, 1.0f, 160.0f + dbgIdx * 80.0f, i);
         dbgIdx++;
     }
 }

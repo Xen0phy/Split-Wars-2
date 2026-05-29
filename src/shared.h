@@ -194,3 +194,7 @@ extern bool HotbarSavedShowRouteBrowser;
 // ---------------------------------------------------------------------------
 extern float occludePixelRadius; // Base pixel radius for the character occlusion circle
 extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle can reach
+// Zone render timing — populated by RenderZones() for the selected debug checkpoint.
+// Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
+extern float ZoneRenderAvgMs;
+extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender
