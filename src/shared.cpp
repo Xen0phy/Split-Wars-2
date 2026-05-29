@@ -50,6 +50,8 @@ void UpdateGameState()
         (PreferredSource == EDataSource::Default ||
          PreferredSource == EDataSource::RTAPI);
 
+    static unsigned int lastUITick = 0;
+
     if (useRTAPI)
     {
         GS.ActiveSource  = EDataSource::RTAPI;
@@ -85,7 +87,8 @@ void UpdateGameState()
         GS.MapID         = MumbleLink->Context.MapID;
         GS.IsInCombat    = MumbleLink->Context.IsInCombat;
         GS.IsMapOpen     = MumbleLink->Context.IsMapOpen;
-        GS.IsLoading     = false;
+        GS.IsLoading     = (MumbleLink->UITick == lastUITick);
+        lastUITick       = MumbleLink->UITick;
     }
 }
 
