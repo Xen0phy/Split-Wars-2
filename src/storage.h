@@ -93,12 +93,12 @@ struct Settings
     float ZoneFadeStart   = 50.0f;
     float ZoneFadeEnd     = 150.0f;
     bool ShowDebug        = false;
-    int  TimerDisplayMode = 1;     // Default: Split mode
+    int TimerDisplayMode  = 1;     // Default: Split mode
     bool CompactMode      = false;
     bool ShowHistory      = false;
     bool ShowGrandTotal   = false;
     bool ShowRouteBrowser = false;
-    int  MaxHistoryRuns   = 10;
+    int MaxHistoryRuns    = 10;
     int DataSource        = 0; // 0 = Default, 1 = Mumble, 2 = RTAPI
 };
 

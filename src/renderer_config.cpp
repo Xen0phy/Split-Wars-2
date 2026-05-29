@@ -10,7 +10,11 @@
 //   • Activate the route so the timer system starts using it
 //   • Clear the entire route and start fresh
 
+#include "imgui.h"
 #include "renderer_shared.h"
+#include "route.h"
+#include "shared.h"
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -156,12 +160,12 @@ void RenderConfigWindow()
     //   MapID          — the GW2 map ID the trigger is scoped to (0 = any map)
     //   X/Y/Z          — world-space coordinates (hidden for Map Change / All Checkpoints)
     //   R/W            — Radius for circle types; PlaneWidth for Plane type
-    //   Angle/Sphere   — PlaneAngle for Plane; dot count for Circle/Interact; Re-arm for Combat
+    //   Angle/Arm      — PlaneAngle for Plane; dot count for Circle/Interact; Re-arm for Combat
     //   Capture        — snaps all spatial fields from the player's current position
     //   Remove         — marks this row for deletion (applied after the table loop)
     // -------------------------------------------------------------------------
     ImGui::BeginChild("##route_scroll", ImVec2(0, -footerReserve));
-    if (ImGui::BeginTable("route_table", 12,
+    if (ImGui::BeginTable("route_table", 16,
         ImGuiTableFlags_Borders |
         ImGuiTableFlags_Resizable |
         ImGuiTableFlags_SizingStretchProp |
@@ -176,9 +180,13 @@ void RenderConfigWindow()
         ImGui::TableSetupColumn("Y",            ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Z",            ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("R/W",          ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Angle/Sphere", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Capture",      ImGuiTableColumnFlags_WidthFixed,    50.0f);
-        ImGui::TableSetupColumn("Remove",       ImGuiTableColumnFlags_WidthFixed,    50.0f);
+        ImGui::TableSetupColumn("Dots",         ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Center",       ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Up",           ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Down",         ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Angle/Arm",    ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Capture",      ImGuiTableColumnFlags_WidthFixed,    30.0f);
+        ImGui::TableSetupColumn("Remove",       ImGuiTableColumnFlags_WidthFixed,    20.0f);
         ImGui::TableHeadersRow();
 
         int removeIndex = -1; // Set to a row index if the player clicks a Remove button
@@ -312,7 +320,7 @@ void RenderConfigWindow()
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##x_%d", i);
-                ImGui::InputFloat(l, &point.X, 0.0f, 0.0f, "%.2f");
+                ImGui::DragFloat(l,&point.X,0.1f,0.0f,0.0f,"%.2f");
             }
 
             ImGui::TableSetColumnIndex(6);
@@ -320,7 +328,7 @@ void RenderConfigWindow()
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##y_%d", i);
-                ImGui::InputFloat(l, &point.Y, 0.0f, 0.0f, "%.2f");
+                ImGui::DragFloat(l,&point.Y,0.1f,0.0f,0.0f,"%.2f");
             }
 
             ImGui::TableSetColumnIndex(7);
@@ -328,7 +336,7 @@ void RenderConfigWindow()
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##z_%d", i);
-                ImGui::InputFloat(l, &point.Z, 0.0f, 0.0f, "%.2f");
+                ImGui::DragFloat(l,&point.Z,0.1f,0.0f,0.0f,"%.2f");
             }
 
             // --- R/W (Radius or Plane Width) ---
@@ -342,13 +350,52 @@ void RenderConfigWindow()
                 if (point.TriggerType == ETriggerType::Plane)
                 {
                     char l[32]; snprintf(l, sizeof(l), "##w_%d", i);
-                    ImGui::InputFloat(l, &point.PlaneWidth, 0.0f, 0.0f, "%.2f");
+                    ImGui::DragFloat(l,&point.PlaneWidth,0.1f,0.0f,1000.0f,"%.1f");
+                    point.PlaneWidth = std::clamp(point.PlaneWidth, 0.0f, 1000.0f);
                 }
                 else
                 {
                     char l[32]; snprintf(l, sizeof(l), "##r_%d", i);
-                    ImGui::InputFloat(l, &point.Radius, 0.0f, 0.0f, "%.2f");
+                    ImGui::DragFloat(l, &point.Radius, 0.1f,0.0f,1000.0f,"%.1f");
+                    point.Radius = std::clamp(point.Radius, 0.0f, 1000.0f);
                 }
+            }
+
+            ImGui::TableSetColumnIndex(9);
+            if (!isMapChange && !isAllCheckpoints && t != ETriggerType::Plane)
+            {
+                char l[32]; snprintf(l, sizeof(l), "##dotsphere_%d", i);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::DragInt(l, &point.DotSphereCount, 1, 30,1000, "%d");
+                point.DotSphereCount = std::clamp(point.DotSphereCount, 0, 5000);
+            }
+
+            ImGui::TableSetColumnIndex(10);
+            if (!isMapChange && !isAllCheckpoints)
+            {
+                char l[32]; snprintf(l, sizeof(l), "##bandCenterDegree_%d", i);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::DragFloat(l, &point.bandCenterDeg, 1.0f, -90.0f, 90.0f, "%.0f");
+                point.bandCenterDeg = std::clamp(point.bandCenterDeg, -90.0f, 90.0f);
+            }
+            
+            ImGui::TableSetColumnIndex(11);
+            if (!isMapChange && !isAllCheckpoints)
+            {
+                char l[32]; snprintf(l, sizeof(l), "##bandUpDegree_%d", i);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::DragFloat(l, &point.bandUpDeg, 1.0f, 0.0f, 90.0f, "%.0f");
+                point.bandUpDeg = std::clamp(point.bandUpDeg, 0.0f, 90.0f);
+            }
+            
+
+            ImGui::TableSetColumnIndex(12);
+            if (!isMapChange && !isAllCheckpoints)
+            {
+                char l[32]; snprintf(l, sizeof(l), "##bandDownDegree_%d", i);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::DragFloat(l, &point.bandDownDeg, 1.0f, 0.0f, 90.0f, "%.0f");
+                point.bandDownDeg = std::clamp(point.bandDownDeg, 0.0f, 90.0f);
             }
 
             // --- Angle / Re-arm / Billboard ---
@@ -360,7 +407,7 @@ void RenderConfigWindow()
             //   world render from flat rings + base band to a billboard ring with
             //   inward fade (IsBillboardCircle). Display-only — no trigger change.
             // Hidden for all other trigger types.
-            ImGui::TableSetColumnIndex(9);
+            ImGui::TableSetColumnIndex(13);
             if (point.TriggerType == ETriggerType::CombatArena)
             {
                 if (i < (int)CombatCheckpoints.size() && CombatCheckpoints[i].finished)
@@ -380,14 +427,6 @@ void RenderConfigWindow()
                 char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
                 ImGui::InputFloat(l, &point.PlaneAngle, 0.0f, 0.0f, "%.1f");
             }
-            else if (point.TriggerType == ETriggerType::Circle ||
-                     point.TriggerType == ETriggerType::CircleInteract)
-            {
-                char l[32]; snprintf(l, sizeof(l), "##dotsphere_%d", i);
-                ImGui::SetNextItemWidth(-1);
-                ImGui::InputInt(l, &point.DotSphereCount, 0, 0);
-                if (point.DotSphereCount < 0) point.DotSphereCount = 0;
-            }
 
             // --- Capture button ---
             // Snaps the checkpoint's map ID and world coordinates from the player's
@@ -395,7 +434,7 @@ void RenderConfigWindow()
             // calculates the facing angle from the camera direction so the plane
             // is perpendicular to the direction the player is looking.
             // Hidden for "All Checkpoints" (no position to capture).
-            ImGui::TableSetColumnIndex(10);
+            ImGui::TableSetColumnIndex(14);
             if (!isAllCheckpoints)
             {
                 char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", i);
@@ -429,7 +468,7 @@ void RenderConfigWindow()
             // --- Remove button ---
             // We can't erase from the vector while iterating it, so we just
             // record the index and remove it after the loop finishes.
-            ImGui::TableSetColumnIndex(11);
+            ImGui::TableSetColumnIndex(15);
             char removeLabel[32]; snprintf(removeLabel, sizeof(removeLabel), "X##rm_%d", i);
             if (ImGui::Button(removeLabel))
                 removeIndex = i;

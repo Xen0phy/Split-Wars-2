@@ -119,7 +119,10 @@ struct RoutePoint
     ETriggerType    TriggerType         = ETriggerType::Circle;
     float           PlaneWidth          = 10.0f;
     float           PlaneAngle          = 0.0f;
-    int     DotSphereCount      = 0; // Display only: >0 renders as a dot sphere with this many dots
+    int             DotSphereCount      = 200; // Display only: >0 renders as a dot sphere with this many dots
+    float           bandCenterDeg       = 0.0f; 
+    float           bandUpDeg           = 10.0f; 
+    float           bandDownDeg         = 0.0f; 
 };
 
 // ---------------------------------------------------------------------------

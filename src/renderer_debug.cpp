@@ -13,6 +13,7 @@
 
 #include "imgui.h"
 #include "renderer_shared.h"
+#include "route.h"
 #include "shared.h"
 #include "worldrender.h"
 #include <algorithm>
@@ -296,6 +297,7 @@ void RenderDebugWindow()
                 ImGui::Text("  %.4f ms", ZoneRenderAvgMs);
             else
                 ImGui::TextDisabled("  (select a checkpoint to measure)");
+
         }
 
         ImGui::Spacing();

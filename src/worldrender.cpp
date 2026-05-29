@@ -2,12 +2,20 @@
 // Draws checkpoint zone overlays directly onto the game world using ImGui's
 // foreground draw list — the same technique used by most GW2 overlay addons.
 //
-// Two visual shapes are supported:
-//   Circle zone — two wireframe rings outlining the sphere boundary, plus a
-//                 translucent filled dome fading from 40% alpha at the base
-//                 to transparent at the top (Y + Radius).
-//   Plane zone  — a filled translucent wall starting at Y, fading to
-//                 transparent at the top, with a solid outline on the edges.
+// Both zone shapes are rendered as dot clouds:
+//   Circle zone — a sphere of dots distributed via the golden-angle spiral,
+//                 restricted to a configurable latitude band around the sphere.
+//                 Dot alpha fades from full at the band centre to transparent
+//                 at the upper and lower band edges.
+//   Plane zone  — a rectangular grid of dots spanning the plane's width and a
+//                 configurable vertical band.  The same centre/up/down band
+//                 parameters control vertical extent and the alpha fade.
+//
+// Band parameters per RoutePoint:
+//   bandCenterDeg — for Circle: centre latitude in degrees (-90 south … +90 north)
+//                   for Plane:  vertical centre offset in metres above point.Y
+//   bandUpDeg     — extent upward   from centre (fade boundary; degrees / metres)
+//   bandDownDeg   — extent downward from centre (fade boundary; degrees / metres)
 //
 // Colour convention (set by RenderZones):
 //   Green  — start checkpoint
@@ -20,6 +28,7 @@
 #include "worldrender.h"
 #include "shared.h"
 #include "imgui.h"
+#include "imgui_internal.h" 
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -116,22 +125,75 @@ static bool RoutePointIsSet(const RoutePoint& point)
     return point.X != 0.0f || point.Y != 0.0f || point.Z != 0.0f;
 }
 
+
 // ---------------------------------------------------------------------------
-// DrawGradientTriangle  (file-private helper)
+// OcclusionState  (file-private helper)
 // ---------------------------------------------------------------------------
-// Draws a single triangle with per-vertex colours using low-level PrimVtx
-// calls, since AddTriangleFilledMultiColor is not available in this ImGui version.
+// Computed once per frame (via CalcOcclusionState) and passed into both zone
+// renderers so player-occlusion logic doesn't have to be duplicated.
 // ---------------------------------------------------------------------------
-static void DrawGradientTriangle(ImDrawList* dl,
-    ImVec2 p0, ImU32 c0,
-    ImVec2 p1, ImU32 c1,
-    ImVec2 p2, ImU32 c2)
+struct OcclusionState
 {
-    ImVec2 uv = ImGui::GetIO().Fonts->TexUvWhitePixel;
-    dl->PrimReserve(3, 3);
-    dl->PrimVtx(p0, uv, c0);
-    dl->PrimVtx(p1, uv, c1);
-    dl->PrimVtx(p2, uv, c2);
+    bool  playerOnScreen;
+    float playerSx, playerSy;
+    float occludeRadius;
+};
+
+static OcclusionState CalcOcclusionState()
+{
+    OcclusionState os;
+
+    os.playerOnScreen = WorldToScreen(
+        GS.PlayerX, GS.PlayerY + 1.0f, GS.PlayerZ,
+        os.playerSx, os.playerSy);
+
+    float camToPlayerX = GS.CameraX - GS.PlayerX;
+    float camToPlayerY = GS.CameraY - GS.PlayerY;
+    float camToPlayerZ = GS.CameraZ - GS.PlayerZ;
+    float camToPlayer  = std::sqrt(camToPlayerX*camToPlayerX + camToPlayerY*camToPlayerY + camToPlayerZ*camToPlayerZ);
+
+    // Pixel radius of the occlusion circle — larger when camera is close, smaller when far
+    os.occludeRadius = std::clamp(occludePixelRadius / (camToPlayer * 0.5f), 30.0f, occludePixelClamp);
+
+    return os;
+}
+
+// Cached UI window rects from the previous frame.
+// Updated at the start of RenderZones() so we don't check mid-submission state.
+static std::vector<ImRect> s_uiRects;
+
+static void UpdateUIRects()
+{
+    s_uiRects.clear();
+    ImGuiContext& g = *ImGui::GetCurrentContext();
+    for (ImGuiWindow* window : g.Windows)
+    {
+        if (!window->WasActive)  continue;  // WasActive = confirmed visible last frame
+        if (window->Hidden)      continue;
+        if (window->Flags & ImGuiWindowFlags_NoBackground) continue;
+        s_uiRects.push_back(window->Rect());
+    }
+}
+
+static bool IsOccludedByUI(float sx, float sy)
+{
+    ImVec2 p(sx, sy);
+    for (const ImRect& r : s_uiRects)
+        if (r.Contains(p)) return true;
+    return false;
+}
+
+// Applies occlusion fade to dotAlpha based on the dot's screen position.
+static int ApplyOcclusion(int dotAlpha, float sx, float sy, const OcclusionState& os)
+{
+    if (IsOccludedByUI(sx, sy)) return 0;
+
+    if (!os.playerOnScreen) return dotAlpha;
+    float ddx  = sx - os.playerSx;
+    float ddy  = sy - os.playerSy;
+    float dist = std::sqrt(ddx*ddx + ddy*ddy);
+    float occludeFade = std::clamp((dist - os.occludeRadius * 0.6f) / (os.occludeRadius * 1.0f), 0.0f, 1.0f);
+    return (int)(dotAlpha * occludeFade);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,182 +201,84 @@ static void DrawGradientTriangle(ImDrawList* dl,
 // ---------------------------------------------------------------------------
 // Draws a world-space zone indicator for sphere-type triggers.
 //
-// Two modes controlled by point.DotSphereCount:
+// Dots are distributed evenly across the sphere surface using the
+// golden-angle spiral, but only within the latitude band defined by the
+// point's band parameters:
 //
-//   DotSphereCount == 0 (default) — horizontal wireframe ring on the XZ plane
-//                     plus a filled base band fading from BASE_ALPHA at Y to
-//                     transparent at Y+1.  Best for ground-based triggers
-//                     where the flat ring communicates the trigger boundary
-//                     clearly.
+//   bandCenterDeg — centre latitude of the rendered band (-90 south … +90 north)
+//   bandUpDeg     — how far above the centre the band extends (fade to 0 at edge)
+//   bandDownDeg   — how far below the centre the band extends (fade to 0 at edge)
 //
-//   DotSphereCount  > 0           — a sphere made of projected dots,
-//                     distributed evenly using the golden-angle spiral.
-//                     Dots outside ±60° latitude are skipped (avoiding polar
-//                     crowding) and dots occluded by the player model are
-//                     faded out.  Best for triggers that extend significantly
-//                     above ground, or wherever showing the full 3D volume
-//                     is more readable than a flat ring.
+// All NUM_DOTS dots are placed within this band, so none are wasted outside
+// the visible range.  Each dot's alpha is the product of:
+//   • Band falloff  — 1.0 at band centre, 0.0 at either edge.
+//   • Distance fade — per-dot world-space distance to the player mapped
+//                     through ZoneFadeStart/ZoneFadeEnd.
+//   • Occlusion     — dots behind the player model are faded via ApplyOcclusion.
 //
-// Both modes fade out as the camera moves inside the trigger radius (to avoid
-// a distracting full-screen fill when the player is in the zone) and as the
-// zone moves outside the configured ZoneFadeStart/ZoneFadeEnd range.
+// Note: distAlpha is accepted for call-site compatibility but unused internally.
 // ---------------------------------------------------------------------------
 void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float debugOffsetY, float distAlpha)
 {
-    // Require at least one live data source — camera data comes from GS which
-    // is only meaningful when Mumble or RTAPI has been initialised.
     if (!MumbleLink && !GS.RTAPIAvailable) return;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
-    // --- Fade when camera is close to the zone centre ---
-    float camDx = GS.CameraX - point.X;
-    float camDy = GS.CameraY - point.Y;
-    float camDz = GS.CameraZ - point.Z;
-    float camDist = std::sqrt(camDx*camDx + camDy*camDy + camDz*camDz);
-    float fadeStart = point.Radius * 1.5f;
-    float fadeEnd   = point.Radius * 0.8f;
-    float alpha = std::clamp((camDist - fadeEnd) / (fadeStart - fadeEnd), 0.0f, 1.0f);
+    const float PI = 3.14159265f;
+    const float DOT_RADIUS = 3.0f;
+    const int NUM_DOTS = point.DotSphereCount > 0 ? point.DotSphereCount : 300;
 
-    if (point.DotSphereCount > 0)
+    const float golden = PI * (3.0f - std::sqrt(5.0f)); // golden angle ~2.399 radians
+
+    OcclusionState os = CalcOcclusionState();
+
+    // Convert band parameters to radians
+    const float bandCenter = point.bandCenterDeg * (PI / 180.0f);
+    const float bandUp     = point.bandUpDeg     * (PI / 180.0f);
+    const float bandDown   = point.bandDownDeg   * (PI / 180.0f);
+
+    // Derived latitude limits, clamped to the valid sphere range
+    const float phiMinClamped = std::max(bandCenter - bandDown, -PI * 0.5f);
+    const float phiMaxClamped = std::min(bandCenter + bandUp,    PI * 0.5f);
+
+    // t values corresponding to phiMin/phiMax in the asin distribution
+    const float tMin = (std::sin(phiMinClamped) + 1.0f) * 0.5f;
+    const float tMax = (std::sin(phiMaxClamped) + 1.0f) * 0.5f;
+
+    for (int i = 0; i < NUM_DOTS; i++)
     {
-        const float PI = 3.14159265f;
-        const float DOT_RADIUS = 3.0f;
-        const int NUM_DOTS = point.DotSphereCount;
-    
-        if (distAlpha <= 0.0f) return; // early out, nothing to draw
-    
-        const float golden = PI * (3.0f - std::sqrt(5.0f)); // golden angle ~2.399 radians
-    
-        // Project the player to screen once before the dot loop
-        float playerSx, playerSy;
-        bool playerOnScreen = WorldToScreen(
-            GS.PlayerX,
-            GS.PlayerY + 1.0f,
-            GS.PlayerZ,
-            playerSx, playerSy);
+        // Remap i into [tMin, tMax] so all dots land within the visible band
+        const float t   = tMin + (tMax - tMin) * (float)i / (NUM_DOTS - 1);
+        float phi   = std::asin(-1.0f + 2.0f * t); // latitude within the band
+        float theta = golden * i;                    // longitude
 
-        // Camera distance to player for occlusion radius scaling
-        float camToPlayerX = GS.CameraX - GS.PlayerX;
-        float camToPlayerY = GS.CameraY - GS.PlayerY;
-        float camToPlayerZ = GS.CameraZ - GS.PlayerZ;
-        float camToPlayer  = std::sqrt(camToPlayerX*camToPlayerX + camToPlayerY*camToPlayerY + camToPlayerZ*camToPlayerZ);
+        // Falloff: 1.0 at band centre, 0.0 at either edge
+        float distFromCenter = phi - bandCenter;
+        float normalizedDist = (distFromCenter >= 0.0f)
+            ? ((bandUp   > 0.0f) ? distFromCenter /  bandUp   : 0.0f)
+            : ((bandDown > 0.0f) ? distFromCenter / -bandDown : 0.0f);
 
-        // Radius in pixels — larger when camera is close, smaller when far
-        float occludeRadius = std::clamp(occludePixelRadius / (camToPlayer * 0.5f), 30.0f, occludePixelClamp);
+        float falloff  = 1.0f - std::abs(normalizedDist);
 
-        for (int i = 0; i < NUM_DOTS; i++)
+        float wx = point.X + std::cos(phi) * std::cos(theta) * point.Radius;
+        float wy = point.Y + std::sin(phi) * point.Radius;
+        float wz = point.Z + std::cos(phi) * std::sin(theta) * point.Radius;
+
+        // Per-dot distance fade from player position using the global fade range
+        float pdx = wx - GS.PlayerX;
+        float pdy = wy - GS.PlayerY;
+        float pdz = wz - GS.PlayerZ;
+        float playerDist = std::sqrt(pdx*pdx + pdy*pdy + pdz*pdz);
+        float dotDistAlpha = std::clamp(1.0f - (playerDist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
+
+        int   dotAlpha = (int)(220 * 0.8f * falloff * dotDistAlpha);
+
+        float sx, sy;
+        if (WorldToScreen(wx, wy, wz, sx, sy))
         {
-            float phi   = std::asin(-1.0f + 2.0f * (float)i / (NUM_DOTS - 1)); // latitude -90 to +90
-            float theta = golden * i;                                            // longitude
-    
-            // Skip dots outside ±60 degrees latitude
-            if (std::abs(phi) > PI / 3.0f) continue;
-    
-            float falloff  = 1.0f - std::abs(phi) / (PI / 3.0f);
-            int   dotAlpha = (int)(220 * alpha * 0.8f * falloff * distAlpha);
-    
-            float wx = point.X + std::cos(phi) * std::cos(theta) * point.Radius;
-            float wy = point.Y + std::sin(phi) * point.Radius;
-            float wz = point.Z + std::cos(phi) * std::sin(theta) * point.Radius;
-    
-            float sx, sy;
-            if (WorldToScreen(wx, wy, wz, sx, sy))
-            {
-                int fadedAlpha = dotAlpha;
-            
-                if (playerOnScreen)
-                {
-                    float ddx  = sx - playerSx;
-                    float ddy  = sy - playerSy;
-                    float dist = std::sqrt(ddx*ddx + ddy*ddy);
-                    float occludeFade = std::clamp((dist - occludeRadius * 0.6f) / (occludeRadius * 1.0f), 0.0f, 1.0f);
-                    fadedAlpha = (int)(dotAlpha * occludeFade);
-                }
-            
-                dl->AddCircleFilled(ImVec2(sx, sy), DOT_RADIUS,
-                    IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), fadedAlpha));
-            }
-        }
-    }
-    else
-    {
-        // --- Default mode ---
-        // Horizontal ring + filled base band.
-        const int steps = 64;
-
-        // --- Wireframe rings ---
-        auto DrawRing = [&](auto getPoint, int ringAlpha)
-        {
-            float prevSx = 0, prevSy = 0;
-            bool  prevValid = false;
-            ImU32 color = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), ringAlpha);
-    
-            for (int i = 0; i <= steps; i++)
-            {
-                float angle = (float)i / steps * 2.0f * 3.14159265f;
-                auto [wx, wy, wz] = getPoint(angle);
-    
-                float sx, sy;
-                bool valid = WorldToScreen(wx, wy, wz, sx, sy);
-    
-                if (valid && prevValid)
-                    dl->AddLine(ImVec2(prevSx, prevSy), ImVec2(sx, sy), color, 2.0f);
-    
-                prevSx    = sx;
-                prevSy    = sy;
-                prevValid = valid;
-            }
-        };
-
-        // Horizontal ring — flat on the XZ plane at point.Y
-        DrawRing([&](float a) {
-            return std::make_tuple(
-                point.X + std::cos(a) * point.Radius,
-                point.Y,
-                point.Z + std::sin(a) * point.Radius);
-        }, (int)(200 * alpha * distAlpha));
-
-        // --- Filled base band ---
-        // Two rings projected at Y (full alpha) and Y+1 (transparent),
-        // connected with gradient quads. Reads as a soft glowing ground ring
-        // rather than a cone or dome.
-        const float BASE_ALPHA = 100.0f * alpha * distAlpha;
-        const int   bandSteps  = 32;
-
-        ImU32 baseColor = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), (int)BASE_ALPHA);
-        ImU32 topColor  = IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 0);
-
-        float prevBotSx = 0, prevBotSy = 0;
-        float prevTopSx = 0, prevTopSy = 0;
-        bool  prevBotValid = false, prevTopValid = false;
-
-        for (int i = 0; i <= bandSteps; i++)
-        {
-            float angle = (float)i / bandSteps * 2.0f * 3.14159265f;
-            float wx = point.X + std::cos(angle) * point.Radius;
-            float wz = point.Z + std::sin(angle) * point.Radius;
-
-            float botSx, botSy, topSx, topSy;
-            bool botValid = WorldToScreen(wx, point.Y,        wz, botSx, botSy);
-            bool topValid = WorldToScreen(wx, point.Y + 1.0f, wz, topSx, topSy);
-
-            if (botValid && topValid && prevBotValid && prevTopValid)
-            {
-                // Quad as two gradient triangles.
-                DrawGradientTriangle(dl,
-                    ImVec2(prevBotSx, prevBotSy), baseColor,
-                    ImVec2(botSx, botSy),         baseColor,
-                    ImVec2(prevTopSx, prevTopSy), topColor);
-                DrawGradientTriangle(dl,
-                    ImVec2(botSx, botSy),         baseColor,
-                    ImVec2(topSx, topSy),         topColor,
-                    ImVec2(prevTopSx, prevTopSy), topColor);
-            }
-
-            prevBotSx    = botSx;    prevBotSy    = botSy;
-            prevTopSx    = topSx;    prevTopSy    = topSy;
-            prevBotValid = botValid; prevTopValid = topValid;
+            dl->AddCircleFilled(ImVec2(sx, sy), DOT_RADIUS,
+                IM_COL32((int)(r*255), (int)(g*255), (int)(b*255),
+                    ApplyOcclusion(dotAlpha, sx, sy, os)));
         }
     }
 }
@@ -322,101 +286,96 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
 // ---------------------------------------------------------------------------
 // RenderZonePlane
 // ---------------------------------------------------------------------------
-// Draws a filled translucent wall for a Plane trigger.
+// Draws a world-space zone indicator for Plane triggers as a grid of dots.
 //
-// The wall starts at Y (ground level, assuming the author placed it there)
-// and extends upward. It is split into two vertical bands:
+// Dots are laid out on the plane surface in a regular grid:
+//   • Horizontally: evenly spaced across the full PlaneWidth.
+//   • Vertically:   evenly spaced within the height band defined by the
+//                   point's band parameters (in metres, not degrees):
 //
-//   Lower band (Y to Y + SOLID_HEIGHT) — full BASE_ALPHA, communicates
-//              where the player actually crosses the trigger.
-//   Upper band (Y + SOLID_HEIGHT to Y + FADE_HEIGHT) — alpha fades to 0,
-//              communicating that the plane extends infinitely upward.
+//       bandCenterDeg — vertical centre offset in metres above point.Y
+//       bandUpDeg     — metres above centre where alpha reaches 0
+//       bandDownDeg   — metres below centre where alpha reaches 0
 //
-// The left and right outline edges are kept as solid lines so the width and
-// angle of the plane are immediately readable. The top and bottom edges are
-// omitted — the bottom is at ground level (implicit) and the top fades out.
-// The diagonal cross is removed since the fill makes orientation obvious.
+// Dot density is derived automatically from DOT_SPACING so wider or taller
+// planes fill in without needing a manual dot count.
+//
+// Each dot's alpha is the product of band falloff (1.0 at centre, 0.0 at
+// edges), a per-dot distance fade from the player through ZoneFadeStart/
+// ZoneFadeEnd, and occlusion fade via ApplyOcclusion — matching the sphere
+// zone's visual language exactly.
+//
+// Note: distAlpha is accepted for call-site compatibility but is not used
+// internally — per-dot distance fading supersedes it.
 // ---------------------------------------------------------------------------
 void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float distAlpha)
 {
-    // Require at least one live data source (same rationale as RenderZoneCircle).
     if (!MumbleLink && !GS.RTAPIAvailable) return;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
-    // Along-plane direction vector from PlaneAngle.
+    OcclusionState os = CalcOcclusionState();
+
+    // Along-plane direction vector from PlaneAngle
     float angleRad = point.PlaneAngle * 3.14159265f / 180.0f;
     float px = -std::sin(angleRad);
     float pz =  std::cos(angleRad);
 
-    float halfWidth  = point.PlaneWidth * 0.5f;
-    float solidHeight = 3.0f;  // Height of the fully opaque lower band
-    float fadeHeight  = 10.0f; // Height at which the wall is fully transparent
+    float halfWidth = point.PlaneWidth * 0.5f;
 
-    float yBottom = point.Y;
-    float yMid    = point.Y + solidHeight;
-    float yTop    = point.Y + fadeHeight;
+    // Reuse band fields as world-space height values (metres, not degrees)
+    float bandCenter = point.bandCenterDeg; // vertical centre above point.Y
+    float bandUp     = point.bandUpDeg;     // height above centre → fade to 0
+    float bandDown   = point.bandDownDeg;   // depth below centre → fade to 0
 
-    // Left and right X/Z endpoints
-    float wx0 = point.X - px * halfWidth;
-    float wz0 = point.Z - pz * halfWidth;
-    float wx1 = point.X + px * halfWidth;
-    float wz1 = point.Z + pz * halfWidth;
+    float yMin = point.Y + bandCenter - bandDown;
+    float yMax = point.Y + bandCenter + bandUp;
+    float yCtr = point.Y + bandCenter;
 
-    // Project all six points (bottom, mid, top for each side)
-    float s0x, s0y, s1x, s1y; // Bottom-left, Bottom-right
-    float s2x, s2y, s3x, s3y; // Mid-left,    Mid-right
-    float s4x, s4y, s5x, s5y; // Top-left,    Top-right
+    // Dot grid density: one column per ~0.5 m of width, one row per ~0.5 m of height
+    const float DOT_SPACING = 1.0f;
+    const float DOT_RADIUS  = 3.0f;
+    int   cols = std::max(2, (int)(point.PlaneWidth / DOT_SPACING) + 1);
+    int   rows = std::max(2, (int)((bandUp + bandDown) / DOT_SPACING) + 1);
 
-    bool v0 = WorldToScreen(wx0, yBottom, wz0, s0x, s0y);
-    bool v1 = WorldToScreen(wx1, yBottom, wz1, s1x, s1y);
-    bool v2 = WorldToScreen(wx0, yMid,    wz0, s2x, s2y);
-    bool v3 = WorldToScreen(wx1, yMid,    wz1, s3x, s3y);
-    bool v4 = WorldToScreen(wx0, yTop,    wz0, s4x, s4y);
-    bool v5 = WorldToScreen(wx1, yTop,    wz1, s5x, s5y);
-
-    const int   ri         = (int)(r * 255);
-    const int   gi         = (int)(g * 255);
-    const int   bi         = (int)(b * 255);
-    const float BASE_ALPHA = 100.0f * distAlpha;
-
-    ImU32 solidColor = IM_COL32(ri, gi, bi, (int)BASE_ALPHA);
-    ImU32 fadeColor  = IM_COL32(ri, gi, bi, 0);
-    ImU32 lineColor = IM_COL32(ri, gi, bi, (int)(200 * distAlpha));
-
-    // --- Lower band: bottom → mid, fully opaque ---
-    // Two triangles forming the solid quad.
-    /*if (v0 && v1 && v2 && v3)
+    for (int ci = 0; ci < cols; ci++)
     {
-        DrawGradientTriangle(dl,
-            ImVec2(s0x, s0y), solidColor,
-            ImVec2(s1x, s1y), solidColor,
-            ImVec2(s2x, s2y), solidColor);
-        DrawGradientTriangle(dl,
-            ImVec2(s1x, s1y), solidColor,
-            ImVec2(s3x, s3y), solidColor,
-            ImVec2(s2x, s2y), solidColor);
-    }*/
+        // t in [0,1] along the width axis
+        float t  = (cols > 1) ? (float)ci / (cols - 1) : 0.5f;
+        float wx = point.X + px * (-halfWidth + t * point.PlaneWidth);
+        float wz = point.Z + pz * (-halfWidth + t * point.PlaneWidth);
 
-    // --- Upper band: mid → top, fading to transparent ---
-    if (v0 && v1 && v4 && v5)
-    {
-        DrawGradientTriangle(dl,
-            ImVec2(s0x, s0y), solidColor,
-            ImVec2(s1x, s1y), solidColor,
-            ImVec2(s4x, s4y), fadeColor);
-        DrawGradientTriangle(dl,
-            ImVec2(s1x, s1y), solidColor,
-            ImVec2(s5x, s5y), fadeColor,
-            ImVec2(s4x, s4y), fadeColor);
+        for (int ri = 0; ri < rows; ri++)
+        {
+            float s  = (rows > 1) ? (float)ri / (rows - 1) : 0.5f;
+            float wy = yMin + s * (yMax - yMin);
+
+            // Falloff: 1.0 at band centre, 0.0 at top and bottom edges
+            float distFromCenter = wy - yCtr;
+            float normalizedDist = (distFromCenter >= 0.0f)
+                ? ((bandUp   > 0.0f) ? distFromCenter /  bandUp   : 0.0f)
+                : ((bandDown > 0.0f) ? distFromCenter / -bandDown : 0.0f);
+
+            float falloff  = 1.0f - std::abs(normalizedDist);
+
+            // Per-dot distance fade from player position using the global fade range
+            float pdx = wx - GS.PlayerX;
+            float pdy = wy - GS.PlayerY;
+            float pdz = wz - GS.PlayerZ;
+            float playerDist = std::sqrt(pdx*pdx + pdy*pdy + pdz*pdz);
+            float dotDistAlpha = std::clamp(1.0f - (playerDist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
+
+            int   dotAlpha = (int)(220 * falloff * dotDistAlpha);
+
+            float sx, sy;
+            if (WorldToScreen(wx, wy, wz, sx, sy))
+            {
+                dl->AddCircleFilled(ImVec2(sx, sy), DOT_RADIUS,
+                    IM_COL32((int)(r*255), (int)(g*255), (int)(b*255),
+                        ApplyOcclusion(dotAlpha, sx, sy, os)));
+            }
+        }
     }
-
-    // --- Outline: left and right edges only ---
-    // Bottom edge is at ground level (implicit), top fades out.
-    // Only the vertical sides communicate width and angle clearly.
-    if (v0 && v4) dl->AddLine(ImVec2(s0x, s0y), ImVec2(s4x, s4y), lineColor, 2.0f); // Left edge
-    if (v1 && v5) dl->AddLine(ImVec2(s1x, s1y), ImVec2(s5x, s5y), lineColor, 2.0f); // Right edge
-    if (v0 && v1) dl->AddLine(ImVec2(s0x, s0y), ImVec2(s1x, s1y), lineColor, 2.0f); // Bottom edge
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +401,8 @@ void RenderZones()
     // flag); skip rendering while the in-game map is fullscreen.
     if (GS.IsMapOpen) return;
 
+    UpdateUIRects(); // snapshot UI window rects before drawing any dots
+    
     // Map ID and camera position come from GS, populated each frame from
     // whichever source is active (RTAPI or Mumble).
     unsigned int currMapID = GS.MapID;
@@ -463,12 +424,28 @@ void RenderZones()
     {
         if (!shouldRender(p)) return;
     
-        float fdx = GS.CameraX - p.X;
-        float fdy = GS.CameraY - p.Y;
-        float fdz = GS.CameraZ - p.Z;
+        // Broad-phase cull: skip the zone only when the player is so far from
+        // the zone centre that even the nearest dot on the surface is beyond
+        // ZoneFadeEnd.  The extent used depends on trigger type:
+        //   Circle — sphere radius
+        //   Plane  — half-diagonal of width × height band, so corner dots are covered
+        float extent;
+        if (p.TriggerType == ETriggerType::Plane)
+        {
+            float halfW = p.PlaneWidth * 0.5f;
+            float halfH = (p.bandUpDeg + p.bandDownDeg) * 0.5f; // metres
+            extent = std::sqrt(halfW*halfW + halfH*halfH);
+        }
+        else
+        {
+            extent = p.Radius;
+        }
+        float fdx = GS.PlayerX - p.X;
+        float fdy = GS.PlayerY - p.Y;
+        float fdz = GS.PlayerZ - p.Z;
         float fdist = std::sqrt(fdx*fdx + fdy*fdy + fdz*fdz);
-        float distAlpha = std::clamp(1.0f - (fdist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
-        if (distAlpha <= 0.0f) return;
+        if (fdist > ZoneFadeEnd + extent) return;
+        float distAlpha = 1.0f; // unused internally, kept for call-site compatibility
     
         bool isTimed = ShowDebug && (idx == ZoneRenderSelectedIndex);
     
