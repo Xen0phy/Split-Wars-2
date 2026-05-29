@@ -3,16 +3,91 @@
 // There is exactly one translation unit that defines these — this one.
 // All other .cpp files access them via the extern declarations in shared.h.
 //
-// Also implements FullReset(), the single function that resets all per-run
-// state back to a clean slate without touching persistent settings or history.
+// Also implements FullReset() and UpdateGameState().
 
 #include "shared.h"
 
 // ---------------------------------------------------------------------------
 // Nexus / GW2 interface pointers
 // ---------------------------------------------------------------------------
-AddonAPI_t*   APIDefs   = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
-Mumble::Data* MumbleLink = nullptr; // Shared-memory block written by GW2 every frame
+AddonAPI_t*   APIDefs           = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
+Mumble::Data* MumbleLink        = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
+RTAPI::RealTimeData* RTAPIData  = nullptr;
+
+// ---------------------------------------------------------------------------
+// Data source
+// ---------------------------------------------------------------------------
+EDataSource          PreferredSource = EDataSource::Default;
+
+// ---------------------------------------------------------------------------
+// GameState
+// ---------------------------------------------------------------------------
+GameState GS = {};
+
+// ---------------------------------------------------------------------------
+// UpdateGameState
+// ---------------------------------------------------------------------------
+// Populates GS from whichever data source is currently active.
+// Called once per frame at the top of AddonRender() before any trigger
+// evaluation or rendering reads game state.
+//
+// Source selection:
+//   Default — RTAPI if live, otherwise Mumble.
+//   Mumble  — always Mumble.
+//   RTAPI   — RTAPI if live, otherwise Mumble.
+//
+// IsMapOpen is always sourced from Mumble regardless of the active source,
+// as RTAPI does not expose that flag.
+// IsLoading is derived from RTAPI's GameState enum when RTAPI is active;
+// Mumble does not expose a reliable loading flag so it is always false there.
+// ---------------------------------------------------------------------------
+void UpdateGameState()
+{
+    bool rtapiLive = RTAPIData != nullptr && RTAPIData->GameBuild != 0;
+    GS.RTAPIAvailable = rtapiLive;
+
+    bool useRTAPI = rtapiLive &&
+        (PreferredSource == EDataSource::Default ||
+         PreferredSource == EDataSource::RTAPI);
+
+    if (useRTAPI)
+    {
+        GS.ActiveSource  = EDataSource::RTAPI;
+        GS.PlayerX       = RTAPIData->CharacterPosition[0];
+        GS.PlayerY       = RTAPIData->CharacterPosition[1];
+        GS.PlayerZ       = RTAPIData->CharacterPosition[2];
+        GS.CameraX       = RTAPIData->CameraPosition[0];
+        GS.CameraY       = RTAPIData->CameraPosition[1];
+        GS.CameraZ       = RTAPIData->CameraPosition[2];
+        GS.CameraFrontX  = RTAPIData->CameraFacing[0];
+        GS.CameraFrontY  = RTAPIData->CameraFacing[1];
+        GS.CameraFrontZ  = RTAPIData->CameraFacing[2];
+        GS.FOV           = RTAPIData->CameraFOV;
+        GS.MapID         = RTAPIData->MapID;
+        GS.IsInCombat    = (uint32_t)RTAPIData->CharacterState &
+                           (uint32_t)RTAPI::ECharacterState::IsInCombat;
+        GS.IsLoading     = RTAPIData->GameState != RTAPI::EGameState::Gameplay;
+        GS.IsMapOpen     = MumbleLink ? MumbleLink->Context.IsMapOpen : false;
+    }
+    else if (MumbleLink)
+    {
+        GS.ActiveSource  = EDataSource::Mumble;
+        GS.PlayerX       = MumbleLink->AvatarPosition.X;
+        GS.PlayerY       = MumbleLink->AvatarPosition.Y;
+        GS.PlayerZ       = MumbleLink->AvatarPosition.Z;
+        GS.CameraX       = MumbleLink->CameraPosition.X;
+        GS.CameraY       = MumbleLink->CameraPosition.Y;
+        GS.CameraZ       = MumbleLink->CameraPosition.Z;
+        GS.CameraFrontX  = MumbleLink->CameraFront.X;
+        GS.CameraFrontY  = MumbleLink->CameraFront.Y;
+        GS.CameraFrontZ  = MumbleLink->CameraFront.Z;
+        GS.FOV           = CameraFOV;
+        GS.MapID         = MumbleLink->Context.MapID;
+        GS.IsInCombat    = MumbleLink->Context.IsInCombat;
+        GS.IsMapOpen     = MumbleLink->Context.IsMapOpen;
+        GS.IsLoading     = false;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Timers
@@ -23,74 +98,68 @@ Timer GrandTimer;    // Measures wall-clock run time including load screens
 // ---------------------------------------------------------------------------
 // Route state
 // ---------------------------------------------------------------------------
-Route       CurrentRoute;                        // The active route being run
-float       CameraFOV           = 0.873f;        // Radians (~50°); updated via EV_MUMBLE_IDENTITY_UPDATED
-std::string CurrentRouteName    = "New Route";   // Display name shown in the config and history windows
-std::string CurrentRouteFilepath;                // Full path to the loaded .json file; empty if unsaved
-std::string CurrentHistoryPath;                  // Full path to the paired .history file
-std::string AddonDir;                            // Base directory of the addon (where settings/routes live)
+Route       CurrentRoute;
+float       CameraFOV            = 0.873f;      // Radians (~50°); updated via EV_MUMBLE_IDENTITY_UPDATED
+std::string CurrentRouteName     = "New Route"; // Display name shown in the config and history windows
+std::string CurrentRouteFilepath;               // Full path to the loaded .json file; empty if unsaved
+std::string CurrentHistoryPath;                 // Full path to the paired .history file
+std::string AddonDir;                           // Base directory of the addon (where settings/routes live)
 
 // ---------------------------------------------------------------------------
 // UI visibility flags
-// Each bool controls whether its corresponding ImGui window is drawn.
 // ---------------------------------------------------------------------------
-bool ShowZones        = true;  // Checkpoint zone overlays in the game world
-float ZoneFadeStart   = 50.0f;
-float ZoneFadeEnd     = 150.0f;
-bool ShowTimer        = true;  // The main speedrun timer overlay
-bool ShowConfig       = true;  // The route editor / config window
-bool ShowDebug        = false; // Debug info (map change log, etc.)
-bool ShowHistory      = false; // Run history window
-bool ShowGrandTotal   = false; // Extra Grand Total row in the timer table
-bool ShowRouteBrowser = false; // Route file browser window
+bool  ShowZones      = true;
+float ZoneFadeStart  = 50.0f;
+float ZoneFadeEnd    = 150.0f;
+bool  ShowTimer      = true;
+bool  ShowConfig     = true;
+bool  ShowDebug      = false;
+bool  ShowHistory    = false;
+bool  ShowGrandTotal = false;
+bool  ShowRouteBrowser = false;
 
 // ---------------------------------------------------------------------------
-// Timer display settings
+// TimerMode / Timer display settings
 // ---------------------------------------------------------------------------
-TimerMode TimerDisplayMode = TimerMode::Split; // Split / Segment / LiveSplit
-bool      CompactMode      = false;            // Single-line timer vs. full split table
-int       MaxHistoryRuns   = 10;               // How many runs to keep in the history list
+TimerMode TimerDisplayMode = TimerMode::Split;
+bool      CompactMode      = false;
 
 // ---------------------------------------------------------------------------
 // History / best run data
 // ---------------------------------------------------------------------------
-std::vector<Split>         BestRun;      // Splits of the run designated as the best; used for diffs
-std::vector<HistoricalRun> HistoryRuns;  // All recorded runs for the current route, newest first
-int                        BestRunIndex = -1; // Index into HistoryRuns of the best run; -1 = none set
+std::vector<Split>         BestRun;
+std::vector<HistoricalRun> HistoryRuns;
+int                        MaxHistoryRuns   = 10;
+int                        BestRunIndex = -1; // Index into HistoryRuns; -1 = none set
 
 // ---------------------------------------------------------------------------
 // Per-run state flags
 // ---------------------------------------------------------------------------
-bool   RunFinished         = false; // Set when a goal trigger fires; cleared after post-run UI actions
-double DisplayedGrandTotal = 0.0;   // Grand total shown in the overlay; updated each frame in AddonRender()
-bool   PendingStart        = false; // Set on a MapChange start trigger; cleared when the load screen ends
-double pendingGrandStop    = -1.0;  // GrandTimer snapshot taken at MapChange goal detection; -1.0 = no snapshot pending.
+bool   RunFinished         = false;
+double DisplayedGrandTotal = 0.0;
+bool   PendingStart        = false;
+double pendingGrandStop    = -1.0; // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
 
 // ---------------------------------------------------------------------------
 // Thread-safety
 // ---------------------------------------------------------------------------
-// InteractKeyPressed is written by the keybind callback (any thread) and read
-// by AddonRender() (render thread), so it uses an atomic to avoid data races.
-// KeybindMutex guards all other timer mutations that happen in both AddonRender()
-// and the Start/Stop/Reset keybind callbacks.
 std::atomic<bool> InteractKeyPressed = false;
 std::mutex        KeybindMutex;
 
 // ---------------------------------------------------------------------------
 // Per-checkpoint runtime trigger state
-// These vectors are kept in sync with CurrentRoute.Checkpoints in AddonRender().
 // ---------------------------------------------------------------------------
-CombatTriggerState              CombatStart;        // State machine for the start CombatArena trigger
-std::vector<CombatTriggerState> CombatCheckpoints;  // One state machine per intermediate checkpoint
-CombatTriggerState              CombatGoal;         // State machine for the goal CombatArena trigger
-std::vector<bool>               checkpointTriggered; // True once a checkpoint has fired this run
-bool                            WasInCircleStart = false; // Was the player inside the start circle last frame?
-std::vector<bool>               WasInCheckpoint; // Was the player inside each circle checkpoint last frame?
+CombatTriggerState              CombatStart;
+std::vector<CombatTriggerState> CombatCheckpoints;
+CombatTriggerState              CombatGoal;
+std::vector<bool>               checkpointTriggered;
+bool                            WasInCircleStart = false;
+std::vector<bool>               WasInCheckpoint;
 
 // ---------------------------------------------------------------------------
 // FullReset
 // ---------------------------------------------------------------------------
-// Resets all per-run state to a clean starting point.  Called:
+// Resets all per-run state to a clean starting point. Called:
 //   • When the player manually resets via keybind or the Reset button.
 //   • When a new route is loaded or activated.
 //   • When a checkpoint is added or removed in the config window.
@@ -108,12 +177,12 @@ void FullReset()
     SpeedrunTimer.Reset();
     GrandTimer.Reset();
     DisplayedGrandTotal = 0.0;
-    pendingGrandStop = -1.0;
-    RunFinished      = false;
-    PendingStart     = false;
-    WasInCircleStart = false;
-    CombatStart      = {};
-    CombatGoal       = {};
+    pendingGrandStop    = -1.0;
+    RunFinished         = false;
+    PendingStart        = false;
+    WasInCircleStart    = false;
+    CombatStart         = {};
+    CombatGoal          = {};
     CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
     checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
     WasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
@@ -124,14 +193,15 @@ void FullReset()
 // Saved when the player hides all windows via the hotbar toggle, so the
 // previous visibility can be restored when they toggle back.
 // ---------------------------------------------------------------------------
-bool HotbarWindowsHidden         = false; // True while all windows are hidden by the toggle
+bool HotbarWindowsHidden         = false;
 bool HotbarSavedShowTimer        = false;
 bool HotbarSavedShowConfig       = false;
 bool HotbarSavedShowHistory      = false;
 bool HotbarSavedShowZones        = false;
 bool HotbarSavedShowRouteBrowser = false;
 
-//Debug
-
-float occludePixelRadius = 1000.0f;
-float occludePixelClamp = 300.0f;
+// ---------------------------------------------------------------------------
+// Debug
+// ---------------------------------------------------------------------------
+float occludePixelRadius = 1000.0f; // Base pixel radius for the character occlusion circle
+float occludePixelClamp  = 300.0f;  // Maximum pixel radius the occlusion circle can reach

@@ -38,8 +38,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.APIVersion         = NEXUS_API_VERSION;    // Nexus API version this addon was built against
     AddonDef.Name               = "Split Wars 2";
     AddonDef.Version.Major      = 0;
-    AddonDef.Version.Minor      = 16;
-    AddonDef.Version.Build      = 4;
+    AddonDef.Version.Minor      = 17;
+    AddonDef.Version.Build      = 0;
     AddonDef.Version.Revision   = 0;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
@@ -50,6 +50,34 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.UpdateLink         = "https://github.com/Xen0phy/Split-Wars-2";
 
     return &AddonDef;
+}
+
+// ---------------------------------------------------------------------------
+// OnAddonLoaded / OnAddonUnloaded
+// ---------------------------------------------------------------------------
+// Nexus broadcasts EV_ADDON_LOADED and EV_ADDON_UNLOADED whenever any addon
+// is loaded or unloaded at runtime (including after the initial load pass).
+// aEventArgs points to the integer signature of the addon that changed.
+//
+// We listen for RTAPI_SIG specifically so RTAPIData stays valid across
+// hot-load/unload cycles — e.g. if the user enables RTAPI after Split Wars 2
+// is already running, or disables it mid-session.  Without these handlers,
+// RTAPIData would remain a stale pointer after RTAPI unloads.
+// ---------------------------------------------------------------------------
+void OnAddonLoaded(void* aEventArgs)
+{
+    int* sig = (int*)aEventArgs;
+    if (!sig) return;
+    if (*sig == RTAPI_SIG)
+        RTAPIData = (RTAPI::RealTimeData*)APIDefs->DataLink_Get(DL_RTAPI);
+}
+
+void OnAddonUnloaded(void* aEventArgs)
+{
+    int* sig = (int*)aEventArgs;
+    if (!sig) return;
+    if (*sig == RTAPI_SIG)
+        RTAPIData = nullptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,14 +146,14 @@ static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
     {
         SpeedrunTimer.AddSplit("Manual Checkpoint");
     }
-    else if (MumbleLink)
+    else if (MumbleLink || GS.RTAPIAvailable)
     {
         Checkpoint cp;
         snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
-        cp.Point.X     = MumbleLink->AvatarPosition.X;
-        cp.Point.Y     = MumbleLink->AvatarPosition.Y;
-        cp.Point.Z     = MumbleLink->AvatarPosition.Z;
-        cp.Point.MapID = MumbleLink->Context.MapID;
+        cp.Point.X     = GS.PlayerX;
+        cp.Point.Y     = GS.PlayerY;
+        cp.Point.Z     = GS.PlayerZ;
+        cp.Point.MapID = GS.MapID;
         CurrentRoute.Checkpoints.push_back(cp);
     }
 }
@@ -211,6 +239,7 @@ static void ApplySettings(const Settings& s)
     ShowGrandTotal   = s.ShowGrandTotal;
     ShowRouteBrowser = s.ShowRouteBrowser;
     MaxHistoryRuns   = s.MaxHistoryRuns;
+    PreferredSource  = (EDataSource)s.DataSource;
 }
 
 // Snapshot the current global variables into a Settings struct ready for saving.
@@ -229,6 +258,7 @@ static Settings GatherSettings()
     s.ShowGrandTotal   = ShowGrandTotal;
     s.ShowRouteBrowser = ShowRouteBrowser;
     s.MaxHistoryRuns   = MaxHistoryRuns;
+    s.DataSource       = (int)PreferredSource;
     return s;
 }
 
@@ -281,12 +311,17 @@ static const struct { const char* ID; KeybindHandler Fn; } Keybinds[] =
 // one-time setup:
 //   1. Store the API pointer and hook into ImGui's allocator so our ImGui
 //      calls share the same heap as the host process.
-//   2. Grab the MumbleLink shared-memory pointer (player position / map data).
-//   3. Load persisted settings from disk if a settings file exists.
-//   4. Register the render and options callbacks with Nexus.
-//   5. Subscribe to the identity-updated event (for camera FOV changes).
-//   6. Upload the hotbar icon textures and add the Quick Access button.
-//   7. Register all keybinds.
+//   2. Grab the MumbleLink shared-memory pointer (always-present fallback
+//      for position, map, FOV, and IsMapOpen).
+//   3. Attempt to grab the RTAPI data pointer (optional higher-accuracy
+//      source; null if RTAPI is not installed).
+//   4. Subscribe to EV_ADDON_LOADED/UNLOADED to keep RTAPIData valid if
+//      RTAPI is hot-loaded or unloaded mid-session.
+//   5. Load persisted settings from disk if a settings file exists.
+//   6. Register the render and options callbacks with Nexus.
+//   7. Subscribe to EV_MUMBLE_IDENTITY_UPDATED (for camera FOV changes).
+//   8. Upload the hotbar icon textures and add the Quick Access button.
+//   9. Register all keybinds.
 // ---------------------------------------------------------------------------
 void AddonLoad(AddonAPI_t* aApi)
 {
@@ -302,8 +337,20 @@ void AddonLoad(AddonAPI_t* aApi)
     );
 
     // MumbleLink is a shared-memory block that GW2 writes every frame with
-    // player position, map ID, combat state, etc.
+    // player position, map ID, combat state, and more.  It is always the
+    // fallback data source and the sole source for IsMapOpen and FOV.
     MumbleLink = (Mumble::Data*)APIDefs->DataLink_Get("DL_MUMBLE_LINK");
+
+    // RTAPIData is an optional higher-accuracy data source provided by the
+    // RTAPI addon.  Null if RTAPI is not installed or not yet loaded.
+    // UpdateGameState() selects the active source each frame based on
+    // PreferredSource and whether RTAPIData is non-null.
+    RTAPIData = (RTAPI::RealTimeData*)APIDefs->DataLink_Get(DL_RTAPI);
+
+    // Subscribe to addon lifecycle events so RTAPIData is kept in sync if
+    // RTAPI is loaded or unloaded after Split Wars 2 is already running.
+    APIDefs->Events_Subscribe("EV_ADDON_LOADED",   OnAddonLoaded);
+    APIDefs->Events_Subscribe("EV_ADDON_UNLOADED", OnAddonUnloaded);
     AddonDir   = GetAddonDir();
 
     // Apply persisted settings if a settings file is found; otherwise the
@@ -355,8 +402,9 @@ void AddonLoad(AddonAPI_t* aApi)
 // Called by Nexus just before the DLL is unloaded (e.g. on game exit or when
 // the user disables the addon).  We mirror everything done in AddonLoad:
 // save settings, deregister all keybinds, remove the Quick Access button,
-// and unsubscribe from events and render callbacks so no dangling pointers
-// remain inside Nexus after our DLL is gone.
+// and unsubscribe from all events (including EV_ADDON_LOADED/UNLOADED for
+// RTAPI lifecycle tracking) and render callbacks so no dangling function
+// pointers remain inside Nexus after our DLL is gone.
 // ---------------------------------------------------------------------------
 void AddonUnload()
 {
@@ -370,7 +418,12 @@ void AddonUnload()
     APIDefs->QuickAccess_RemoveContextMenu("QA_SW2_CTXMENU");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
+
+    // Unsubscribe all event listeners registered in AddonLoad.
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
+    APIDefs->Events_Unsubscribe("EV_ADDON_LOADED",            OnAddonLoaded);
+    APIDefs->Events_Unsubscribe("EV_ADDON_UNLOADED",          OnAddonUnloaded);
+
     APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 unloaded.");
 }
 
@@ -428,7 +481,8 @@ static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
 // ---------------------------------------------------------------------------
 void AddonRender()
 {
-    if (!MumbleLink) return;
+    if (!MumbleLink && !GS.RTAPIAvailable) return;
+    UpdateGameState(); // populate GS from whichever source is active
 
     // --- Per-frame state (persists between calls via static locals) ---
     static unsigned int lastUITick       = 0;
@@ -439,9 +493,9 @@ void AddonRender()
     static std::chrono::steady_clock::time_point loadScreenStart;
 
     // Snapshot current game state for this frame.
-    Vector3      currPos      = MumbleLink->AvatarPosition;
-    unsigned int currMapID    = MumbleLink->Context.MapID;
-    bool         currInCombat = MumbleLink->Context.IsInCombat;
+    Vector3      currPos      = Vector3{GS.PlayerX, GS.PlayerY, GS.PlayerZ};
+    unsigned int currMapID    = GS.MapID;
+    bool         currInCombat = GS.IsInCombat;
 
     // -------------------------------------------------------------------------
     // CombatArena trigger helper (lambda, defined inline for access to frame state)
@@ -531,12 +585,11 @@ void AddonRender()
 
     // -------------------------------------------------------------------------
     // Loading screen detection
-    // MumbleLink's UITick counter increments every frame while the game is
-    // rendering.  If it hasn't changed since last frame the game is on a
-    // loading screen and we should pause the run timer.
+    // GS.IsLoading is set by UpdateGameState() each frame. With RTAPI it
+    // reflects GameState != Gameplay directly; with Mumble it is derived from
+    // UITick stalling (UITick stops incrementing during load screens).
     // -------------------------------------------------------------------------
-    bool isLoading = (MumbleLink->UITick == lastUITick);
-    lastUITick     = MumbleLink->UITick;
+    bool isLoading = GS.IsLoading;
 
     // Convenience pointers to the designated start and goal checkpoints.
     Checkpoint* startCp = GetStart(CurrentRoute);
@@ -1078,7 +1131,31 @@ void AddonOptions()
         ZoneFadeStart = ZoneFadeEnd - 1.0f;
     ImGui::Separator();
     
-    //Debug related UI
+    // Data source selector — lets the user choose between RTAPI and Mumble.
+    ImGui::Text("Data Source:");
+    ImGui::SameLine();
+    const char* sourceLabel = (PreferredSource == EDataSource::RTAPI)   ? "RTAPI"
+                            : (PreferredSource == EDataSource::Mumble)  ? "Mumble"
+                            :                                              "Default";
+    ImGui::SetNextItemWidth(80.0f);
+    if (ImGui::BeginCombo("##datasource", sourceLabel))
+    {
+        if (ImGui::Selectable("Default", PreferredSource == EDataSource::Default))
+            PreferredSource = EDataSource::Default;
+        Tooltip("Use RTAPI if available, otherwise Mumble.");
+        if (ImGui::Selectable("Mumble",  PreferredSource == EDataSource::Mumble))
+            PreferredSource = EDataSource::Mumble;
+        Tooltip("Always use Mumble, even if RTAPI is available.");
+        if (ImGui::Selectable("RTAPI",   PreferredSource == EDataSource::RTAPI))
+            PreferredSource = EDataSource::RTAPI;
+        Tooltip("Always use RTAPI. Falls back to Mumble if RTAPI is unavailable.");
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(GS.RTAPIAvailable ? "(RTAPI connected)" : "(RTAPI not available)");
+
+    // Debug
+    ImGui::Separator();
     ImGui::Checkbox("Show Debug", &ShowDebug);
     Tooltip("Toggles debugging text which is not fully implemented");
 

@@ -441,7 +441,8 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"show_history",        settings.ShowHistory},
             {"show_grand_total",    settings.ShowGrandTotal},
             {"show_route_browser", settings.ShowRouteBrowser},
-            {"max_history_runs",   settings.MaxHistoryRuns}
+            {"max_history_runs",   settings.MaxHistoryRuns},
+            {"data_source",        settings.DataSource}
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -481,6 +482,7 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.ShowGrandTotal   = j.value("show_grand_total",   false);
         settings.ShowRouteBrowser = j.value("show_route_browser", false);
         settings.MaxHistoryRuns   = j.value("max_history_runs",   10);
+        settings.DataSource       = j.value("data_source",        0);
         return true;
     }
     catch (...) { return false; }

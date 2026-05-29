@@ -9,6 +9,7 @@
 
 #include "Nexus.h"    // AddonAPI_t and Nexus type definitions
 #include "Mumble.h"   // Mumble::Data (shared-memory layout written by GW2)
+#include "RTAPI.hpp"  // RTAPI::RealTimeData (real-time position and state)
 #include "timer.h"    // Timer class
 #include "route.h"    // Route, Checkpoint, RoutePoint, trigger state types
 #include "storage.h"  // Split, HistoricalRun, save/load functions
@@ -21,7 +22,68 @@
 // Nexus / GW2 interface pointers
 // ---------------------------------------------------------------------------
 extern AddonAPI_t*    APIDefs;    // Nexus API; set in AddonLoad()
-extern Mumble::Data*  MumbleLink; // Live GW2 game state (position, map, combat, etc.)
+extern Mumble::Data*  MumbleLink; // Mumble shared-memory block; used as fallback data source and for IsMapOpen
+extern RTAPI::RealTimeData* RTAPIData;      // Null when RTAPI is not loaded or has been hot-unloaded
+
+// ---------------------------------------------------------------------------
+// Data source
+// ---------------------------------------------------------------------------
+// Controls which API supplies player position, camera, map ID, and combat state.
+// UpdateGameState() reads from the active source each frame and writes into GS.
+//
+//   Default — use RTAPI if loaded and live, otherwise fall back to Mumble.
+//   Mumble  — always use Mumble, even if RTAPI is available.
+//   RTAPI   — always use RTAPI; falls back to Mumble if RTAPI is unavailable.
+//
+// IsMapOpen is always sourced from Mumble regardless of the active source,
+// as RTAPI does not expose that flag.
+// ---------------------------------------------------------------------------
+enum class EDataSource : unsigned char
+{
+    Default = 0,
+    Mumble  = 1,
+    RTAPI   = 2
+};
+extern EDataSource          PreferredSource; // Persisted to settings.json
+
+// ---------------------------------------------------------------------------
+// GameState
+// ---------------------------------------------------------------------------
+// Unified snapshot populated every frame by UpdateGameState().
+// All rendering and trigger code reads from this instead of MumbleLink
+// or RTAPIData directly, so the rest of the codebase is source-agnostic.
+// ---------------------------------------------------------------------------
+struct GameState
+{
+    // Player
+    float    PlayerX, PlayerY, PlayerZ;
+
+    // Camera
+    float    CameraX, CameraY, CameraZ;
+    float    CameraFrontX, CameraFrontY, CameraFrontZ;
+    float    FOV;
+
+    // World
+    uint32_t MapID;
+    bool     IsMapOpen;  // Always from Mumble; false if Mumble is unavailable
+    bool     IsLoading;  // RTAPI: GameState != Gameplay; Mumble: always false
+
+    // Character
+    bool     IsInCombat;
+
+    // Source tracking
+    bool        RTAPIAvailable;
+    EDataSource ActiveSource;
+};
+
+extern GameState GS;
+
+// ---------------------------------------------------------------------------
+// UpdateGameState
+// ---------------------------------------------------------------------------
+// Called once per frame at the top of AddonRender() to populate GS.
+// ---------------------------------------------------------------------------
+void UpdateGameState();
 
 // ---------------------------------------------------------------------------
 // Timers
@@ -43,17 +105,17 @@ extern std::string AddonDir;             // Addon base directory (settings, rout
 // UI visibility flags
 // ---------------------------------------------------------------------------
 extern bool ShowZones;        // Checkpoint zone overlays rendered in the game world
-extern float ZoneFadeStart; // Distance at which zones start fading (metres)
-extern float ZoneFadeEnd;   // Distance at which zones are fully gone (metres)
+extern float ZoneFadeStart;   // Distance at which zones start fading (metres)
+extern float ZoneFadeEnd;     // Distance at which zones are fully gone (metres)
 extern bool ShowTimer;        // Main speedrun timer overlay
 extern bool ShowConfig;       // Route editor / config window
-extern bool ShowDebug;        // Debug info (map change log, etc.)
+extern bool ShowDebug;        // Debug info window
 extern bool ShowHistory;      // Run history window
 extern bool ShowGrandTotal;   // Extra Grand Total row in the timer table
 extern bool ShowRouteBrowser; // Route file browser window
 
 // ---------------------------------------------------------------------------
-// TimerMode
+// TimerMode / Timer display settings
 // ---------------------------------------------------------------------------
 // Controls what each row in the split table shows and how diffs are computed.
 //
@@ -67,23 +129,15 @@ extern bool ShowRouteBrowser; // Route file browser window
 // ---------------------------------------------------------------------------
 enum class TimerMode { Segment = 0, Split = 1, LiveSplit = 2 };
 extern TimerMode TimerDisplayMode;
-
-// ---------------------------------------------------------------------------
-// Timer display settings
-// ---------------------------------------------------------------------------
 extern bool CompactMode;    // Single-line timer instead of the full split table
-extern int  MaxHistoryRuns; // Cap on how many runs are kept in the history list
 
 // ---------------------------------------------------------------------------
 // History / best run
 // ---------------------------------------------------------------------------
-extern std::vector<Split>         BestRun;     // Splits of the designated best run; drives the diff column
-extern std::vector<HistoricalRun> HistoryRuns; // All recorded runs, newest first
-// Index of the best run inside HistoryRuns (-1 = none set).
-// Stored as a plain int so SaveHistory can write it to the .history file
-// without the fragile timestamp-matching that was used previously.
-// Updated whenever the best run changes and adjusted after deletions.
-extern int BestRunIndex;
+extern std::vector<Split>         BestRun;      // Splits of the designated best run; drives the diff column
+extern std::vector<HistoricalRun> HistoryRuns;  // All recorded runs, newest first
+extern int                        MaxHistoryRuns; // Cap on how many runs are kept in the history list
+extern int                        BestRunIndex; // Index of the best run in HistoryRuns; -1 = none set
 
 // ---------------------------------------------------------------------------
 // Per-run state flags
@@ -91,7 +145,7 @@ extern int BestRunIndex;
 extern bool   RunFinished;         // Set when a goal trigger fires; cleared by post-run UI actions
 extern double DisplayedGrandTotal; // Grand total shown in the overlay; frozen at goal for MapChange runs
 extern bool   PendingStart;        // Queued MapChange start; fires once the load screen clears
-extern double pendingGrandStop;    // GrandTimer snapshot taken at MapChange goal detection; -1.0 = no snapshot pending.
+extern double pendingGrandStop;    // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
 
 // ---------------------------------------------------------------------------
 // Thread-safety
@@ -135,6 +189,8 @@ extern bool HotbarSavedShowHistory;
 extern bool HotbarSavedShowZones;
 extern bool HotbarSavedShowRouteBrowser;
 
-//Debug
-extern float occludePixelRadius;
-extern float occludePixelClamp;
+// ---------------------------------------------------------------------------
+// Debug
+// ---------------------------------------------------------------------------
+extern float occludePixelRadius; // Base pixel radius for the character occlusion circle
+extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle can reach

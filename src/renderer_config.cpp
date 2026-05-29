@@ -255,8 +255,8 @@ void RenderConfigWindow()
             // once every other checkpoint in the route has been triggered.
             // Non-goal checkpoints use a 5-item list (no "All Checkpoints" entry).
             ImGui::TableSetColumnIndex(3);
-            const char* triggerTypes[]     = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)" };
-            const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Mumble)", "All Checkpoints" };
+            const char* triggerTypes[]     = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)" };
+            const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints" };
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
             if (isGoal)
@@ -400,21 +400,23 @@ void RenderConfigWindow()
             {
                 char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", i);
                 if (ImGui::Button(capLabel) && MumbleLink)
+                if (ImGui::Button(capLabel) && (MumbleLink || GS.RTAPIAvailable))
                 {
-                    point.MapID = MumbleLink->Context.MapID;
+                    point.MapID = GS.MapID;
                     if (!isMapChange)
                     {
-                        point.X = MumbleLink->AvatarPosition.X;
-                        point.Y = MumbleLink->AvatarPosition.Y;
-                        point.Z = MumbleLink->AvatarPosition.Z;
+                        point.X = GS.PlayerX;
+                        point.Y = GS.PlayerY;
+                        point.Z = GS.PlayerZ;
                     }
                     if (point.TriggerType == ETriggerType::Plane)
                     {
                         // Convert the camera's 2D forward vector (X/Z plane) to a
                         // compass angle in degrees, then rotate 90° so the plane
                         // faces the player rather than running parallel to their gaze.
-                        float fx = MumbleLink->CameraFront.X;
-                        float fz = MumbleLink->CameraFront.Z;
+                        // Camera front is sourced from GS (populated from RTAPI or Mumble).
+                        float fx = GS.CameraFrontX;
+                        float fz = GS.CameraFrontZ;
                         point.PlaneAngle = -(std::atan2(fx, fz) * 180.0f / 3.14159265f) + 90.0f;
                     }
                 }
@@ -457,13 +459,13 @@ void RenderConfigWindow()
     {
         Checkpoint cp;
         snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
-        if (MumbleLink)
-        {
-            cp.Point.X     = MumbleLink->AvatarPosition.X;
-            cp.Point.Y     = MumbleLink->AvatarPosition.Y;
-            cp.Point.Z     = MumbleLink->AvatarPosition.Z;
-            cp.Point.MapID = MumbleLink->Context.MapID;
-        }
+        // Position and map ID come from GS, which is populated each frame from
+        // whichever source is active (RTAPI or Mumble).  Zero-initialised defaults
+        // are acceptable if neither source is available yet.
+        cp.Point.X     = GS.PlayerX;
+        cp.Point.Y     = GS.PlayerY;
+        cp.Point.Z     = GS.PlayerZ;
+        cp.Point.MapID = GS.MapID;
         CurrentRoute.Checkpoints.push_back(cp);
         FullReset();
     }

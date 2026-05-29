@@ -34,7 +34,7 @@ static const char* TriggerTypeName(ETriggerType t)
         case ETriggerType::Plane:          return "Plane";
         case ETriggerType::MapChange:      return "Map Change";
         case ETriggerType::CircleInteract: return "Circle Interact";
-        case ETriggerType::CombatArena:    return "Combat Arena";
+        case ETriggerType::CombatArena:    return "Combat (Native)";
         case ETriggerType::AllCheckpoints: return "All Checkpoints";
         default:                           return "Unknown";
     }
@@ -80,18 +80,15 @@ void RenderDebugWindow()
 
         // --- Player column ---
         ImGui::TableSetColumnIndex(0);
-        if (MumbleLink)
-        {
-            ImGui::Text("X: %.3f", MumbleLink->AvatarPosition.X);
-            ImGui::Text("Y: %.3f", MumbleLink->AvatarPosition.Y);
-            ImGui::Text("Z: %.3f", MumbleLink->AvatarPosition.Z);
-            ImGui::Text("MapID: %u", MumbleLink->Context.MapID);
-            ImGui::Text("Combat: %s", MumbleLink->Context.IsInCombat ? "Yes" : "No");
-        }
-        else
-        {
-            ImGui::TextDisabled("MumbleLink unavailable");
-        }
+        ImGui::Text("X: %.3f", GS.PlayerX);
+        ImGui::Text("Y: %.3f", GS.PlayerY);
+        ImGui::Text("Z: %.3f", GS.PlayerZ);
+        ImGui::Text("MapID: %u",  GS.MapID);
+        ImGui::Text("Combat: %s", GS.IsInCombat ? "Yes" : "No");
+        // Source diagnostics — shows which data source is currently active and
+        // whether RTAPI is connected, useful when debugging position discrepancies.
+        ImGui::Text("Source: %s", GS.ActiveSource == EDataSource::RTAPI ? "RTAPI" : "Mumble");
+        ImGui::Text("RTAPI: %s",  GS.RTAPIAvailable ? "Available" : "Unavailable");
 
         // --- Timer column ---
         ImGui::TableSetColumnIndex(1);
@@ -211,81 +208,63 @@ void RenderDebugWindow()
             }
 
             // Live distance and in-zone status.
-            if (MumbleLink)
+            if (MumbleLink || GS.RTAPIAvailable)
             {
-                float dist   = DistanceTo(MumbleLink->AvatarPosition, point);
-                bool  inZone = IsWithinRange(MumbleLink->AvatarPosition, point);
+                Vector3 playerPos = { GS.PlayerX, GS.PlayerY, GS.PlayerZ };
+                float dist   = DistanceTo(playerPos, point);
+                bool  inZone = IsWithinRange(playerPos, point);
                 ImGui::Spacing();
                 ImGui::Text("Distance: %.2f m", dist);
                 ImGui::TextColored(
                     inZone ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                            : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
                     "In Zone: %s", inZone ? "Yes" : "No");
-
                 // -------------------------------------------------------------------------
                 // World-to-screen projection
-                // Shows where the checkpoint centre projects onto the screen, and whether
-                // it is currently visible. Also draws a dot on the game world at the
-                // projected position so the author can visually verify placement.
+                // Shows where the checkpoint centre projects onto the screen and whether
+                // it is currently visible.  Also draws a confirmation dot in the game world.
+                // Camera data comes from GS regardless of whether RTAPI or Mumble is active.
                 // -------------------------------------------------------------------------
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
                 ImGui::Text("Projection:");
-
+            
                 float sx, sy;
                 bool  valid = WorldToScreen(point.X, point.Y, point.Z, sx, sy);
-
-                ImGui::Text("  Cam X: %.3f  Y: %.3f  Z: %.3f",
-                    MumbleLink->CameraPosition.X,
-                    MumbleLink->CameraPosition.Y,
-                    MumbleLink->CameraPosition.Z);
+            
+                ImGui::Text("  Cam X: %.3f  Y: %.3f  Z: %.3f", GS.CameraX, GS.CameraY, GS.CameraZ);
                 ImGui::Text("  Screen: %.1f  %.1f", sx, sy);
                 ImGui::TextColored(
                     valid ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                           : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
                     "  Center: %s", valid ? "VALID" : "INVALID");
-
-                // Draw a dot on the game world at the projected centre so the author
-                // can visually confirm the checkpoint is placed at the right spot.
+            
                 if (valid)
                 {
                     ImDrawList* dl = ImGui::GetForegroundDrawList();
                     dl->AddCircleFilled(ImVec2(sx, sy), 10.0f, IM_COL32(255, 255, 0, 255));
                     dl->AddCircle(ImVec2(sx, sy), 12.0f, IM_COL32(0, 0, 0, 200), 0, 2.0f);
                 }
-
-                // Draw a dot on the game world at the projected centre so the author
-                // can visually confirm the checkpoint is placed at the right spot.
-                if (valid)
-                {
-                    ImDrawList* dl = ImGui::GetForegroundDrawList();
-                    dl->AddCircleFilled(ImVec2(sx, sy), 10.0f, IM_COL32(255, 255, 0, 255));
-                    dl->AddCircle(ImVec2(sx, sy), 12.0f, IM_COL32(0, 0, 0, 200), 0, 2.0f);
-                }
-
-                // Occlusion debug
+            
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
                 ImGui::Text("Occlusion:");
-
+            
                 float playerSx, playerSy;
                 bool  playerValid = WorldToScreen(
-                    MumbleLink->AvatarPosition.X,
-                    MumbleLink->AvatarPosition.Y + 1.0f,
-                    MumbleLink->AvatarPosition.Z,
+                    GS.PlayerX,
+                    GS.PlayerY + 1.0f,
+                    GS.PlayerZ,
                     playerSx, playerSy);
-
-                // Camera distance to player for occlusion radius scaling
-                float camToPlayerX = MumbleLink->CameraPosition.X - MumbleLink->AvatarPosition.X;
-                float camToPlayerY = MumbleLink->CameraPosition.Y - MumbleLink->AvatarPosition.Y;
-                float camToPlayerZ = MumbleLink->CameraPosition.Z - MumbleLink->AvatarPosition.Z;
+            
+                float camToPlayerX = GS.CameraX - GS.PlayerX;
+                float camToPlayerY = GS.CameraY - GS.PlayerY;
+                float camToPlayerZ = GS.CameraZ - GS.PlayerZ;
                 float camToPlayer  = std::sqrt(camToPlayerX*camToPlayerX + camToPlayerY*camToPlayerY + camToPlayerZ*camToPlayerZ);
-        
-                // Radius in pixels — larger when camera is close, smaller when far
                 float occludeRadius = std::clamp(occludePixelRadius / (camToPlayer * 0.5f), 30.0f, occludePixelClamp);
-
+            
                 ImGui::Text("  Player Screen: %.1f  %.1f", playerSx, playerSy);
                 ImGui::Text("  Player Valid:  %s", playerValid ? "Yes" : "No");
                 ImGui::Text("  Cam->Player:   %.3f m", camToPlayer);
@@ -295,8 +274,7 @@ void RenderDebugWindow()
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(80.0f);
                 ImGui::DragFloat("Clamp High", &occludePixelClamp, 1.0f, 0.0f, 0.0f, "%.0f");
-
-                // Draw the occlusion circle on screen so we can see its actual size
+            
                 if (playerValid)
                 {
                     ImDrawList* dl = ImGui::GetForegroundDrawList();

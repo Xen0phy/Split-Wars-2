@@ -47,8 +47,8 @@
 // ---------------------------------------------------------------------------
 bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
 {
-    Vector3 camPos   = MumbleLink->CameraPosition;
-    Vector3 camFront = MumbleLink->CameraFront;
+    Vector3 camPos   = { GS.CameraX,      GS.CameraY,      GS.CameraZ      };
+    Vector3 camFront = { GS.CameraFrontX, GS.CameraFrontY, GS.CameraFrontZ };
 
     // Step 1 — normalise the forward vector.
     float flen = std::sqrt(camFront.X*camFront.X + camFront.Y*camFront.Y + camFront.Z*camFront.Z);
@@ -134,31 +134,40 @@ static void DrawGradientTriangle(ImDrawList* dl,
 // ---------------------------------------------------------------------------
 // RenderZoneCircle
 // ---------------------------------------------------------------------------
-// Draws wireframe rings around the sphere boundary plus a translucent fill.
+// Draws a world-space zone indicator for sphere-type triggers.
 //
-// Two modes controlled by point.IsBillboardCircle:
+// Two modes controlled by point.DotSphereCount:
 //
-//   Default (false) — horizontal ring + vertical billboard ring + filled base
-//                     band fading from BASE_ALPHA at Y to transparent at Y+1.
-//                     Best for ground-based triggers.
+//   DotSphereCount == 0 (default) — horizontal wireframe ring on the XZ plane
+//                     plus a filled base band fading from BASE_ALPHA at Y to
+//                     transparent at Y+1.  Best for ground-based triggers
+//                     where the flat ring communicates the trigger boundary
+//                     clearly.
 //
-//   Billboard (true) — single vertical ring that always faces the camera, with
-//                      an inward fading fill transparent at the edge and
-//                      BASE_ALPHA at the centre. Best for air/vertical triggers.
+//   DotSphereCount  > 0           — a sphere made of projected dots,
+//                     distributed evenly using the golden-angle spiral.
+//                     Dots outside ±60° latitude are skipped (avoiding polar
+//                     crowding) and dots occluded by the player model are
+//                     faded out.  Best for triggers that extend significantly
+//                     above ground, or wherever showing the full 3D volume
+//                     is more readable than a flat ring.
 //
-// Both modes fade out as the camera moves inside the trigger radius to avoid
-// a distracting full-screen fill when the player is in the zone.
+// Both modes fade out as the camera moves inside the trigger radius (to avoid
+// a distracting full-screen fill when the player is in the zone) and as the
+// zone moves outside the configured ZoneFadeStart/ZoneFadeEnd range.
 // ---------------------------------------------------------------------------
 void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float debugOffsetY, float distAlpha)
 {
-    if (!MumbleLink) return;
+    // Require at least one live data source — camera data comes from GS which
+    // is only meaningful when Mumble or RTAPI has been initialised.
+    if (!MumbleLink && !GS.RTAPIAvailable) return;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
     // --- Fade when camera is close to the zone centre ---
-    float camDx   = MumbleLink->CameraPosition.X - point.X;
-    float camDy   = MumbleLink->CameraPosition.Y - point.Y;
-    float camDz   = MumbleLink->CameraPosition.Z - point.Z;
+    float camDx = GS.CameraX - point.X;
+    float camDy = GS.CameraY - point.Y;
+    float camDz = GS.CameraZ - point.Z;
     float camDist = std::sqrt(camDx*camDx + camDy*camDy + camDz*camDz);
     float fadeStart = point.Radius * 1.5f;
     float fadeEnd   = point.Radius * 0.8f;
@@ -203,15 +212,15 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
         // Project the player to screen once before the dot loop
         float playerSx, playerSy;
         bool playerOnScreen = WorldToScreen(
-            MumbleLink->AvatarPosition.X,
-            MumbleLink->AvatarPosition.Y + 1.0f, // offset to character centre
-            MumbleLink->AvatarPosition.Z,
+            GS.PlayerX,
+            GS.PlayerY + 1.0f,
+            GS.PlayerZ,
             playerSx, playerSy);
 
         // Camera distance to player for occlusion radius scaling
-        float camToPlayerX = MumbleLink->CameraPosition.X - MumbleLink->AvatarPosition.X;
-        float camToPlayerY = MumbleLink->CameraPosition.Y - MumbleLink->AvatarPosition.Y;
-        float camToPlayerZ = MumbleLink->CameraPosition.Z - MumbleLink->AvatarPosition.Z;
+        float camToPlayerX = GS.CameraX - GS.PlayerX;
+        float camToPlayerY = GS.CameraY - GS.PlayerY;
+        float camToPlayerZ = GS.CameraZ - GS.PlayerZ;
         float camToPlayer  = std::sqrt(camToPlayerX*camToPlayerX + camToPlayerY*camToPlayerY + camToPlayerZ*camToPlayerZ);
 
         // Radius in pixels — larger when camera is close, smaller when far
@@ -233,7 +242,6 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
             float wz = point.Z + std::cos(phi) * std::sin(theta) * point.Radius;
     
             float sx, sy;
-            ImGui::SetTooltip("occludeRadius: %.1f  camToPlayer: %.3f", occludeRadius, camToPlayer);
             if (WorldToScreen(wx, wy, wz, sx, sy))
             {
                 int fadedAlpha = dotAlpha;
@@ -329,7 +337,8 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
 // ---------------------------------------------------------------------------
 void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float distAlpha)
 {
-    if (!MumbleLink) return;
+    // Require at least one live data source (same rationale as RenderZoneCircle).
+    if (!MumbleLink && !GS.RTAPIAvailable) return;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
@@ -426,11 +435,14 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float d
 // ---------------------------------------------------------------------------
 void RenderZones()
 {
-    if (!MumbleLink || !ShowZones) return;
+    if (!ShowZones) return;
+    // GS.IsMapOpen is always sourced from Mumble (RTAPI does not expose this
+    // flag); skip rendering while the in-game map is fullscreen.
+    if (GS.IsMapOpen) return;
 
-    if (MumbleLink->Context.IsMapOpen) return;
-
-    unsigned int currMapID = MumbleLink->Context.MapID;
+    // Map ID and camera position come from GS, populated each frame from
+    // whichever source is active (RTAPI or Mumble).
+    unsigned int currMapID = GS.MapID;
 
     auto shouldRender = [&](const RoutePoint& p) -> bool
     {
@@ -445,9 +457,9 @@ void RenderZones()
         if (!shouldRender(p)) return;
     
         // Camera distance to zone centre for global fade
-        float fdx = MumbleLink->CameraPosition.X - p.X;
-        float fdy = MumbleLink->CameraPosition.Y - p.Y;
-        float fdz = MumbleLink->CameraPosition.Z - p.Z;
+        float fdx = GS.CameraX - p.X;
+        float fdy = GS.CameraY - p.Y;
+        float fdz = GS.CameraZ - p.Z;
         float fdist = std::sqrt(fdx*fdx + fdy*fdy + fdz*fdz);
         float distAlpha = std::clamp(1.0f - (fdist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
         if (distAlpha <= 0.0f) return;
