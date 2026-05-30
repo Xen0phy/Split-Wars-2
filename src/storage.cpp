@@ -80,10 +80,6 @@ std::string GetCurrentDateTimeString()
 // SerializePoint / DeserializePoint  (file-private helpers)
 // ---------------------------------------------------------------------------
 // Convert a RoutePoint to/from a JSON object.
-//
-// PlaneWidth and PlaneAngle use j.value() with defaults on load so that
-// older route files that pre-date these fields still load correctly —
-// they'll just get the default plane geometry (10 m wide, 0° angle).
 // ---------------------------------------------------------------------------
 static json SerializePoint(const RoutePoint& p)
 {
@@ -92,14 +88,13 @@ static json SerializePoint(const RoutePoint& p)
         {"x",                p.X},
         {"y",                p.Y},
         {"z",                p.Z},
-        {"radius",           p.Radius},
+        {"radius_width",     p.RadiusWidth},
         {"trigger_type",     (int)p.TriggerType},
-        {"plane_width",      p.PlaneWidth},
         {"plane_angle",      p.PlaneAngle},
         {"dot_count",        p.DotSphereCount},
-        {"dot_center",       p.bandCenterDeg},
-        {"dot_up",          p.bandUpDeg},
-        {"dot_down",        p.bandDownDeg},
+        {"dot_center",       p.bandCenterInput},
+        {"dot_up",          p.bandUpInput},
+        {"dot_down",        p.bandDownInput},
     };
 }
 
@@ -109,14 +104,13 @@ static void DeserializePoint(const json& j, RoutePoint& p)
     p.X              = j["x"];
     p.Y              = j["y"];
     p.Z              = j["z"];
-    p.Radius         = j["radius"];
+    p.RadiusWidth    = j.value("radius_width", 10.0f);
     p.TriggerType    = (ETriggerType)j.value("trigger_type", 0);
-    p.PlaneWidth     = j.value("plane_width", 10.0f); // Default: 10 m wide
     p.PlaneAngle     = j.value("plane_angle", 0.0f);  // Default: facing north
     p.DotSphereCount = j.value("dot_count", 0);
-    p.bandCenterDeg  = j.value("dot_center", 0.0f);
-    p.bandUpDeg      = j.value("dot_up", 10.0f);
-    p.bandDownDeg    = j.value("dot_down", 0.0f);
+    p.bandCenterInput  = j.value("dot_center", 0.0f);
+    p.bandUpInput      = j.value("dot_up", 10.0f);
+    p.bandDownInput    = j.value("dot_down", 0.0f);
 }
 
 // ===========================================================================
@@ -213,7 +207,7 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
         // --- Per-entry field validation ---
         // These five fields are always required; plane_width/angle and
         // trigger_type are optional (they have safe defaults in DeserializePoint).
-        const char* requiredFields[] = { "mapid", "x", "y", "z", "radius" };
+        const char* requiredFields[] = { "mapid", "x", "y", "z", "radius_width" };
         for (int i = 0; i < (int)j.size(); i++)
         {
             const auto& cp = j[i];
@@ -336,8 +330,8 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 //     ]
 //   }
 // ---------------------------------------------------------------------------
-bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestRun,
-                 const std::vector<HistoricalRun>& runs, int bestRunIndex)
+bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun>& runs,
+                 int bestRunIndex)
 {
     try
     {

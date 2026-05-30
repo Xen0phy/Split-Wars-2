@@ -49,7 +49,7 @@ void RenderHistoryWindow()
                 BestRun.clear();
                 BestRunIndex = -1;
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+                    SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -148,7 +148,7 @@ void RenderHistoryWindow()
                         BestRun      = run.Splits;
                         BestRunIndex = i;
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
                     }
                     ImGui::Spacing();
                     ImGui::Separator();
@@ -244,7 +244,7 @@ void RenderHistoryWindow()
                 // If BestRunIndex < removeIndex the best run is unaffected.
 
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+                    SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
             }
         }
     }

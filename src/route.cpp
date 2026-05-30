@@ -32,7 +32,7 @@ float DistanceTo(const Vector3& playerPos, const RoutePoint& point)
 // ---------------------------------------------------------------------------
 bool IsWithinRange(const Vector3& playerPos, const RoutePoint& point)
 {
-    return DistanceTo(playerPos, point) <= point.Radius;
+    return DistanceTo(playerPos, point) <= point.RadiusWidth;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,8 +45,8 @@ bool IsWithinRange(const Vector3& playerPos, const RoutePoint& point)
 //   X, Z        — the centre of the plane in world space (Y is ignored)
 //   PlaneAngle  — the compass heading the plane faces, in degrees.
 //                 0° = north (+Z), 90° = east (+X), matching GW2 convention.
-//   PlaneWidth  — the total width of the active segment of the plane.
-//                 Only crossings within ±PlaneWidth/2 of the centre fire.
+//   RadiusWidth — the total width of the active segment of the plane.
+//                 Only crossings within ±RadiusWidth/2 of the centre fire.
 //
 // How it works:
 //   1. Convert PlaneAngle to a normal vector (nx, nz) perpendicular to the
@@ -74,7 +74,7 @@ bool HasCrossedPlane(const Vector3& prevPos, const Vector3& currPos, const Route
     float dx = currPos.X - point.X;
     float dz = currPos.Z - point.Z;
     float alongPlane = dx * px + dz * pz;
-    if (std::abs(alongPlane) > point.PlaneWidth * 0.5f) return false;
+    if (std::abs(alongPlane) > point.RadiusWidth * 0.5f) return false;
 
     // Step 4 — sign-change test: project both positions onto the normal.
     // A sign change means the player moved from one side of the plane to the other.

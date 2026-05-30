@@ -9,7 +9,7 @@
 #pragma once
 
 #include "imgui.h"
-#include "imgui_internal.h"  // Needed for GImGui->HoveredIdTimer in Tooltip()
+#include "imgui_internal.h"
 #include "shared.h"
 #include "storage.h"
 #include <cstring>

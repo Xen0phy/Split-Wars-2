@@ -15,7 +15,6 @@
 
 #include "route.h"
 #include "timer.h"
-#include <vector>
 #include <string>
 
 // ---------------------------------------------------------------------------
@@ -125,8 +124,8 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 //               (-1 if none) so callers can track it as a plain integer
 //               rather than re-deriving it via timestamp matching later.
 // ---------------------------------------------------------------------------
-bool SaveHistory(const std::string& historyPath, const std::vector<Split>& bestRun,
-                 const std::vector<HistoricalRun>& runs, int bestRunIndex = -1);
+bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun>& runs,
+                 int bestRunIndex = -1);
 bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
                  std::vector<HistoricalRun>& runs, int& outBestIndex);
 

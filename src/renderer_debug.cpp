@@ -11,10 +11,7 @@
 // The window is only drawn when ShowDebug is true.
 // All data is read directly from shared globals — no copies are made.
 
-#include "imgui.h"
 #include "renderer_shared.h"
-#include "route.h"
-#include "shared.h"
 #include "worldrender.h"
 #include <algorithm>
 
@@ -205,12 +202,12 @@ void RenderDebugWindow()
 
             if (point.TriggerType == ETriggerType::Plane)
             {
-                ImGui::Text("Plane Width: %.2f m", point.PlaneWidth);
+                ImGui::Text("Plane Width: %.2f m", point.RadiusWidth);
                 ImGui::Text("Plane Angle: %.1f deg", point.PlaneAngle);
             }
             else
             {
-                ImGui::Text("Radius: %.2f m", point.Radius);
+                ImGui::Text("Radius: %.2f m", point.RadiusWidth);
             }
 
             // Live distance and in-zone status.

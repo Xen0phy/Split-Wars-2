@@ -12,10 +12,10 @@
 //                 parameters control vertical extent and the alpha fade.
 //
 // Band parameters per RoutePoint:
-//   bandCenterDeg — for Circle: centre latitude in degrees (-90 south … +90 north)
-//                   for Plane:  vertical centre offset in metres above point.Y
-//   bandUpDeg     — extent upward   from centre (fade boundary; degrees / metres)
-//   bandDownDeg   — extent downward from centre (fade boundary; degrees / metres)
+//   bandCenterInpt — for Circle: centre latitude in degrees (-90 south … +90 north)
+//                    for Plane:  vertical centre offset in metres above point.Y
+//   bandUpInput    — extent upward   from centre (fade boundary; degrees / metres)
+//   bandDownInput  — extent downward from centre (fade boundary; degrees / metres)
 //
 // Colour convention (set by RenderZones):
 //   Green  — start checkpoint
@@ -215,10 +215,8 @@ static int ApplyOcclusion(int dotAlpha, float sx, float sy, const OcclusionState
 //   • Distance fade — per-dot world-space distance to the player mapped
 //                     through ZoneFadeStart/ZoneFadeEnd.
 //   • Occlusion     — dots behind the player model are faded via ApplyOcclusion.
-//
-// Note: distAlpha is accepted for call-site compatibility but unused internally.
 // ---------------------------------------------------------------------------
-void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float debugOffsetY, float distAlpha)
+void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
 {
     if (!MumbleLink && !GS.RTAPIAvailable) return;
 
@@ -232,10 +230,38 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
 
     OcclusionState os = CalcOcclusionState();
 
+    // --- Combat pulse (out-of-combat only) ---
+    // Mimics a heartbeat: two sharp gaussian bumps (lub-dub) followed by a
+    // long flat rest, repeating at ~60 BPM (1-second cycle).
+    // Each bump is a gaussian centred at a fixed phase offset within the cycle.
+    // The radius offset is the sum of the two bumps, giving a ±0.5 m swing.
+    float effectiveRadius = point.RadiusWidth;
+    if (point.TriggerType == ETriggerType::CombatArena && !GS.IsInCombat)
+    {
+        const float BPM         = 20.0f;
+        const float cycleSecs   = 60.0f / BPM;                              // 1.0 s per beat
+        const float phase       = std::fmod((float)ImGui::GetTime(), cycleSecs) / cycleSecs; // [0,1)
+
+        // Two gaussian peaks within the cycle: "lub" at 8%, "dub" at 22%
+        // Width (sigma) kept tight so they decay quickly into the flat rest.
+        auto gauss = [](float x, float mu, float sigma) -> float {
+            float d = (x - mu) / sigma;
+            return std::exp(-0.5f * d * d);
+        };
+
+        float lub = gauss(phase, 0.08f, 0.035f);
+        float dub = gauss(phase, 0.22f, 0.035f) * 0.65f; // dub is a bit softer
+
+        // Combine and remap so the resting baseline sits at -0.5 m and the
+        // peak of "lub" reaches +0.5 m — a total swing of 1 m.
+        float pulse = (lub + dub);                   // [0, ~1.65] at peaks, ~0 at rest
+        effectiveRadius += pulse * 0.5f - 0.05f;     // offset so rest ≈ nominal radius
+    }
+
     // Convert band parameters to radians
-    const float bandCenter = point.bandCenterDeg * (PI / 180.0f);
-    const float bandUp     = point.bandUpDeg     * (PI / 180.0f);
-    const float bandDown   = point.bandDownDeg   * (PI / 180.0f);
+    const float bandCenter = point.bandCenterInput * (PI / 180.0f);
+    const float bandUp     = point.bandUpInput     * (PI / 180.0f);
+    const float bandDown   = point.bandDownInput   * (PI / 180.0f);
 
     // Derived latitude limits, clamped to the valid sphere range
     const float phiMinClamped = std::max(bandCenter - bandDown, -PI * 0.5f);
@@ -260,9 +286,42 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
 
         float falloff  = 1.0f - std::abs(normalizedDist);
 
-        float wx = point.X + std::cos(phi) * std::cos(theta) * point.Radius;
-        float wy = point.Y + std::sin(phi) * point.Radius;
-        float wz = point.Z + std::cos(phi) * std::sin(theta) * point.Radius;
+        // --- Rotating gap (Interact trigger only) ---
+        // A fixed arc of longitude is hidden and the whole pattern rotates,
+        // giving a "beckoning" sweep effect.
+        // The gap edges are softened over a feather band so the cut fades
+        // in/out rather than clipping hard.
+        float interactAlpha = 1.0f;
+        if (point.TriggerType == ETriggerType::CircleInteract)
+        {
+            const float gapDeg     = 90.0f;                              // degrees of arc to hide
+            const float featherDeg = 15.0f;                              // soft fade either side
+            const float rpm        = 20.0f;                              // rotation speed
+            const float gapRad     = gapDeg     * (PI / 180.0f);
+            const float featherRad = featherDeg * (PI / 180.0f);
+
+            // Advance theta by time, normalise into [0, 2π)
+            float rotOffset = std::fmod((float)ImGui::GetTime() * (rpm / 60.0f) * 2.0f * PI, 2.0f * PI);
+            float thetaNorm = std::fmod(theta - rotOffset + 4.0f * PI, 2.0f * PI);
+
+            // [0, gapRad]            → fully hidden
+            // [gapRad, gapRad+feath] → leading feather (fade back in)
+            // [2π-feath, 2π]         → trailing feather (fade out into gap)
+            if (thetaNorm < gapRad + featherRad)
+            {
+                if (thetaNorm < gapRad)
+                    interactAlpha = 0.0f;
+                else
+                    interactAlpha = (thetaNorm - gapRad) / featherRad; // 0→1
+            }
+            float trailingDist = 2.0f * PI - thetaNorm;
+            if (trailingDist < featherRad)
+                interactAlpha = std::min(interactAlpha, trailingDist / featherRad); // 1→0
+        }
+
+        float wx = point.X + std::cos(phi) * std::cos(theta) * effectiveRadius;
+        float wy = point.Y + std::sin(phi)                   * effectiveRadius;
+        float wz = point.Z + std::cos(phi) * std::sin(theta) * effectiveRadius;
 
         // Per-dot distance fade from player position using the global fade range
         float pdx = wx - GS.PlayerX;
@@ -271,7 +330,7 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
         float playerDist = std::sqrt(pdx*pdx + pdy*pdy + pdz*pdz);
         float dotDistAlpha = std::clamp(1.0f - (playerDist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
 
-        int   dotAlpha = (int)(220 * 0.8f * falloff * dotDistAlpha);
+        int   dotAlpha = (int)(220 * 0.8f * falloff * dotDistAlpha * interactAlpha);
 
         float sx, sy;
         if (WorldToScreen(wx, wy, wz, sx, sy))
@@ -289,7 +348,7 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
 // Draws a world-space zone indicator for Plane triggers as a grid of dots.
 //
 // Dots are laid out on the plane surface in a regular grid:
-//   • Horizontally: evenly spaced across the full PlaneWidth.
+//   • Horizontally: evenly spaced across the full RadiusWidth.
 //   • Vertically:   evenly spaced within the height band defined by the
 //                   point's band parameters (in metres, not degrees):
 //
@@ -304,11 +363,8 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float 
 // edges), a per-dot distance fade from the player through ZoneFadeStart/
 // ZoneFadeEnd, and occlusion fade via ApplyOcclusion — matching the sphere
 // zone's visual language exactly.
-//
-// Note: distAlpha is accepted for call-site compatibility but is not used
-// internally — per-dot distance fading supersedes it.
 // ---------------------------------------------------------------------------
-void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float distAlpha)
+void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
 {
     if (!MumbleLink && !GS.RTAPIAvailable) return;
 
@@ -321,29 +377,29 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float d
     float px = -std::sin(angleRad);
     float pz =  std::cos(angleRad);
 
-    float halfWidth = point.PlaneWidth * 0.5f;
+    float halfWidth = point.RadiusWidth * 0.5f;
 
     // Reuse band fields as world-space height values (metres, not degrees)
-    float bandCenter = point.bandCenterDeg; // vertical centre above point.Y
-    float bandUp     = point.bandUpDeg;     // height above centre → fade to 0
-    float bandDown   = point.bandDownDeg;   // depth below centre → fade to 0
+    float bandCenter = point.bandCenterInput; // vertical centre above point.Y
+    float bandUp     = point.bandUpInput;     // height above centre → fade to 0
+    float bandDown   = point.bandDownInput;   // depth below centre → fade to 0
 
     float yMin = point.Y + bandCenter - bandDown;
     float yMax = point.Y + bandCenter + bandUp;
     float yCtr = point.Y + bandCenter;
 
     // Dot grid density: one column per ~0.5 m of width, one row per ~0.5 m of height
-    const float DOT_SPACING = 1.0f;
+    const float DOT_SPACING = 100.0f / (float)point.DotSphereCount;
     const float DOT_RADIUS  = 3.0f;
-    int   cols = std::max(2, (int)(point.PlaneWidth / DOT_SPACING) + 1);
+    int   cols = std::max(2, (int)(point.RadiusWidth / DOT_SPACING) + 1);
     int   rows = std::max(2, (int)((bandUp + bandDown) / DOT_SPACING) + 1);
 
     for (int ci = 0; ci < cols; ci++)
     {
         // t in [0,1] along the width axis
         float t  = (cols > 1) ? (float)ci / (cols - 1) : 0.5f;
-        float wx = point.X + px * (-halfWidth + t * point.PlaneWidth);
-        float wz = point.Z + pz * (-halfWidth + t * point.PlaneWidth);
+        float wx = point.X + px * (-halfWidth + t * point.RadiusWidth);
+        float wz = point.Z + pz * (-halfWidth + t * point.RadiusWidth);
 
         for (int ri = 0; ri < rows; ri++)
         {
@@ -379,6 +435,88 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float d
 }
 
 // ---------------------------------------------------------------------------
+// RenderZoneMap
+// ---------------------------------------------------------------------------
+// Draws a screen-space indicator for MapChange trigger zones as a dot field
+// in the upper-left corner of the screen.
+//
+// Layout:
+//   • Dots are arranged on a regular grid with SPACING pixel pitch, starting
+//     at (DOT_RADIUS, DOT_RADIUS) so edge dots are fully visible.
+//   • Only dots where x * y < C are drawn, producing a hyperbolic cutout
+//     with C = 1200 controlling the curve's openness.
+//
+// Alpha modulation (multiplicative):
+//   • Hyperbola fade — 1.0 near the corner, falling to 0 at the curve edge,
+//                      driven by (x * y) / C.
+//   • Arm fade       — dots along the axis arms fade toward the arm tips,
+//                      driven by max(x, y) / ARM_LEN.  This ensures both
+//                      the hyperbola edge and the arm ends dissolve smoothly
+//                      rather than clipping hard.
+//   • Mouse repel    — dots within MouseRepelRadius px of the cursor fade to 0,
+//                      with a soft falloff over the inner half of that radius.
+//   • UI occlusion   — dots covered by any active ImGui window are hidden
+//                      entirely via IsOccludedByUI, using the rect snapshot
+//                      taken by UpdateUIRects() at the start of RenderZones().
+//
+// The colour follows the same green/blue/white convention as the other zone
+// renderers and is passed in by RenderZones.
+// ---------------------------------------------------------------------------
+void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
+{
+    ImDrawList* dl  = ImGui::GetForegroundDrawList();
+    ImVec2 mousePos = ImGui::GetMousePos();
+
+    const float C            = 1200.0f;
+    const float SPACING      = 6.0f;
+    const float DOT_RADIUS   = 3.0f;
+    const float ARM_LEN      = 300.0f;
+    const float POWER        = 1.5f;
+    const float MouseRepelRadius = 50.0f;
+
+    float x = DOT_RADIUS;
+    while (x < ARM_LEN)
+    {
+        float y = DOT_RADIUS;
+        while (y < ARM_LEN)
+        {
+            if (x * y < C)
+            {
+                float t_hyp    = (x * y) / C;
+                float hyp_fade = std::pow(1.0f - t_hyp, POWER);
+
+                float t_arm    = std::max(x, y) / ARM_LEN;
+                float arm_fade = std::pow(std::max(0.0f, 1.0f - t_arm), POWER);
+
+                float alpha = hyp_fade * arm_fade;
+                if (alpha > 0.02f)
+                {
+                    // UI occlusion
+                    if (IsOccludedByUI(x, y)) { y += SPACING; continue; }
+
+                    // Mouse repel
+                    float mdx        = x - mousePos.x;
+                    float mdy        = y - mousePos.y;
+                    float mouseDist  = std::sqrt(mdx * mdx + mdy * mdy);
+                    float mouseAlpha = std::clamp(
+                        (mouseDist - MouseRepelRadius * 0.5f) / (MouseRepelRadius * 0.5f),
+                        0.0f, 1.0f);
+
+                    int a = (int)(alpha * 255.0f * mouseAlpha);
+                    if (a > 0)
+                    {
+                        dl->AddCircleFilled(ImVec2(x, y), DOT_RADIUS,
+                            IM_COL32((int)(r * 255), (int)(g * 255), (int)(b * 255), a));
+                    }
+                }
+            }
+            y += SPACING;
+        }
+        x += SPACING;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // RenderZones
 // ---------------------------------------------------------------------------
 // Entry point called every frame from AddonRender(). Iterates the active
@@ -386,7 +524,7 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float d
 //
 // Filtering rules:
 //   • Hidden when the in-game world map is open (zones would clutter the map UI).
-//   • MapChange triggers are never drawn (they have no spatial zone to show).
+//   • MapChange checkpoints are drawn via RenderZoneMap (screen-space corner).
 //   • Checkpoints with MapID != 0 are only drawn on their configured map.
 //   • Unplaced checkpoints (all-zero position) are skipped.
 //
@@ -410,8 +548,9 @@ void RenderZones()
     auto shouldRender = [&](const RoutePoint& p) -> bool
     {
         if (!RoutePointIsSet(p))                          return false;
-        if (p.TriggerType == ETriggerType::MapChange)     return false;
         if (p.MapID == 0)                                 return true;
+        // MapChange zones render on any map when MapID == 0, or on their configured map only.
+        if (p.TriggerType == ETriggerType::MapChange)     return p.MapID == 0 || currMapID == p.MapID;
         return currMapID == p.MapID;
     };
 
@@ -423,7 +562,14 @@ void RenderZones()
     auto renderPoint = [&](const RoutePoint& p, float r, float g, float b, float dbgOffset, int idx)
     {
         if (!shouldRender(p)) return;
+
+        // Hide triggered checkpoints
+        if (idx >= 0 && idx < (int)checkpointTriggered.size() && checkpointTriggered[idx])
+            return;
     
+        // MapChange zones are screen-space — skip world-space distance culling.
+        if (p.TriggerType != ETriggerType::MapChange)
+        {
         // Broad-phase cull: skip the zone only when the player is so far from
         // the zone centre that even the nearest dot on the surface is beyond
         // ZoneFadeEnd.  The extent used depends on trigger type:
@@ -432,20 +578,20 @@ void RenderZones()
         float extent;
         if (p.TriggerType == ETriggerType::Plane)
         {
-            float halfW = p.PlaneWidth * 0.5f;
-            float halfH = (p.bandUpDeg + p.bandDownDeg) * 0.5f; // metres
+            float halfW = p.RadiusWidth * 0.5f;
+            float halfH = (p.bandUpInput + p.bandDownInput) * 0.5f; // metres
             extent = std::sqrt(halfW*halfW + halfH*halfH);
         }
         else
         {
-            extent = p.Radius;
+            extent = p.RadiusWidth;
         }
         float fdx = GS.PlayerX - p.X;
         float fdy = GS.PlayerY - p.Y;
         float fdz = GS.PlayerZ - p.Z;
         float fdist = std::sqrt(fdx*fdx + fdy*fdy + fdz*fdz);
         if (fdist > ZoneFadeEnd + extent) return;
-        float distAlpha = 1.0f; // unused internally, kept for call-site compatibility
+        } // end broad-phase cull
     
         bool isTimed = ShowDebug && (idx == ZoneRenderSelectedIndex);
     
@@ -461,9 +607,11 @@ void RenderZones()
             auto t0 = std::chrono::high_resolution_clock::now();
     
             if (p.TriggerType == ETriggerType::Plane)
-                RenderZonePlane(p, r, g, b, distAlpha);
+                RenderZonePlane(p, r, g, b);
+            else if (p.TriggerType == ETriggerType::MapChange)
+                RenderZoneMap(p, r, g, b);
             else
-                RenderZoneCircle(p, r, g, b, dbgOffset, distAlpha);
+                RenderZoneCircle(p, r, g, b);
     
             float ms = std::chrono::duration<float, std::milli>(
                 std::chrono::high_resolution_clock::now() - t0).count();
@@ -483,9 +631,11 @@ void RenderZones()
         else
         {
             if (p.TriggerType == ETriggerType::Plane)
-                RenderZonePlane(p, r, g, b, distAlpha);
+                RenderZonePlane(p, r, g, b);
+            else if (p.TriggerType == ETriggerType::MapChange)
+                RenderZoneMap(p, r, g, b);
             else
-                RenderZoneCircle(p, r, g, b, dbgOffset, distAlpha);
+                RenderZoneCircle(p, r, g, b);
         }
     };
 

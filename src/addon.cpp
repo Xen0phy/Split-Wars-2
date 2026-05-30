@@ -8,9 +8,9 @@
 //     (start / checkpoint / goal), and dispatching to the individual UI windows
 //   - The Nexus options panel (checkboxes, mode buttons, etc.)
 
+#include "hotbar_icon.h"
 #include "renderer_shared.h"
 #include "worldrender.h"
-#include "hotbar_icon.h"
 #include <algorithm>
 
 // The global addon descriptor filled in by GetAddonDef() and handed to Nexus.
@@ -38,8 +38,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name               = "Split Wars 2";
     AddonDef.Version.Major      = 0;
     AddonDef.Version.Minor      = 17;
-    AddonDef.Version.Build      = 4;
-    AddonDef.Version.Revision   = 1;
+    AddonDef.Version.Build      = 7;
+    AddonDef.Version.Revision   = 2;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
     AddonDef.Load               = AddonLoad;            // Called once when the addon is loaded
@@ -121,7 +121,7 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
         if ((int)HistoryRuns.size() > MaxHistoryRuns)
             HistoryRuns.resize(MaxHistoryRuns);          // Trim the list to the configured cap
         if (!CurrentHistoryPath.empty())
-            SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+            SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
     }
     else
     {
@@ -738,7 +738,7 @@ void AddonRender()
                         goalCp->Point.X      == startPt.X      &&
                         goalCp->Point.Y      == startPt.Y      &&
                         goalCp->Point.Z      == startPt.Z      &&
-                        goalCp->Point.Radius == startPt.Radius;
+                        goalCp->Point.RadiusWidth == startPt.RadiusWidth;
 
                     if (!SpeedrunTimer.IsRunning())
                     {
@@ -900,7 +900,7 @@ void AddonRender()
                             startCp->Point.X      == goalPt.X      &&
                             startCp->Point.Y      == goalPt.Y      &&
                             startCp->Point.Z      == goalPt.Z      &&
-                            startCp->Point.Radius == goalPt.Radius;
+                            startCp->Point.RadiusWidth == goalPt.RadiusWidth;
 
                         if (!CombatGoal.finished)
                         {
@@ -983,7 +983,7 @@ void AddonRender()
                             HistoryRuns.resize(MaxHistoryRuns);
 
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
                     }
                 }
             }
@@ -1029,7 +1029,10 @@ void AddonRender()
     // Only update prevMapID when not loading — this keeps the MapChange trigger
     // stable across load screens (prevMapID still reflects the map we came from).
     if (!isLoading)
-        prevMapID = currMapID;
+    {
+        bool isCharSelect = (GS.PlayerX == 0.0f && GS.PlayerY == 0.0f && GS.PlayerZ == 0.0f);
+        prevMapID = isCharSelect ? 0 : currMapID;
+    }
     prevInCombat       = currInCombat;
     InteractKeyPressed = false; // Consumed — clear for next frame
 

@@ -7,7 +7,7 @@
 // timer logic in AddonRender() to work correctly.
 //
 // COORDINATE SYSTEM NOTE:
-// All position values (X, Y, Z, Radius, PlaneWidth) are in the units that
+// All position values (X, Y, Z, RadiusWidth) are in the units that
 // MumbleLink exposes — metres.  GW2 internally uses inches, but the Mumble
 // API converts to metres before writing to shared memory, so everything here
 // works in metres.  Keep this in mind when setting Radius values: a radius
@@ -27,7 +27,7 @@
 //
 //   Circle         — fires while the player is inside a sphere (Radius).
 //   Plane          — fires when the player's movement crosses a finite plane
-//                    (PlaneAngle + PlaneWidth).
+//                    (PlaneAngle + RadiusWidth).
 //   MapChange      — fires when the player leaves a specific map (MapID).
 //   CircleInteract — like Circle, but also requires the Interact key to be
 //                    pressed while inside the sphere.
@@ -100,12 +100,11 @@ struct CombatTriggerState
 //
 //   MapID       — the GW2 map the trigger is scoped to.  0 = any map.
 //   X, Y, Z     — world-space centre of the trigger (metres).
-//   Radius      — sphere radius for Circle / CircleInteract / CombatArena.
-//                 Default 5.0 m.
-//   TriggerType — which geometry / game event activates this point.
-//   PlaneWidth  — total width of the active segment of a Plane trigger (metres).
-//                 Only crossings within ±PlaneWidth/2 of the centre count.
+//   RadiusWidth — sphere radius for Circle / CircleInteract / CombatArena.
+//                 total width of the active segment of a Plane trigger (metres).
+//                 Only crossings within ±RadiusWidth/2 of the centre count.
 //                 Default 10.0 m.
+//   TriggerType — which geometry / game event activates this point.
 //   PlaneAngle  — compass heading the plane faces, in degrees.
 //                 0° = north (+Z axis), 90° = east (+X axis).
 // ---------------------------------------------------------------------------
@@ -115,14 +114,13 @@ struct RoutePoint
     float           X                   = 0.0f;
     float           Y                   = 0.0f;
     float           Z                   = 0.0f;
-    float           Radius              = 5.0f;
+    float           RadiusWidth         = 10.0f;
     ETriggerType    TriggerType         = ETriggerType::Circle;
-    float           PlaneWidth          = 10.0f;
     float           PlaneAngle          = 0.0f;
     int             DotSphereCount      = 200; // Display only: >0 renders as a dot sphere with this many dots
-    float           bandCenterDeg       = 0.0f; 
-    float           bandUpDeg           = 10.0f; 
-    float           bandDownDeg         = 0.0f; 
+    float           bandCenterInput     = 0.0f; 
+    float           bandUpInput         = 10.0f; 
+    float           bandDownInput       = 0.0f; 
 };
 
 // ---------------------------------------------------------------------------

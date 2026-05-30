@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "Mumble.h"
 #include "route.h"
 
 // ---------------------------------------------------------------------------
@@ -33,8 +32,17 @@ bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy);
 //                    multiple visible zones don't overlap their text.
 //                    Defaults to 0; only meaningful when ShowDebug is on.
 // ---------------------------------------------------------------------------
-void RenderZoneCircle(const RoutePoint& point, float r, float g, float b, float debugOffsetY = 0.0f, float distAlpha = 1.0f);
-void RenderZonePlane(const RoutePoint& point, float r, float g, float b, float distAlpha = 1.0f);
+void RenderZoneCircle(const RoutePoint& point, float r, float g, float b);
+void RenderZonePlane(const RoutePoint& point, float r, float g, float b);
+
+// ---------------------------------------------------------------------------
+// RenderZoneMap
+// ---------------------------------------------------------------------------
+// Draws a screen-space quarter-circle dot field in the upper-left corner of
+// the screen for MapChange trigger zones.  Dots fade toward the arc edge and
+// disappear when the mouse cursor is within 150 px.
+// ---------------------------------------------------------------------------
+void RenderZoneMap(const RoutePoint& point, float r, float g, float b);
 
 // ---------------------------------------------------------------------------
 // RenderZones

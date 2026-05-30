@@ -11,7 +11,6 @@
 #include "Mumble.h"   // Mumble::Data (shared-memory layout written by GW2)
 #include "RTAPI.hpp"  // RTAPI::RealTimeData (real-time position and state)
 #include "timer.h"    // Timer class
-#include "route.h"    // Route, Checkpoint, RoutePoint, trigger state types
 #include "storage.h"  // Split, HistoricalRun, save/load functions
 #include <string>
 #include <vector>
@@ -66,7 +65,7 @@ struct GameState
     // World
     uint32_t MapID;
     bool     IsMapOpen;  // Always from Mumble; false if Mumble is unavailable
-    bool     IsLoading;  // RTAPI: GameState != Gameplay; Mumble: always false
+    bool     IsLoading;
 
     // Character
     bool     IsInCombat;

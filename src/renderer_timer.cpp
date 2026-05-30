@@ -52,7 +52,7 @@ void RenderTimerOverlay()
 
     // -------------------------------------------------------------------------
     // Compact mode — single line, no split table
-    // Shows milliseconds only while the run is in progress (too noisy when idle).
+    // Shows milliseconds only hen the run is finished.
     // Colour: green/red vs best total time while running/finished; grey when idle.
     // -------------------------------------------------------------------------
     if (CompactMode)
@@ -249,7 +249,7 @@ void RenderTimerOverlay()
                 }
 
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                // Show milliseconds only while running; whole seconds once finished
+                // Show milliseconds only when finished; whole seconds while running
                 double bestTotal = hasBest ? BestRun.back().Timestamp : 0.0;
                 FormatTime(buf, sizeof(buf), elapsed, !running);
                 float textWidth = ImGui::CalcTextSize(buf).x;
@@ -321,7 +321,7 @@ void RenderTimerOverlay()
                 BestRun      = splits;
                 BestRunIndex = 0; // Newest run is always inserted at index 0
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+                    SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
                 RunFinished = false;
             }
 

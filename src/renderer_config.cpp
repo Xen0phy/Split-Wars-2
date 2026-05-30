@@ -10,10 +10,8 @@
 //   • Activate the route so the timer system starts using it
 //   • Clear the entire route and start fresh
 
-#include "imgui.h"
 #include "renderer_shared.h"
 #include "route.h"
-#include "shared.h"
 #include <algorithm>
 
 namespace fs = std::filesystem;
@@ -102,7 +100,7 @@ void RenderConfigWindow()
             // Overwrite the existing file and keep history intact.
             SaveRoute(CurrentRouteFilepath, CurrentRoute);
             if (!CurrentHistoryPath.empty())
-                SaveHistory(CurrentHistoryPath, BestRun, HistoryRuns);
+                SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
         }
         else
         {
@@ -159,7 +157,7 @@ void RenderConfigWindow()
     //                    (Goal checkpoints additionally offer "All Checkpoints")
     //   MapID          — the GW2 map ID the trigger is scoped to (0 = any map)
     //   X/Y/Z          — world-space coordinates (hidden for Map Change / All Checkpoints)
-    //   R/W            — Radius for circle types; PlaneWidth for Plane type
+    //   R/W            — Radius for circle types; Width for Plane type (RadiusWidth)
     //   Angle/Arm      — PlaneAngle for Plane; dot count for Circle/Interact; Re-arm for Combat
     //   Capture        — snaps all spatial fields from the player's current position
     //   Remove         — marks this row for deletion (applied after the table loop)
@@ -293,12 +291,6 @@ void RenderConfigWindow()
             {
                 if (cp.IsStart && cp.IsGoal) cp.IsGoal = false; // resolve conflict, keep start
             }
-            if (t == ETriggerType::MapChange      ||
-                t == ETriggerType::CircleInteract ||
-                t == ETriggerType::Plane)
-            {
-                if (cp.IsStart && cp.IsGoal) cp.IsGoal = false;
-            }
 
             // --- MapID ---
             // Hidden for "All Checkpoints" since that trigger has no spatial context.
@@ -340,29 +332,20 @@ void RenderConfigWindow()
             }
 
             // --- R/W (Radius or Plane Width) ---
-            // For Plane triggers this column shows PlaneWidth (the half-width of the
+            // For Plane triggers this column shows RadiusWidth (the half-width of the
             // trigger plane perpendicular to its facing angle).
             // For all other spatial triggers it shows the circle Radius.
             ImGui::TableSetColumnIndex(8);
             if (!isMapChange && !isAllCheckpoints)
             {
                 ImGui::SetNextItemWidth(-1);
-                if (point.TriggerType == ETriggerType::Plane)
-                {
-                    char l[32]; snprintf(l, sizeof(l), "##w_%d", i);
-                    ImGui::DragFloat(l,&point.PlaneWidth,0.1f,0.0f,1000.0f,"%.1f");
-                    point.PlaneWidth = std::clamp(point.PlaneWidth, 0.0f, 1000.0f);
-                }
-                else
-                {
-                    char l[32]; snprintf(l, sizeof(l), "##r_%d", i);
-                    ImGui::DragFloat(l, &point.Radius, 0.1f,0.0f,1000.0f,"%.1f");
-                    point.Radius = std::clamp(point.Radius, 0.0f, 1000.0f);
-                }
+                char l[32]; snprintf(l, sizeof(l), "##r_%d", i);
+                ImGui::DragFloat(l, &point.RadiusWidth, 0.1f,0.0f,1000.0f,"%.1f");
+                point.RadiusWidth = std::clamp(point.RadiusWidth, 0.0f, 1000.0f);
             }
 
             ImGui::TableSetColumnIndex(9);
-            if (!isMapChange && !isAllCheckpoints && t != ETriggerType::Plane)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 char l[32]; snprintf(l, sizeof(l), "##dotsphere_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -373,29 +356,29 @@ void RenderConfigWindow()
             ImGui::TableSetColumnIndex(10);
             if (!isMapChange && !isAllCheckpoints)
             {
-                char l[32]; snprintf(l, sizeof(l), "##bandCenterDegree_%d", i);
+                char l[32]; snprintf(l, sizeof(l), "##bandCenter_%d", i);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::DragFloat(l, &point.bandCenterDeg, 1.0f, -90.0f, 90.0f, "%.0f");
-                point.bandCenterDeg = std::clamp(point.bandCenterDeg, -90.0f, 90.0f);
+                ImGui::DragFloat(l, &point.bandCenterInput, 1.0f, -90.0f, 90.0f, "%.0f");
+                point.bandCenterInput = std::clamp(point.bandCenterInput, -90.0f, 90.0f);
             }
             
             ImGui::TableSetColumnIndex(11);
             if (!isMapChange && !isAllCheckpoints)
             {
-                char l[32]; snprintf(l, sizeof(l), "##bandUpDegree_%d", i);
+                char l[32]; snprintf(l, sizeof(l), "##bandUp_%d", i);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::DragFloat(l, &point.bandUpDeg, 1.0f, 0.0f, 90.0f, "%.0f");
-                point.bandUpDeg = std::clamp(point.bandUpDeg, 0.0f, 90.0f);
+                ImGui::DragFloat(l, &point.bandUpInput, 1.0f, 0.0f, 90.0f, "%.0f");
+                point.bandUpInput = std::clamp(point.bandUpInput, 0.0f, 90.0f);
             }
             
 
             ImGui::TableSetColumnIndex(12);
             if (!isMapChange && !isAllCheckpoints)
             {
-                char l[32]; snprintf(l, sizeof(l), "##bandDownDegree_%d", i);
+                char l[32]; snprintf(l, sizeof(l), "##bandDown_%d", i);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::DragFloat(l, &point.bandDownDeg, 1.0f, 0.0f, 90.0f, "%.0f");
-                point.bandDownDeg = std::clamp(point.bandDownDeg, 0.0f, 90.0f);
+                ImGui::DragFloat(l, &point.bandDownInput, 1.0f, 0.0f, 90.0f, "%.0f");
+                point.bandDownInput = std::clamp(point.bandDownInput, 0.0f, 90.0f);
             }
 
             // --- Angle / Re-arm / Billboard ---
