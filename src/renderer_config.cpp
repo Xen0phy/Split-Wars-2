@@ -438,7 +438,6 @@ void RenderConfigWindow()
             if (!isAllCheckpoints)
             {
                 char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", i);
-                if (ImGui::Button(capLabel) && MumbleLink)
                 if (ImGui::Button(capLabel) && (MumbleLink || GS.RTAPIAvailable))
                 {
                     point.MapID = GS.MapID;
