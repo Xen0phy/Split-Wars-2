@@ -198,10 +198,8 @@ void FullReset()
 // previous visibility can be restored when they toggle back.
 // ---------------------------------------------------------------------------
 bool HotbarWindowsHidden         = false;
-bool HotbarSavedShowTimer        = false;
 bool HotbarSavedShowConfig       = false;
 bool HotbarSavedShowHistory      = false;
-bool HotbarSavedShowZones        = false;
 bool HotbarSavedShowRouteBrowser = false;
 
 // ---------------------------------------------------------------------------

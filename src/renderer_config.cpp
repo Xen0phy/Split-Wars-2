@@ -178,7 +178,7 @@ void RenderConfigWindow()
         ImGui::TableSetupColumn("Y",            ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Z",            ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("R/W",          ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Dots",         ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Density",      ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Center",       ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Up",           ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Down",         ImGuiTableColumnFlags_WidthStretch);
@@ -312,7 +312,7 @@ void RenderConfigWindow()
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##x_%d", i);
-                ImGui::DragFloat(l,&point.X,0.1f,0.0f,0.0f,"%.2f");
+                ImGui::DragFloat(l, &point.X, 0.1f, 0.0f, 0.0f, "%.2f");
             }
 
             ImGui::TableSetColumnIndex(6);
@@ -344,15 +344,26 @@ void RenderConfigWindow()
                 point.RadiusWidth = std::clamp(point.RadiusWidth, 0.0f, 1000.0f);
             }
 
+            // --- Dot Density ---
+            // Controls the number of dots rendered for sphere and plane zones.
+            // Higher values produce denser coverage; lower values are sparser.
+            // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(9);
             if (!isMapChange && !isAllCheckpoints)
             {
-                char l[32]; snprintf(l, sizeof(l), "##dotsphere_%d", i);
+                char l[32]; snprintf(l, sizeof(l), "##dotDensity_%d", i);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::DragInt(l, &point.DotSphereCount, 1, 30,1000, "%d");
-                point.DotSphereCount = std::clamp(point.DotSphereCount, 0, 5000);
+                ImGui::DragInt(l, &point.DotDensity, 1, 30, 1000, "%d");
+                point.DotDensity = std::clamp(point.DotDensity, 0, 5000);
             }
 
+            // --- Band Center / Up / Down ---
+            // Define the visible latitude band of the dot sphere (in degrees):
+            //   BandCenter — vertical centre of the band relative to the equator
+            //                (-90° = bottom pole, 0° = equator, 90° = top pole).
+            //   BandUp     — degrees above centre where dot alpha fades to 0.
+            //   BandDown   — degrees below centre where dot alpha fades to 0.
+            // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(10);
             if (!isMapChange && !isAllCheckpoints)
             {
@@ -361,7 +372,7 @@ void RenderConfigWindow()
                 ImGui::DragFloat(l, &point.bandCenterInput, 1.0f, -90.0f, 90.0f, "%.0f");
                 point.bandCenterInput = std::clamp(point.bandCenterInput, -90.0f, 90.0f);
             }
-            
+
             ImGui::TableSetColumnIndex(11);
             if (!isMapChange && !isAllCheckpoints)
             {
@@ -370,7 +381,6 @@ void RenderConfigWindow()
                 ImGui::DragFloat(l, &point.bandUpInput, 1.0f, 0.0f, 90.0f, "%.0f");
                 point.bandUpInput = std::clamp(point.bandUpInput, 0.0f, 90.0f);
             }
-            
 
             ImGui::TableSetColumnIndex(12);
             if (!isMapChange && !isAllCheckpoints)
@@ -381,14 +391,13 @@ void RenderConfigWindow()
                 point.bandDownInput = std::clamp(point.bandDownInput, 0.0f, 90.0f);
             }
 
-            // --- Angle / Re-arm / Billboard ---
+            // --- Angle / Re-arm / Hyperbola ---
             // For Plane triggers: editable PlaneAngle (degrees, 0° = north).
             // For CombatArena triggers: a "Re-arm" button that clears the finished
             //   state so the same combat zone can trigger again in the same run
             //   (useful for routes that loop back through a combat arena).
-            // For Circle / CircleInteract: an unnamed checkbox that switches the
-            //   world render from flat rings + base band to a billboard ring with
-            //   inward fade (IsBillboardCircle). Display-only — no trigger change.
+            // For MapChange triggers: editable HyperbolaC (1–100) controlling the
+            //   strength of the dot-field hyperbola curve in the screen-space overlay.
             // Hidden for all other trigger types.
             ImGui::TableSetColumnIndex(13);
             if (point.TriggerType == ETriggerType::CombatArena)
@@ -404,19 +413,27 @@ void RenderConfigWindow()
                     }
                 }
             }
-            else if (!isMapChange && !isAllCheckpoints && point.TriggerType == ETriggerType::Plane)
+            else if (point.TriggerType == ETriggerType::Plane)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
-                ImGui::InputFloat(l, &point.PlaneAngle, 0.0f, 0.0f, "%.1f");
+                ImGui::DragFloat(l, &point.PlaneAngle, 0.1f, 0.0f, 360.0f, "%.1f");
+                point.PlaneAngle = std::clamp(point.PlaneAngle, 0.0f, 360.0f);
+            }
+            else if (point.TriggerType == ETriggerType::MapChange)
+            {
+                ImGui::SetNextItemWidth(-1);
+                char l[32]; snprintf(l, sizeof(l), "##hyperbola_%d", i);
+                ImGui::DragInt(l, &point.HyperbolaC, 1.0f, 1.0f, 100.0f, "%d");
+                point.HyperbolaC = std::clamp(point.HyperbolaC, 1, 100);
             }
 
             // --- Capture button ---
             // Snaps the checkpoint's map ID and world coordinates from the player's
-            // current MumbleLink position in one click.  For Plane triggers it also
-            // calculates the facing angle from the camera direction so the plane
-            // is perpendicular to the direction the player is looking.
-            // Hidden for "All Checkpoints" (no position to capture).
+            // current position in one click.
+            // For Plane triggers it also calculates the facing angle from the camera
+            // direction so the plane is perpendicular to the direction the player is
+            // looking. Hidden for "All Checkpoints" (no position to capture).
             ImGui::TableSetColumnIndex(14);
             if (!isAllCheckpoints)
             {

@@ -38,8 +38,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name               = "Split Wars 2";
     AddonDef.Version.Major      = 0;
     AddonDef.Version.Minor      = 17;
-    AddonDef.Version.Build      = 7;
-    AddonDef.Version.Revision   = 2;
+    AddonDef.Version.Build      = 8;
+    AddonDef.Version.Revision   = 0;
     AddonDef.Author             = "Xenophy.2716";
     AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
     AddonDef.Load               = AddonLoad;            // Called once when the addon is loaded
@@ -176,35 +176,29 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
 
-    bool anyVisible = ShowTimer || ShowConfig || ShowHistory || ShowZones || ShowRouteBrowser;
+    bool anyVisible = ShowConfig || ShowHistory || ShowRouteBrowser;
 
     if (anyVisible)
     {
         // Save current visibility and hide everything
-        HotbarSavedShowTimer        = ShowTimer;
         HotbarSavedShowConfig       = ShowConfig;
         HotbarSavedShowHistory      = ShowHistory;
-        HotbarSavedShowZones        = ShowZones;
         HotbarSavedShowRouteBrowser = ShowRouteBrowser;
-        ShowTimer        = false;
         ShowConfig       = false;
         ShowHistory      = false;
-        ShowZones        = false;
         ShowRouteBrowser = false;
         HotbarWindowsHidden = true;
     }
     else
     {
         // Restore saved visibility, or fall back to defaults if nothing was saved
-        bool nothingToRestore = !HotbarSavedShowTimer && !HotbarSavedShowConfig &&
-                                !HotbarSavedShowHistory && !HotbarSavedShowZones &&
+        bool nothingToRestore = !HotbarSavedShowConfig && !HotbarSavedShowHistory &&
                                 !HotbarSavedShowRouteBrowser;
-        ShowTimer        = nothingToRestore ? true  : HotbarSavedShowTimer;
         ShowConfig       = nothingToRestore ? true  : HotbarSavedShowConfig;
         ShowHistory      = nothingToRestore ? false : HotbarSavedShowHistory;
-        ShowZones        = nothingToRestore ? false : HotbarSavedShowZones;
         ShowRouteBrowser = nothingToRestore ? false : HotbarSavedShowRouteBrowser;
         HotbarWindowsHidden = false;
+        if (!ShowTimer) ShowTimer = true;
     }
 }
 
@@ -270,12 +264,12 @@ static Settings GatherSettings()
 // ---------------------------------------------------------------------------
 static void AddonQuickAccessMenu()
 {
-    bool anyVisible = ShowTimer || ShowConfig || ShowHistory || ShowZones || ShowRouteBrowser;
-
     if (ImGui::MenuItem("Timer",         nullptr, &ShowTimer))        {}
+    ImGui::Separator();
     if (ImGui::MenuItem("Route Config",  nullptr, &ShowConfig))       {}
     if (ImGui::MenuItem("History",       nullptr, &ShowHistory))      {}
     if (ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser)) {}
+    ImGui::Separator();
     if (ImGui::MenuItem("Checkpoints",   nullptr, &ShowZones))        {}
 }
 

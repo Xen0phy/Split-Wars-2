@@ -21,18 +21,38 @@ bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy);
 // ---------------------------------------------------------------------------
 // RenderZoneCircle
 // ---------------------------------------------------------------------------
-// Draws two projected rings (one horizontal, one vertical billboard) around
-// a sphere trigger zone.  Used for Circle, CircleInteract, and CombatArena
-// trigger types.
+// Draws a sphere of projected dots around a circle trigger zone using a
+// Fibonacci/golden-angle distribution for even coverage.  Used for Circle,
+// CircleInteract, and CombatArena trigger types.
 //
-//   point          — the RoutePoint defining the zone centre and radius.
-//   r, g, b        — ring colour (0.0–1.0 per channel); alpha is computed
-//                    internally and fades out when the camera is inside the zone.
-//   debugOffsetY   — vertical pixel offset for the debug text block so
-//                    multiple visible zones don't overlap their text.
-//                    Defaults to 0; only meaningful when ShowDebug is on.
+//   point          — the RoutePoint defining the zone centre, radius, dot
+//                    count, and band parameters (center/up/down in degrees).
+//   r, g, b        — dot colour (0.0–1.0 per channel).
+//
+// Dot alpha is the product of band edge falloff, per-dot distance fade from
+// the player through ZoneFadeStart/ZoneFadeEnd, and occlusion fade via
+// ApplyOcclusion.
+//
+// Trigger-specific behaviour:
+//   CombatArena    — radius pulses with a heartbeat (lub-dub) animation
+//                    while the player is out of combat.
+//   CircleInteract — a rotating gap sweeps around the sphere with softened
+//                    feather edges, giving a beckoning visual cue.
 // ---------------------------------------------------------------------------
 void RenderZoneCircle(const RoutePoint& point, float r, float g, float b);
+
+// ---------------------------------------------------------------------------
+// RenderZonePlane
+// ---------------------------------------------------------------------------
+// Draws a projected dot field across an infinite plane trigger zone.
+// Used for Plane trigger types.
+//
+//   point          — the RoutePoint defining the plane origin, normal, and
+//                    radius width.
+//   r, g, b        — dot colour (0.0–1.0 per channel); alpha is computed
+//                    internally and fades out when the camera is close to
+//                    the plane.
+// ---------------------------------------------------------------------------
 void RenderZonePlane(const RoutePoint& point, float r, float g, float b);
 
 // ---------------------------------------------------------------------------

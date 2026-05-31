@@ -196,6 +196,9 @@ static int ApplyOcclusion(int dotAlpha, float sx, float sy, const OcclusionState
     return (int)(dotAlpha * occludeFade);
 }
 
+// PI
+constexpr float PIf = 3.14159265358979323846f;
+
 // ---------------------------------------------------------------------------
 // RenderZoneCircle
 // ---------------------------------------------------------------------------
@@ -205,9 +208,9 @@ static int ApplyOcclusion(int dotAlpha, float sx, float sy, const OcclusionState
 // golden-angle spiral, but only within the latitude band defined by the
 // point's band parameters:
 //
-//   bandCenterDeg — centre latitude of the rendered band (-90 south … +90 north)
-//   bandUpDeg     — how far above the centre the band extends (fade to 0 at edge)
-//   bandDownDeg   — how far below the centre the band extends (fade to 0 at edge)
+//   bandCenterInput — centre latitude of the rendered band (-90 south … +90 north)
+//   bandUpInput     — how far above the centre the band extends (fade to 0 at edge)
+//   bandDownInput   — how far below the centre the band extends (fade to 0 at edge)
 //
 // All NUM_DOTS dots are placed within this band, so none are wasted outside
 // the visible range.  Each dot's alpha is the product of:
@@ -222,11 +225,10 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
-    const float PI = 3.14159265f;
     const float DOT_RADIUS = 3.0f;
-    const int NUM_DOTS = point.DotSphereCount > 0 ? point.DotSphereCount : 300;
+    const int NUM_DOTS = point.DotDensity > 0 ? point.DotDensity : 300;
 
-    const float golden = PI * (3.0f - std::sqrt(5.0f)); // golden angle ~2.399 radians
+    const float golden = PIf * (3.0f - std::sqrt(5.0f)); // golden angle ~2.399 radians
 
     OcclusionState os = CalcOcclusionState();
 
@@ -259,13 +261,13 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
     }
 
     // Convert band parameters to radians
-    const float bandCenter = point.bandCenterInput * (PI / 180.0f);
-    const float bandUp     = point.bandUpInput     * (PI / 180.0f);
-    const float bandDown   = point.bandDownInput   * (PI / 180.0f);
+    const float bandCenter = point.bandCenterInput * (PIf / 180.0f);
+    const float bandUp     = point.bandUpInput     * (PIf / 180.0f);
+    const float bandDown   = point.bandDownInput   * (PIf / 180.0f);
 
     // Derived latitude limits, clamped to the valid sphere range
-    const float phiMinClamped = std::max(bandCenter - bandDown, -PI * 0.5f);
-    const float phiMaxClamped = std::min(bandCenter + bandUp,    PI * 0.5f);
+    const float phiMinClamped = std::max(bandCenter - bandDown, -PIf * 0.5f);
+    const float phiMaxClamped = std::min(bandCenter + bandUp,    PIf * 0.5f);
 
     // t values corresponding to phiMin/phiMax in the asin distribution
     const float tMin = (std::sin(phiMinClamped) + 1.0f) * 0.5f;
@@ -297,12 +299,12 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
             const float gapDeg     = 90.0f;                              // degrees of arc to hide
             const float featherDeg = 15.0f;                              // soft fade either side
             const float rpm        = 20.0f;                              // rotation speed
-            const float gapRad     = gapDeg     * (PI / 180.0f);
-            const float featherRad = featherDeg * (PI / 180.0f);
+            const float gapRad     = gapDeg     * (PIf / 180.0f);
+            const float featherRad = featherDeg * (PIf / 180.0f);
 
             // Advance theta by time, normalise into [0, 2π)
-            float rotOffset = std::fmod((float)ImGui::GetTime() * (rpm / 60.0f) * 2.0f * PI, 2.0f * PI);
-            float thetaNorm = std::fmod(theta - rotOffset + 4.0f * PI, 2.0f * PI);
+            float rotOffset = std::fmod((float)ImGui::GetTime() * (rpm / 60.0f) * 2.0f * PIf, 2.0f * PIf);
+            float thetaNorm = std::fmod(theta - rotOffset + 4.0f * PIf, 2.0f * PIf);
 
             // [0, gapRad]            → fully hidden
             // [gapRad, gapRad+feath] → leading feather (fade back in)
@@ -314,7 +316,7 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
                 else
                     interactAlpha = (thetaNorm - gapRad) / featherRad; // 0→1
             }
-            float trailingDist = 2.0f * PI - thetaNorm;
+            float trailingDist = 2.0f * PIf - thetaNorm;
             if (trailingDist < featherRad)
                 interactAlpha = std::min(interactAlpha, trailingDist / featherRad); // 1→0
         }
@@ -352,9 +354,9 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
 //   • Vertically:   evenly spaced within the height band defined by the
 //                   point's band parameters (in metres, not degrees):
 //
-//       bandCenterDeg — vertical centre offset in metres above point.Y
-//       bandUpDeg     — metres above centre where alpha reaches 0
-//       bandDownDeg   — metres below centre where alpha reaches 0
+//       bandCenterInput — vertical centre offset in metres above point.Y
+//       bandUpInput     — metres above centre where alpha reaches 0
+//       bandDownInput   — metres below centre where alpha reaches 0
 //
 // Dot density is derived automatically from DOT_SPACING so wider or taller
 // planes fill in without needing a manual dot count.
@@ -373,7 +375,7 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
     OcclusionState os = CalcOcclusionState();
 
     // Along-plane direction vector from PlaneAngle
-    float angleRad = point.PlaneAngle * 3.14159265f / 180.0f;
+    float angleRad = point.PlaneAngle * PIf / 180.0f;
     float px = -std::sin(angleRad);
     float pz =  std::cos(angleRad);
 
@@ -388,8 +390,13 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
     float yMax = point.Y + bandCenter + bandUp;
     float yCtr = point.Y + bandCenter;
 
-    // Dot grid density: one column per ~0.5 m of width, one row per ~0.5 m of height
-    const float DOT_SPACING = 100.0f / (float)point.DotSphereCount;
+    const float e30   = std::log(2.0f)  / std::log(200.0f / 30.0f);
+    const float e1000 = std::log(0.2f)  / std::log(200.0f / 1000.0f);
+
+    float t = std::clamp((point.DotDensity - 30.0f) / 970.0f, 0.0f, 1.0f);
+    float e = e30 + (e1000 - e30) * t;
+
+    float DOT_SPACING = std::pow(200.0f / point.DotDensity, e);
     const float DOT_RADIUS  = 3.0f;
     int   cols = std::max(2, (int)(point.RadiusWidth / DOT_SPACING) + 1);
     int   rows = std::max(2, (int)((bandUp + bandDown) / DOT_SPACING) + 1);
@@ -467,7 +474,7 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
     ImDrawList* dl  = ImGui::GetForegroundDrawList();
     ImVec2 mousePos = ImGui::GetMousePos();
 
-    const float C            = 1200.0f;
+    const float C            = point.HyperbolaC * 100;
     const float SPACING      = 6.0f;
     const float DOT_RADIUS   = 3.0f;
     const float ARM_LEN      = 300.0f;

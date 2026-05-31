@@ -91,7 +91,8 @@ static json SerializePoint(const RoutePoint& p)
         {"radius_width",     p.RadiusWidth},
         {"trigger_type",     (int)p.TriggerType},
         {"plane_angle",      p.PlaneAngle},
-        {"dot_count",        p.DotSphereCount},
+        {"hyperbola_c",      p.HyperbolaC},
+        {"dot_density",      p.DotDensity},
         {"dot_center",       p.bandCenterInput},
         {"dot_up",          p.bandUpInput},
         {"dot_down",        p.bandDownInput},
@@ -100,14 +101,15 @@ static json SerializePoint(const RoutePoint& p)
 
 static void DeserializePoint(const json& j, RoutePoint& p)
 {
-    p.MapID          = j["mapid"];
-    p.X              = j["x"];
-    p.Y              = j["y"];
-    p.Z              = j["z"];
-    p.RadiusWidth    = j.value("radius_width", 10.0f);
-    p.TriggerType    = (ETriggerType)j.value("trigger_type", 0);
-    p.PlaneAngle     = j.value("plane_angle", 0.0f);  // Default: facing north
-    p.DotSphereCount = j.value("dot_count", 0);
+    p.MapID            = j["mapid"];
+    p.X                = j["x"];
+    p.Y                = j["y"];
+    p.Z                = j["z"];
+    p.RadiusWidth      = j.value("radius_width", 10.0f);
+    p.TriggerType      = (ETriggerType)j.value("trigger_type", 0);
+    p.PlaneAngle       = j.value("plane_angle", 0.0f);  // Default: facing north
+    p.HyperbolaC       = j.value("hyperbola_c", 12);
+    p.DotDensity       = j.value("dot_density", 0);
     p.bandCenterInput  = j.value("dot_center", 0.0f);
     p.bandUpInput      = j.value("dot_up", 10.0f);
     p.bandDownInput    = j.value("dot_down", 0.0f);

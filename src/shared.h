@@ -182,10 +182,8 @@ void FullReset();
 // Saved when the player hides all windows, restored when they toggle back.
 // ---------------------------------------------------------------------------
 extern bool HotbarWindowsHidden;
-extern bool HotbarSavedShowTimer;
 extern bool HotbarSavedShowConfig;
 extern bool HotbarSavedShowHistory;
-extern bool HotbarSavedShowZones;
 extern bool HotbarSavedShowRouteBrowser;
 
 // ---------------------------------------------------------------------------
