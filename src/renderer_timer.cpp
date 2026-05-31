@@ -7,11 +7,12 @@
 //   Compact mode — a single coloured time value, no table.  Useful when the
 //                  player wants minimal screen real estate.
 //
-//   Full mode    — a scrollable table with up to four kinds of rows:
+//   Full mode    — a table with up to four kinds of rows:
 //     1. Completed split rows  — one per split already recorded this run.
 //     2. Current segment row   — the live/in-progress segment at the bottom
-//                                of the split list (shown while running or
-//                                when the run finished without a goal split).
+//                                of the split list (shown while running, or when
+//                                the run finished with a plain goal — not
+//                                AllCheckpoints and not a manual stop).
 //     3. Total row             — the cumulative run time; hovering shows the
 //                                grand total (with load screens) as a tooltip.
 //     4. Grand Total row       — load-inclusive time, shown when enabled in
@@ -52,12 +53,12 @@ void RenderTimerOverlay()
 
     // -------------------------------------------------------------------------
     // Compact mode — single line, no split table
-    // Shows milliseconds only hen the run is finished.
+    // Shows milliseconds only when the run is finished.
     // Colour: green/red vs best total time while running/finished; grey when idle.
     // -------------------------------------------------------------------------
     if (CompactMode)
     {
-        FormatTime(buf, sizeof(buf), elapsed, !running); // showMillis = false when not running
+        FormatTime(buf, sizeof(buf), elapsed, !running); // showMillis = false while running, true when idle/finished
         ImVec4 color = (running || finished)
             ? TimeColor(elapsed, hasBest ? BestRun.back().Timestamp : 0.0, running)
             : ImVec4(0.5f, 0.5f, 0.5f, 1.0f); // Grey when idle
@@ -70,6 +71,14 @@ void RenderTimerOverlay()
         // The Diff column is only added when a best run exists to compare against.
         // Column order: [Diff] | Time | Name
         // -------------------------------------------------------------------------
+        // Hoisted here (were previously inside BeginTable) so they remain in
+        // scope for the "Save as best" handler further down.
+        const Checkpoint* goalCp = GetGoal(CurrentRoute);
+        bool goalIsAllCheckpoints = goalCp &&
+            goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
+        bool manualStop = finished && numSplits > 0 &&
+                          strcmp(splits[numSplits - 1].Name, "Manual Stop") == 0;
+
         int numCols = hasBest ? 3 : 2;
         if (ImGui::BeginTable("splits", numCols, ImGuiTableFlags_None))
         {
@@ -145,14 +154,7 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("%s", splits[i].Name);
             }
 
-            const Checkpoint* goalCp = GetGoal(CurrentRoute);
-            bool goalIsAllCheckpoints = goalCp &&
-                goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
-
-            // Detect a manually stopped run — in that case "Manual Stop" is the
-            // final split and we don't need a separate current-segment row.
-            bool manualStop = finished && numSplits > 0 &&
-                              strcmp(splits[numSplits - 1].Name, "Manual Stop") == 0;
+            // (goalCp / goalIsAllCheckpoints / manualStop are declared above BeginTable)
 
             // -------------------------------------------------------------------------
             // Current segment row (live or finished-but-no-goal-split)
@@ -182,9 +184,12 @@ void RenderTimerOverlay()
                         bestSegmentTime = BestRun[numSplits].Timestamp;
                 }
 
-                // LiveSplit mode: diff uses cumulative elapsed time, not segment time.
-                double diffCurSeg  = (TimerDisplayMode == TimerMode::LiveSplit) ? elapsed        : segmentTime;
-                double diffBestSeg = (TimerDisplayMode == TimerMode::LiveSplit) ? bestSegmentTime : bestSegmentTime;
+                // LiveSplit mode: diff uses cumulative elapsed time vs. cumulative best time.
+                // diffBestSeg is bestSegmentTime regardless of mode — the lookup block above
+                // already sets it to the right value (cumulative for LiveSplit/Split, per-leg
+                // for Segment), so no further branching is needed here.
+                double diffCurSeg  = (TimerDisplayMode == TimerMode::LiveSplit) ? elapsed           : segmentTime;
+                double diffBestSeg = bestSegmentTime;
                 double diff = hasDiff ? diffCurSeg - diffBestSeg : 0.0;
 
                 ImGui::TableNextRow();
@@ -226,7 +231,9 @@ void RenderTimerOverlay()
             // Only shown once at least one split has been recorded.
             // Hovering the time shows the grand total (load-inclusive) as a tooltip.
             // -------------------------------------------------------------------------
-            if ((running || finished) && numSplits > 0)
+            // In Split mode every row already shows cumulative time, so the row
+            // immediately above Total is always identical to it — hide the duplicate.
+            if ((running || finished) && numSplits > 0 && TimerDisplayMode != TimerMode::Split)
             {
                 ImGui::TableNextRow();
 
@@ -319,6 +326,22 @@ void RenderTimerOverlay()
             if (ImGui::Button("Save as best"))
             {
                 BestRun      = splits;
+
+                // When the goal is a plain trigger (not AllCheckpoints) the final
+                // segment's endpoint only exists in `elapsed`, never in `splits`.
+                // Append it so that:
+                //   • BestRun.back().Timestamp == true run total  (fixes Total diff)
+                //   • The last segment has a reference entry       (fixes last-seg diff)
+                if (finished && !manualStop && !goalIsAllCheckpoints)
+                {
+                    decltype(BestRun)::value_type goalEntry{};
+                    goalEntry.Timestamp = elapsed;
+                    const char* goalName = (goalCp && goalCp->Name[0] != '\0')
+                                          ? goalCp->Name : "Goal";
+                    std::strncpy(goalEntry.Name, goalName, sizeof(goalEntry.Name) - 1);
+                    BestRun.push_back(goalEntry);
+                }
+
                 BestRunIndex = 0; // Newest run is always inserted at index 0
                 if (!CurrentHistoryPath.empty())
                     SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
