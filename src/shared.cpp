@@ -123,6 +123,20 @@ bool  ShowGrandTotal = false;
 bool  ShowRouteBrowser = false;
 
 // ---------------------------------------------------------------------------
+// Zone colors
+// ---------------------------------------------------------------------------
+float ColorStart[3]      = { 0.2f, 1.0f, 0.2f };
+float ColorGoal[3]       = { 0.2f, 0.5f, 1.0f };
+float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
+
+// ---------------------------------------------------------------------------
+// Zone colors
+// ---------------------------------------------------------------------------
+float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
+float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
+float ColorBestRow[3]    = { 0.2f, 0.3f, 0.2f }; // slightly different from ColorAhead since it's a background
+ 
+// ---------------------------------------------------------------------------
 // TimerMode / Timer display settings
 // ---------------------------------------------------------------------------
 TimerMode TimerDisplayMode = TimerMode::Split;
@@ -135,6 +149,7 @@ std::vector<Split>         BestRun;
 std::vector<HistoricalRun> HistoryRuns;
 int                        MaxHistoryRuns   = 10;
 int                        BestRunIndex = -1; // Index into HistoryRuns; -1 = none set
+std::vector<SegmentRecord> SegmentRecords;
 
 // ---------------------------------------------------------------------------
 // Per-run state flags

@@ -53,6 +53,40 @@ static void MoveRouteFile(const std::string& srcJson, const std::string& destDir
 }
 
 // ---------------------------------------------------------------------------
+// DeleteRouteFile  (file-private helper)
+// ---------------------------------------------------------------------------
+// Permanently deletes a route's .json file and its sibling .history file
+// from disk.  If the deleted route is currently loaded, the global path
+// variables are cleared so future saves don't attempt to write to a
+// non-existent file — the route data stays in memory so the user can
+// save it again under a new name if needed.
+//
+// All filesystem errors are silently swallowed.
+// ---------------------------------------------------------------------------
+static void DeleteRouteFile(const std::string& jsonPath)
+{
+    try
+    {
+        fs::path src(jsonPath);
+        fs::path history = src; history.replace_extension(".history");
+
+        fs::remove(src);
+        if (fs::exists(history))
+            fs::remove(history);
+
+        // If this was the active route, clear the paths so saves don't
+        // try to write to the deleted location.  Route data stays in memory.
+        if (CurrentRouteFilepath == jsonPath)
+        {
+            CurrentRouteFilepath.clear();
+            CurrentHistoryPath.clear();
+        }
+    }
+    catch (...) {}
+}
+
+
+// ---------------------------------------------------------------------------
 // RenderFolderNode  (file-private recursive helper)
 // ---------------------------------------------------------------------------
 // Draws one level of the route tree using ImGui TreeNodes for sub-folders and
@@ -66,10 +100,14 @@ static void MoveRouteFile(const std::string& srcJson, const std::string& destDir
 //     calls MoveRouteFile() and sets dragDropNeedsRefresh so the tree is
 //     rebuilt next frame.
 //
-// Returns true when the user clicks a route, so the caller can close the
-// browser window and stop traversing the tree.
+// Right-click on a route sets pendingDeletePath so the caller can show a
+// confirmation popup before permanently deleting the file.
+//
+// Returns true when the user clicks a route, so the caller can schedule a
+// tree refresh and stop traversing remaining nodes this frame.
 // ---------------------------------------------------------------------------
-static bool RenderFolderNode(const RouteFolder& folder, bool& dragDropNeedsRefresh)
+static bool RenderFolderNode(const RouteFolder& folder, bool& dragDropNeedsRefresh,
+                              std::string& pendingDeletePath)
 {
     // --- Sub-folders ---
     for (const auto& sub : folder.SubFolders)
@@ -92,7 +130,7 @@ static bool RenderFolderNode(const RouteFolder& folder, bool& dragDropNeedsRefre
         if (open)
         {
             // Recurse into the sub-folder; propagate the "selected" early-out upward.
-            if (RenderFolderNode(sub, dragDropNeedsRefresh))
+            if (RenderFolderNode(sub, dragDropNeedsRefresh, pendingDeletePath))
             {
                 ImGui::TreePop();
                 return true;
@@ -118,15 +156,27 @@ static bool RenderFolderNode(const RouteFolder& folder, bool& dragDropNeedsRefre
             ImGui::EndDragDropSource();
         }
 
+        // Right-click — mark for deletion; confirmation popup shown by caller.
+        char ctxId[64]; snprintf(ctxId, sizeof(ctxId), "##routectx_%s", rf.Name.c_str());
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+            ImGui::OpenPopup(ctxId);
+        if (ImGui::BeginPopup(ctxId))
+        {
+            if (ImGui::MenuItem("Delete Route"))
+                pendingDeletePath = rf.Filepath;
+            ImGui::EndPopup();
+        }
+
         if (clicked)
         {
             LoadRouteFile(rf);
-            return true; // Signal to caller: a route was selected, close the browser
+            return true; // Signal to caller: a route was selected
         }
     }
 
     return false;
 }
+
 
 // ---------------------------------------------------------------------------
 // RenderRouteBrowserWindow
@@ -155,8 +205,8 @@ void RenderRouteBrowserWindow()
         needsRefresh = false;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(320.0f, 480.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Routes", &ShowRouteBrowser);
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Split Wars 2 - Route Browser", &ShowRouteBrowser);
 
     if (ImGui::Button("Refresh"))
         needsRefresh = true;
@@ -167,7 +217,38 @@ void RenderRouteBrowserWindow()
     ImGui::Spacing();
 
     bool dndRefresh = false; // Set by RenderFolderNode if a drag-and-drop move occurred
-    bool selected   = RenderFolderNode(routeTree, dndRefresh);
+    static std::string pendingDeletePath; // Set by RenderFolderNode on right-click delete
+    bool selected   = RenderFolderNode(routeTree, dndRefresh, pendingDeletePath);
+
+    // --- Confirmation popup for route deletion ---
+    // Opened when pendingDeletePath is set by RenderFolderNode. Shown here
+    // rather than inside the recursive function so only one popup exists at
+    // a time regardless of tree depth.
+    if (!pendingDeletePath.empty())
+        ImGui::OpenPopup("##confirmdelete");
+
+    if (ImGui::BeginPopup("##confirmdelete"))
+    {
+        ImGui::Text("Permanently delete this route and its history?");
+        ImGui::TextDisabled("%s", fs::path(pendingDeletePath).filename().string().c_str());
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button("Yes, delete"))
+        {
+            DeleteRouteFile(pendingDeletePath);
+            pendingDeletePath.clear();
+            needsRefresh = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+        {
+            pendingDeletePath.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 
     // --- Root drop target ---
     // Rendered at the bottom of the list so the player can move a route back to
@@ -191,13 +272,10 @@ void RenderRouteBrowserWindow()
     if (dndRefresh)
         needsRefresh = true;
 
-    // Close the window and schedule a refresh when the user selects a route,
-    // so the browser is ready with an up-to-date tree next time it is opened.
+    // Schedule a refresh when the user selects a route so the browser
+    // reflects any external changes next time the tree is rendered.
     if (selected)
-    {
-        ShowRouteBrowser = false;
-        needsRefresh     = true;
-    }
+        needsRefresh = true;
 
     ImGui::End();
 }

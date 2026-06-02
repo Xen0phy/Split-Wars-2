@@ -20,7 +20,8 @@ void RenderConfigWindow()
 {
     if (!ShowConfig) return;
 
-    ImGui::Begin("Speedrun Config", &ShowConfig);
+    ImGui::SetNextWindowSize(ImVec2(800.0f, 400.0f), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Split Wars 2 - Route Config", &ShowConfig);
 
     // -------------------------------------------------------------------------
     // Route name field
@@ -100,7 +101,7 @@ void RenderConfigWindow()
             // Overwrite the existing file and keep history intact.
             SaveRoute(CurrentRouteFilepath, CurrentRoute);
             if (!CurrentHistoryPath.empty())
-                SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
+            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
         }
         else
         {
@@ -185,7 +186,41 @@ void RenderConfigWindow()
         ImGui::TableSetupColumn("Angle/Arm",    ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Capture",      ImGuiTableColumnFlags_WidthFixed,    30.0f);
         ImGui::TableSetupColumn("Remove",       ImGuiTableColumnFlags_WidthFixed,    20.0f);
-        ImGui::TableHeadersRow();
+        ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+        for (int col = 0; col < 16; col++)
+        {
+            ImGui::TableSetColumnIndex(col);
+            ImGui::TableHeader(ImGui::TableGetColumnName(col));
+            switch (col)
+            {
+                case 0:  Tooltip("Name your checkpoint."); break;
+                case 1:  Tooltip("Set checkpoint as starting point.\nOnly one possible.\nWill start the timer."); break;
+                case 2:  Tooltip("Set your checkpoint as Goal point.\nMultiple possble.\nWill end the timer."); break;
+                case 3:  Tooltip("Trigger types that create a checkpoint:\n"
+                                       "  * Sphere:          Fires when you enter it. If Start, fires when you leave.\n"
+                                       "  * Plane:           Fires when you walk through it. Infinite height.\n"
+                                       "  * Interact:        Fires when you interact while in sphere. Check warning when set.\n"
+                                       "  * Combat(Native):  Fires twice.\n"
+                                       "                     Combat start while in sphere.\n"
+                                       "                     Combat end when out of combat or leaving sphere.\n"
+                                       "  * MapChange:       Fires when leaving the selected map.\n"
+                                       "  * AllCheackpoints: Fires when all other Checkpoints in the list have been triggered."); break;
+                case 4:  Tooltip("Enter MapID here.\nEither you know or you press the capture button."); break;
+                case 5:  Tooltip("Enter X Coordinate here.\nEither you know or you press the capture button."); break;
+                case 6:  Tooltip("Enter Y Coordinate here.\nEither you know or you press the capture button."); break;
+                case 7:  Tooltip("Enter Z Coordinate here.\nEither you know or you press the capture button."); break;
+                case 8:  Tooltip("Sphere radiues or plane width."); break;
+                case 9:  Tooltip("The amount of dots you want on your sphere or plane.\nBigger numbers need more render time."); break;
+                case 10: Tooltip("A center line for Up and Down.\n Sphere uses longitude degrees, plane uses meter."); break;
+                case 11: Tooltip("How far up you want the dots to extend from center."); break;
+                case 12: Tooltip("How far down you want the dots to extend from center."); break;
+                case 13: Tooltip("Defines plane angle. Use capture button or adjust manually.\n"
+                                       "Shows a Re-Arm button for combat trigger.\n"
+                                       "Adjust MapChange indicators hyperbole strength."); break;
+                case 14: Tooltip("Captures current MapID, XYZ location and plane angle if available."); break;
+                case 15: Tooltip("Button to remove a checkpoint."); break;
+            }
+        }
 
         int removeIndex = -1; // Set to a row index if the player clicks a Remove button
         for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
@@ -195,7 +230,6 @@ void RenderConfigWindow()
             RoutePoint& point     = cp.Point;
             bool isMapChange      = point.TriggerType == ETriggerType::MapChange;
             bool isAllCheckpoints = point.TriggerType == ETriggerType::AllCheckpoints;
-            bool isGoal           = cp.IsGoal;
 
             // --- Name ---
             ImGui::TableSetColumnIndex(0);
@@ -238,14 +272,14 @@ void RenderConfigWindow()
             char goalLabel[32]; snprintf(goalLabel, sizeof(goalLabel), "##g_%d", i);
             if (ImGui::Checkbox(goalLabel, &isGoalVal))
             {
-                if (isGoalVal)
-                {
-                    for (auto& other : CurrentRoute.Checkpoints)
-                        other.IsGoal = false;
-                }
+                //if (isGoalVal)
+                //{
+                //    for (auto& other : CurrentRoute.Checkpoints)
+                //        other.IsGoal = false;
+                //}
                 cp.IsGoal = isGoalVal;
             
-                // Goal is incompatible with these trigger types — clear it immediately.
+                // Goal is incompatible with these trigger types set to start — clear it immediately.
                 if (cp.IsGoal)
                 {
                     ETriggerType t = point.TriggerType;
@@ -257,30 +291,20 @@ void RenderConfigWindow()
             }
 
             // --- Trigger type dropdown ---
-            // Goal checkpoints get an extra option: "All Checkpoints", which fires
-            // once every other checkpoint in the route has been triggered.
-            // Non-goal checkpoints use a 5-item list (no "All Checkpoints" entry).
+            // AllCheckpoints is always available — selecting it automatically locks
+            // this checkpoint as a goal since it has no meaning otherwise.
             ImGui::TableSetColumnIndex(3);
-            const char* triggerTypes[]     = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)" };
-            const char* goalTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints" };
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            if (isGoal)
+            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints" };
+            int currentType = (point.TriggerType == ETriggerType::CombatArena) ? 4 : (int)point.TriggerType;
+            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 6))
             {
-                int currentType = (int)point.TriggerType;
-                if (ImGui::Combo(comboLabel, &currentType, goalTriggerTypes, 6))
-                    point.TriggerType = (ETriggerType)currentType;
+                point.TriggerType = (currentType == 4) ? ETriggerType::CombatArena : (ETriggerType)currentType;
+                if (point.TriggerType == ETriggerType::AllCheckpoints)
+                    cp.IsGoal = true; // AllCheckpoints implies goal — lock it automatically
             }
-            else
-            {
-                // CombatArena maps to display index 4; AllCheckpoints is goal-only
-                // so clamp it to index 0 if somehow set on a non-goal checkpoint.
-                int displayIndex = (point.TriggerType == ETriggerType::CombatArena) ? 4 : (int)point.TriggerType;
-                if (point.TriggerType == ETriggerType::AllCheckpoints) displayIndex = 0;
-                if (ImGui::Combo(comboLabel, &displayIndex, triggerTypes, 5))
-                    point.TriggerType = (displayIndex == 4) ? ETriggerType::CombatArena : (ETriggerType)displayIndex;
-            }
-
+            
             // Enforce start/goal compatibility whenever trigger type may have changed
             ETriggerType t = point.TriggerType;
             if (t == ETriggerType::AllCheckpoints)
@@ -354,7 +378,7 @@ void RenderConfigWindow()
                 char l[32]; snprintf(l, sizeof(l), "##dotDensity_%d", i);
                 ImGui::SetNextItemWidth(-1);
                 ImGui::DragInt(l, &point.DotDensity, 1, 30, 1000, "%d");
-                point.DotDensity = std::clamp(point.DotDensity, 0, 5000);
+                point.DotDensity = std::clamp(point.DotDensity, 0, 100000);
             }
 
             // --- Band Center / Up / Down ---
@@ -417,8 +441,8 @@ void RenderConfigWindow()
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
-                ImGui::DragFloat(l, &point.PlaneAngle, 0.1f, 0.0f, 360.0f, "%.1f");
-                point.PlaneAngle = std::clamp(point.PlaneAngle, 0.0f, 360.0f);
+                ImGui::DragFloat(l, &point.PlaneAngle, 0.1f, -360.0f, 360.0f, "%.1f");
+                point.PlaneAngle = std::clamp(point.PlaneAngle, -360.0f, 360.0f);
             }
             else if (point.TriggerType == ETriggerType::MapChange)
             {

@@ -62,7 +62,7 @@ void RenderDebugWindow()
 {
     if (!ShowDebug) return;
 
-    ImGui::SetNextWindowSize(ImVec2(700.0f, 450.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(800.0f, 800.0f), ImGuiCond_FirstUseEver);
     ImGui::Begin("Split Wars 2 - Debug", &ShowDebug);
 
     // -------------------------------------------------------------------------

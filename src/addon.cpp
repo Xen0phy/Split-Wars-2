@@ -33,20 +33,17 @@ void AddonOptions();
 // ---------------------------------------------------------------------------
 extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
 {
-    AddonDef.Signature          = 0x53573200;           // Unique numeric ID for this addon
-    AddonDef.APIVersion         = NEXUS_API_VERSION;    // Nexus API version this addon was built against
-    AddonDef.Name               = "Split Wars 2";
-    AddonDef.Version.Major      = 0;
-    AddonDef.Version.Minor      = 17;
-    AddonDef.Version.Build      = 8;
-    AddonDef.Version.Revision   = 1;
-    AddonDef.Author             = "Xenophy.2716";
-    AddonDef.Description        = "A speedrun timer with coordinate-based triggers.";
-    AddonDef.Load               = AddonLoad;            // Called once when the addon is loaded
-    AddonDef.Unload             = AddonUnload;          // Called once when the addon is unloaded
-    AddonDef.Flags              = AF_None;
-    AddonDef.Provider           = UP_GitHub;            // Where Nexus should look for updates
-    AddonDef.UpdateLink         = "https://github.com/Xen0phy/Split-Wars-2";
+    AddonDef.Signature    = 0x53573200;           // Unique numeric ID for this addon
+    AddonDef.APIVersion   = NEXUS_API_VERSION;    // Nexus API version this addon was built against
+    AddonDef.Name         = "Split Wars 2";
+    AddonDef.Version      = {0, 18,4,0};
+    AddonDef.Author       = "Xenophy.2716";
+    AddonDef.Description  = "A speedrun timer with coordinate-based triggers.";
+    AddonDef.Load         = AddonLoad;            // Called once when the addon is loaded
+    AddonDef.Unload       = AddonUnload;          // Called once when the addon is unloaded
+    AddonDef.Flags        = AF_None;
+    AddonDef.Provider     = UP_GitHub;            // Where Nexus should look for updates
+    AddonDef.UpdateLink   = "https://github.com/Xen0phy/Split-Wars-2";
 
     return &AddonDef;
 }
@@ -95,6 +92,43 @@ static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
         InteractKeyPressed = true;
 }
 
+// TrimHistory
+// ---------------------------------------------------------------------------
+// Removes the oldest unprotected runs until the list is within MaxHistoryRuns.
+// Protected runs are: the designated best run (BestRunIndex) and the run with
+// the fastest total time. These are never removed by automatic trimming.
+// ---------------------------------------------------------------------------
+void TrimHistory()
+{
+    if ((int)HistoryRuns.size() <= MaxHistoryRuns) return;
+
+    // Find the index of the fastest run.
+    int fastestIdx = -1;
+    double fastestTime = -1.0;
+    for (int i = 0; i < (int)HistoryRuns.size(); i++)
+    {
+        if (fastestTime < 0.0 || HistoryRuns[i].TotalTime < fastestTime)
+        {
+            fastestTime = HistoryRuns[i].TotalTime;
+            fastestIdx  = i;
+        }
+    }
+
+    // Remove oldest unprotected runs from the end until within cap.
+    for (int i = (int)HistoryRuns.size() - 1;
+         i >= 0 && (int)HistoryRuns.size() > MaxHistoryRuns;
+         i--)
+    {
+        if (i == BestRunIndex || i == fastestIdx) continue;
+
+        HistoryRuns.erase(HistoryRuns.begin() + i);
+
+        // Adjust protected indices after erase.
+        if (BestRunIndex > i) BestRunIndex--;
+        if (fastestIdx   > i) fastestIdx--;
+    }
+}
+
 // "Start/Stop" key — if the timer is already running this acts as a manual
 // stop: it adds a final "Manual Stop" split, stops both timers, records the
 // run in history, and saves to disk.  If the timer is not running it resets
@@ -118,10 +152,9 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
         HistoryRuns.insert(HistoryRuns.begin(), run);  // Newest run goes to the top
         if (BestRunIndex >= 0)
             BestRunIndex++;
-        if ((int)HistoryRuns.size() > MaxHistoryRuns)
-            HistoryRuns.resize(MaxHistoryRuns);          // Trim the list to the configured cap
+        TrimHistory();         // Trim the list to the configured cap
         if (!CurrentHistoryPath.empty())
-            SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
+            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
     }
     else
     {
@@ -233,6 +266,12 @@ static void ApplySettings(const Settings& s)
     ShowRouteBrowser = s.ShowRouteBrowser;
     MaxHistoryRuns   = s.MaxHistoryRuns;
     PreferredSource  = (EDataSource)s.DataSource;
+    std::copy(s.ColorStart,      s.ColorStart      + 3, ColorStart);
+    std::copy(s.ColorGoal,       s.ColorGoal       + 3, ColorGoal);
+    std::copy(s.ColorCheckpoint, s.ColorCheckpoint + 3, ColorCheckpoint);
+    std::copy(s.ColorAhead,    s.ColorAhead    + 3, ColorAhead);
+    std::copy(s.ColorBehind,   s.ColorBehind   + 3, ColorBehind);
+    std::copy(s.ColorBestRow,  s.ColorBestRow  + 3, ColorBestRow);
 }
 
 // Snapshot the current global variables into a Settings struct ready for saving.
@@ -252,6 +291,12 @@ static Settings GatherSettings()
     s.ShowRouteBrowser = ShowRouteBrowser;
     s.MaxHistoryRuns   = MaxHistoryRuns;
     s.DataSource       = (int)PreferredSource;
+    std::copy(ColorStart,      ColorStart      + 3, s.ColorStart);
+    std::copy(ColorGoal,       ColorGoal       + 3, s.ColorGoal);
+    std::copy(ColorCheckpoint, ColorCheckpoint + 3, s.ColorCheckpoint);
+    std::copy(ColorAhead,    ColorAhead    + 3, s.ColorAhead);
+    std::copy(ColorBehind,   ColorBehind   + 3, s.ColorBehind);
+    std::copy(ColorBestRow,  ColorBestRow  + 3, s.ColorBestRow);
     return s;
 }
 
@@ -973,11 +1018,12 @@ void AddonRender()
                         HistoryRuns.insert(HistoryRuns.begin(), run);
                         if (BestRunIndex >= 0)
                             BestRunIndex++;
-                        if ((int)HistoryRuns.size() > MaxHistoryRuns)
-                            HistoryRuns.resize(MaxHistoryRuns);
-
+                        TrimHistory();
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
+                        {
+                            UpdateSegments(run, SegmentRecords);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                        }
                     }
                 }
             }
@@ -1069,7 +1115,6 @@ void AddonOptions()
             "            matching the behaviour of LiveSplit.");
     ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
     Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
-    ImGui::SameLine();
     ImGui::Checkbox("Compact Mode",       &CompactMode);
     Tooltip("Reduces the timer to one line.");
     ImGui::Separator();
@@ -1077,13 +1122,12 @@ void AddonOptions()
     //Route related UI
     ImGui::Checkbox("Show Route Config", &ShowConfig);
     Tooltip("Toggles the route configuration window.");
-    ImGui::SameLine();
     ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
     Tooltip("Toggles the route file browser.");
     ImGui::Checkbox("Show History",       &ShowHistory);
     Tooltip("Toggles the history window.");
     ImGui::SameLine();
-    ImGui::Dummy(ImVec2(2.0f, ImGui::GetFrameHeight()));
+    ImGui::Dummy(ImVec2(5.0f, ImGui::GetFrameHeight()));
     ImGui::SameLine();
     // Max History Runs — clamped to [1, 100].
     ImGui::Text("Max");
@@ -1149,6 +1193,40 @@ void AddonOptions()
     }
     ImGui::SameLine();
     ImGui::TextDisabled(GS.RTAPIAvailable ? "(RTAPI connected)" : "(RTAPI not available)");
+
+    ImGui::Separator();
+
+    // Colors
+    ImGui::Text("Zone Colors:");
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::ColorEdit3("Start",       ColorStart,      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::ColorEdit3("Goal",        ColorGoal,       ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
+    ImGui::SameLine();
+    ImGui::ColorEdit3("Checkpoint",  ColorCheckpoint, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
+    ImGui::Text("Time Colors:");
+    ImGui::ColorEdit3("Ahead",    ColorAhead,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
+    ImGui::SameLine();
+    ImGui::ColorEdit3("Behind",   ColorBehind,  ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
+    ImGui::SameLine();
+    ImGui::ColorEdit3("Best Row", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
+    ImGui::SameLine();
+if (ImGui::Button("Reset Colors"))
+{
+    float defStart[3]      = { 0.2f, 1.0f, 0.2f };
+    float defGoal[3]       = { 0.2f, 0.5f, 1.0f };
+    float defCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
+    float defAhead[3]      = { 0.2f, 1.0f, 0.2f };
+    float defBehind[3]     = { 1.0f, 0.3f, 0.3f };
+    float defBestRow[3]    = { 0.2f, 0.3f, 0.2f };
+    std::copy(defStart,      defStart      + 3, ColorStart);
+    std::copy(defGoal,       defGoal       + 3, ColorGoal);
+    std::copy(defCheckpoint, defCheckpoint + 3, ColorCheckpoint);
+    std::copy(defAhead,      defAhead      + 3, ColorAhead);
+    std::copy(defBehind,     defBehind     + 3, ColorBehind);
+    std::copy(defBestRow,    defBestRow    + 3, ColorBestRow);
+}
 
     // Debug
     ImGui::Separator();

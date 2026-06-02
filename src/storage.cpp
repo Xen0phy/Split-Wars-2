@@ -309,6 +309,58 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
     catch (...) { return false; }
 }
 
+void RecalcSegments(const std::vector<HistoricalRun>& runs,
+    std::vector<SegmentRecord>& segments)
+{
+    segments.clear();
+    for (const HistoricalRun& run : runs)
+        UpdateSegments(run, segments);
+}
+
+void UpdateSegments(const HistoricalRun& run,
+    std::vector<SegmentRecord>& segments)
+{
+    static const std::string START_SUFFIX = " Start";
+    static const std::string END_SUFFIX   = " End";
+
+    for (int i = 0; i < (int)run.Splits.size(); i++)
+    {
+        const std::string& name = run.Splits[i].Name;
+
+        // Check for " Start" suffix.
+        if (name.size() <= START_SUFFIX.size()) continue;
+        if (name.compare(name.size() - START_SUFFIX.size(),
+                START_SUFFIX.size(), START_SUFFIX) != 0) continue;
+
+        std::string prefix = name.substr(0, name.size() - START_SUFFIX.size());
+        std::string endName = prefix + END_SUFFIX;
+
+        // Find the nearest matching " End" after this split.
+        for (int j = i + 1; j < (int)run.Splits.size(); j++)
+        {
+            if (run.Splits[j].Name != endName) continue;
+
+            double delta = run.Splits[j].Timestamp - run.Splits[i].Timestamp;
+
+            // Find or create the record for this prefix.
+            SegmentRecord* rec = nullptr;
+            for (SegmentRecord& r : segments)
+            if (r.name == prefix) { rec = &r; break; }
+
+            if (!rec)
+            {
+                segments.push_back({ prefix, delta, run.Date });
+            }
+            else if (delta < rec->bestTime)
+            {
+                rec->bestTime = delta;
+                rec->bestDate = run.Date;
+            }
+            break; // Only pair with the first matching End
+        }
+    }
+}
+
 // ===========================================================================
 // History  —  SaveHistory / LoadHistory
 // ===========================================================================
@@ -333,7 +385,7 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 //   }
 // ---------------------------------------------------------------------------
 bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun>& runs,
-                 int bestRunIndex)
+    const std::vector<SegmentRecord>& segments, int bestRunIndex)
 {
     try
     {
@@ -358,6 +410,15 @@ bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun
         }
         j["history"] = history;
 
+        json segArr = json::array();
+        for (const SegmentRecord& s : segments)
+            segArr.push_back({
+                {"name",      s.name},
+                {"best_time", s.bestTime},
+                {"best_date", s.bestDate}
+            });
+        j["segments"] = segArr;
+
         std::ofstream file(historyPath);
         if (!file.is_open()) return false;
         file << j.dump(4);
@@ -376,7 +437,7 @@ bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun
 // run at best_run_index, or left empty if the index is -1 or out of range.
 // ---------------------------------------------------------------------------
 bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
-                 std::vector<HistoricalRun>& runs, int& outBestIndex)
+    std::vector<HistoricalRun>& runs, std::vector<SegmentRecord>& segments, int& outBestIndex)
 {
     try
     {
@@ -411,6 +472,22 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
         if (outBestIndex >= 0)
             bestRun = runs[outBestIndex].Splits;
 
+        // Load segment records — absent in older files, recalculated by caller.
+        segments.clear();
+        if (j.contains("segments"))
+        {
+            for (const auto& s : j["segments"])
+            {
+                SegmentRecord rec;
+                rec.name     = s.value("name",      "");
+                rec.bestTime = s.value("best_time", 0.0);
+                rec.bestDate = s.value("best_date", "");
+                if (!rec.name.empty()) segments.push_back(rec);
+            }
+        }
+        if (segments.empty() && !runs.empty())
+            RecalcSegments(runs, segments);
+
         return true;
     }
     catch (...) { return false; }
@@ -432,19 +509,25 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
         fs::create_directories(addonDir);
 
         json j = {
-            {"show_timer",          settings.ShowTimer},
-            {"show_config",         settings.ShowConfig},
-            {"show_zones",          settings.ShowZones},
-            {"zone_fade_start",     settings.ZoneFadeStart},
-            {"zone_fade_end",       settings.ZoneFadeEnd},
-            {"show_debug",          settings.ShowDebug},
-            {"timer_display_mode",  settings.TimerDisplayMode},
-            {"compact_mode",        settings.CompactMode},
-            {"show_history",        settings.ShowHistory},
-            {"show_grand_total",    settings.ShowGrandTotal},
-            {"show_route_browser", settings.ShowRouteBrowser},
-            {"max_history_runs",   settings.MaxHistoryRuns},
-            {"data_source",        settings.DataSource}
+            {"show_timer",             settings.ShowTimer},
+            {"show_config",            settings.ShowConfig},
+            {"show_zones",             settings.ShowZones},
+            {"zone_fade_start",        settings.ZoneFadeStart},
+            {"zone_fade_end",          settings.ZoneFadeEnd},
+            {"show_debug",             settings.ShowDebug},
+            {"timer_display_mode",     settings.TimerDisplayMode},
+            {"compact_mode",           settings.CompactMode},
+            {"show_history",           settings.ShowHistory},
+            {"show_grand_total",       settings.ShowGrandTotal},
+            {"show_route_browser",    settings.ShowRouteBrowser},
+            {"max_history_runs",      settings.MaxHistoryRuns},
+            {"data_source",           settings.DataSource},
+            {"color_start",      {settings.ColorStart[0],      settings.ColorStart[1],      settings.ColorStart[2]}},
+            {"color_goal",       {settings.ColorGoal[0],        settings.ColorGoal[1],       settings.ColorGoal[2]}},
+            {"color_checkpoint", {settings.ColorCheckpoint[0],  settings.ColorCheckpoint[1], settings.ColorCheckpoint[2]}},
+            {"color_ahead",      {settings.ColorAhead[0],    settings.ColorAhead[1],    settings.ColorAhead[2]}},
+            {"color_behind",     {settings.ColorBehind[0],   settings.ColorBehind[1],   settings.ColorBehind[2]}},
+            {"color_best_row",   {settings.ColorBestRow[0],  settings.ColorBestRow[1],  settings.ColorBestRow[2]}}
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -485,6 +568,18 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.ShowRouteBrowser = j.value("show_route_browser", false);
         settings.MaxHistoryRuns   = j.value("max_history_runs",   10);
         settings.DataSource       = j.value("data_source",        0);
+        if (j.contains("color_start") && j["color_start"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorStart[i] = j["color_start"][i].get<float>();
+        if (j.contains("color_goal") && j["color_goal"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorGoal[i] = j["color_goal"][i].get<float>();
+        if (j.contains("color_checkpoint") && j["color_checkpoint"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorCheckpoint[i] = j["color_checkpoint"][i].get<float>();
+        if (j.contains("color_ahead") && j["color_ahead"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorAhead[i] = j["color_ahead"][i].get<float>();
+        if (j.contains("color_behind") && j["color_behind"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorBehind[i] = j["color_behind"][i].get<float>();
+        if (j.contains("color_best_row") && j["color_best_row"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorBestRow[i] = j["color_best_row"][i].get<float>();
         return true;
     }
     catch (...) { return false; }

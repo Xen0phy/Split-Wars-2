@@ -4,7 +4,7 @@
 //
 // The window has two modes:
 //
-//   Compact mode — a single coloured time value, no table.  Useful when the
+//   Compact mode — a single colored time value, no table.  Useful when the
 //                  player wants minimal screen real estate.
 //
 //   Full mode    — a table with up to four kinds of rows:
@@ -18,11 +18,11 @@
 //     4. Grand Total row       — load-inclusive time, shown when enabled in
 //                                settings.
 //
-// Each time cell is coloured green (ahead/equal) or red (behind) relative to
-// the active best run.  The Diff column shows the signed delta.  Both use the
-// three display modes: Split (cumulative), Segment (per-leg), or LiveSplit
+// Each time cell is colored with ColorAhead (ahead/equal) or ColorBehind (behind)
+// relative to the active best run.  The Diff column shows the signed delta.  Both
+// use the three display modes: Split (cumulative), Segment (per-leg), or LiveSplit
 // (segment times, cumulative diffs — matching LiveSplit software behaviour).
-//
+// 
 // After a run finishes, "Save as best" and "Reset Timer" buttons are shown.
 
 #include "renderer_shared.h"
@@ -33,7 +33,7 @@ void RenderTimerOverlay()
 
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha(0.6f); // Semi-transparent so the game world shows through
-    ImGui::Begin("Speedrun Timer", nullptr,
+    ImGui::Begin("Split Wars 2 - Speedrun Timer", nullptr,
         ImGuiWindowFlags_NoDecoration      |  // No title bar or borders
         ImGuiWindowFlags_AlwaysAutoResize  |  // Shrink/grow to fit content
         ImGuiWindowFlags_NoFocusOnAppearing|  // Don't steal keyboard focus on show
@@ -54,7 +54,7 @@ void RenderTimerOverlay()
     // -------------------------------------------------------------------------
     // Compact mode — single line, no split table
     // Shows milliseconds only when the run is finished.
-    // Colour: green/red vs best total time while running/finished; grey when idle.
+    // Color: ColorAhead/ColorBehind vs best total time while running/finished; grey when idle.
     // -------------------------------------------------------------------------
     if (CompactMode)
     {
@@ -136,8 +136,8 @@ void RenderTimerOverlay()
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                             ImGui::TextColored(diff < 0
-                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                                ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
+                                : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f), "%s", diffBuf);
                         }
                     }
                 }
@@ -207,8 +207,8 @@ void RenderTimerOverlay()
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                             ImGui::TextColored(diff < 0
-                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                                ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
+                                : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f), "%s", diffBuf);
                         }
                     }
                 }
@@ -249,8 +249,8 @@ void RenderTimerOverlay()
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                             ImGui::TextColored(totalDiff < 0
-                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                                : ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", diffBuf);
+                                ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
+                                : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f), "%s", diffBuf);
                         }
                     }
                 }
@@ -344,7 +344,7 @@ void RenderTimerOverlay()
 
                 BestRunIndex = 0; // Newest run is always inserted at index 0
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, HistoryRuns, BestRunIndex);
+                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
                 RunFinished = false;
             }
 

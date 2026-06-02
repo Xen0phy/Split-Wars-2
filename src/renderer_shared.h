@@ -4,7 +4,7 @@
 // Pulls in all ImGui headers, the shared game-state header, and the storage
 // header so each renderer only needs one include line.  Also declares the
 // utility functions that are shared across renderers (time formatting,
-// colour selection, route loading) and the inline Tooltip helper.
+// color selection, route loading) and the inline Tooltip helper.
 
 #pragma once
 
@@ -34,16 +34,19 @@ void RenderDebugWindow();
 // Formats a seconds value as "HH:MM:SS[.mmm]".
 // showMillis = true  → includes milliseconds  (default, used on the live timer)
 // showMillis = false → whole seconds only      (used in history/tooltip tables)
-void   FormatTime(char* buf, int bufSize, double elapsed, bool showMillis = true);
+void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis = true);
+
+// Formats a run hostory to easily copy paste it to a spreadsheet
+void FormatTimeExport(char* buf, int bufSize, double elapsed);
 
 // Formats a signed time delta (current - best) as a compact "+/-" string.
 // isSplit = false (default) → live comparison mode: hides the diff when more
 //   than 60 s ahead and reduces precision at large margins to reduce noise.
 // isSplit = true            → completed-split mode: always shown, full precision.
 // Returns false when the diff should be hidden entirely (live mode, far ahead).
-bool   FormatDiff(char* buf, int bufSize, double diff, bool isSplit = false);
+bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit = false);
 
-// Returns the ImGui colour for a split time cell:
+// Returns the ImGui color for a split time cell:
 //   White — segment still in progress  (running = true)
 //   Green — no best time yet, or current <= best
 //   Red   — current time is slower than best

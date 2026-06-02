@@ -114,6 +114,23 @@ extern bool ShowGrandTotal;   // Extra Grand Total row in the timer table
 extern bool ShowRouteBrowser; // Route file browser window
 
 // ---------------------------------------------------------------------------
+// Zone colors
+// ---------------------------------------------------------------------------
+// RGB components for the start, goal, and intermediate checkpoint zone overlays.
+// Defaults match the original hard-coded values.
+// ---------------------------------------------------------------------------
+extern float ColorStart[3];       // default: { 0.2f, 1.0f, 0.2f }
+extern float ColorGoal[3];        // default: { 0.2f, 0.5f, 1.0f }
+extern float ColorCheckpoint[3];  // default: { 1.0f, 1.0f, 1.0f }
+
+// ---------------------------------------------------------------------------
+// Time colors
+// ---------------------------------------------------------------------------
+extern float ColorAhead[3];
+extern float ColorBehind[3];
+extern float ColorBestRow[3]; // slightly different from ColorAhead since it's a background
+
+// ---------------------------------------------------------------------------
 // TimerMode / Timer display settings
 // ---------------------------------------------------------------------------
 // Controls what each row in the split table shows and how diffs are computed.
@@ -137,6 +154,7 @@ extern std::vector<Split>         BestRun;      // Splits of the designated best
 extern std::vector<HistoricalRun> HistoryRuns;  // All recorded runs, newest first
 extern int                        MaxHistoryRuns; // Cap on how many runs are kept in the history list
 extern int                        BestRunIndex; // Index of the best run in HistoryRuns; -1 = none set
+extern std::vector<SegmentRecord> SegmentRecords; // Best times per named Start/End pair
 
 // ---------------------------------------------------------------------------
 // Per-run state flags

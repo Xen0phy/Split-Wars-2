@@ -86,19 +86,25 @@ struct RouteFolder
 // ---------------------------------------------------------------------------
 struct Settings
 {
-    bool ShowTimer        = true;
-    bool ShowConfig       = true;
-    bool ShowZones        = true;
-    float ZoneFadeStart   = 50.0f;
-    float ZoneFadeEnd     = 150.0f;
-    bool ShowDebug        = false;
-    int TimerDisplayMode  = 1;     // Default: Split mode
-    bool CompactMode      = false;
-    bool ShowHistory      = false;
-    bool ShowGrandTotal   = false;
-    bool ShowRouteBrowser = false;
-    int MaxHistoryRuns    = 10;
-    int DataSource        = 0; // 0 = Default, 1 = Mumble, 2 = RTAPI
+    bool ShowTimer           = true;
+    bool ShowConfig          = true;
+    bool ShowZones           = true;
+    float ZoneFadeStart      = 50.0f;
+    float ZoneFadeEnd        = 150.0f;
+    bool ShowDebug           = false;
+    int TimerDisplayMode     = 1;     // Default: Split mode
+    bool CompactMode         = false;
+    bool ShowHistory         = false;
+    bool ShowGrandTotal      = false;
+    bool ShowRouteBrowser    = false;
+    int MaxHistoryRuns       = 10;
+    int DataSource           = 0; // 0 = Default, 1 = Mumble, 2 = RTAPI
+    float ColorStart[3]      = { 0.2f, 1.0f, 0.2f };
+    float ColorGoal[3]       = { 0.2f, 0.5f, 1.0f };
+    float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
+    float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
+    float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
+    float ColorBestRow[3]    = { 0.2f, 0.3f, 0.2f };
 };
 
 // ---------------------------------------------------------------------------
@@ -114,6 +120,30 @@ bool SaveRoute(const std::string& filepath, const Route& route);
 bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName);
 
 // ---------------------------------------------------------------------------
+// SegmentRecord
+// ---------------------------------------------------------------------------
+// Best time achieved for a named Start/End split pair across all runs.
+// A segment is identified by its prefix — "Kinfall" from "Kinfall Start"
+// and "Kinfall End". If no matching End exists in a run, that run is skipped.
+// ---------------------------------------------------------------------------
+struct SegmentRecord
+{
+    std::string name;      // Prefix, e.g. "Kinfall"
+    double      bestTime;  // Shortest Start→End delta in seconds
+    std::string bestDate;  // Date string of the run that achieved bestTime
+};
+
+// Recalculates all segment records from scratch across all runs.
+// Call on route load to ensure segments are always consistent with history.
+void RecalcSegments(const std::vector<HistoricalRun>& runs,
+                    std::vector<SegmentRecord>& segments);
+
+// Updates segments with a single new run — faster than full recalc.
+// Call immediately after a run finishes and before SaveHistory.
+void UpdateSegments(const HistoricalRun& run,
+                    std::vector<SegmentRecord>& segments);
+
+// ---------------------------------------------------------------------------
 // History I/O
 // ---------------------------------------------------------------------------
 // SaveHistory — writes all runs and the best-run index to historyPath.
@@ -124,10 +154,16 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 //               (-1 if none) so callers can track it as a plain integer
 //               rather than re-deriving it via timestamp matching later.
 // ---------------------------------------------------------------------------
-bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun>& runs,
+bool SaveHistory(const std::string& historyPath,
+                 const std::vector<HistoricalRun>& runs,
+                 const std::vector<SegmentRecord>& segments,
                  int bestRunIndex = -1);
-bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
-                 std::vector<HistoricalRun>& runs, int& outBestIndex);
+
+bool LoadHistory(const std::string& historyPath,
+                 std::vector<Split>& bestRun,
+                 std::vector<HistoricalRun>& runs,
+                 std::vector<SegmentRecord>& segments,
+                 int& outBestIndex);
 
 // ---------------------------------------------------------------------------
 // Settings I/O

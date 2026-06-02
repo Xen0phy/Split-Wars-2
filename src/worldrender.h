@@ -27,7 +27,7 @@ bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy);
 //
 //   point          — the RoutePoint defining the zone centre, radius, dot
 //                    count, and band parameters (center/up/down in degrees).
-//   r, g, b        — dot colour (0.0–1.0 per channel).
+//   r, g, b        — dot color (0.0–1.0 per channel).
 //
 // Dot alpha is the product of band edge falloff, per-dot distance fade from
 // the player through ZoneFadeStart/ZoneFadeEnd, and occlusion fade via
@@ -49,7 +49,7 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b);
 //
 //   point          — the RoutePoint defining the plane origin, normal, and
 //                    radius width.
-//   r, g, b        — dot colour (0.0–1.0 per channel); alpha is computed
+//   r, g, b        — dot color (0.0–1.0 per channel); alpha is computed
 //                    internally and fades out when the camera is close to
 //                    the plane.
 // ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b);
 // Main entry point — iterates the active route and draws every checkpoint
 // zone that belongs to the current map.
 //
-// Colour convention:
+// Color convention:
 //   Green (0.2, 1.0, 0.2) — start checkpoint
 //   Blue  (0.2, 0.5, 1.0) — goal checkpoint
 //   White (1.0, 1.0, 1.0) — intermediate checkpoints

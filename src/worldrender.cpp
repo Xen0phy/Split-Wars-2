@@ -17,7 +17,7 @@
 //   bandUpInput    — extent upward   from centre (fade boundary; degrees / metres)
 //   bandDownInput  — extent downward from centre (fade boundary; degrees / metres)
 //
-// Colour convention (set by RenderZones):
+// Color convention (set by RenderZones):
 //   Green  — start checkpoint
 //   Blue   — goal checkpoint
 //   White  — intermediate checkpoints
@@ -466,8 +466,8 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
 //                      entirely via IsOccludedByUI, using the rect snapshot
 //                      taken by UpdateUIRects() at the start of RenderZones().
 //
-// The colour follows the same green/blue/white convention as the other zone
-// renderers and is passed in by RenderZones.
+// The color follows the same ColorStart/ColorGoal/ColorCheckpoint convention
+// as the other zone renderers and is passed in by RenderZones.
 // ---------------------------------------------------------------------------
 void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
 {
@@ -554,10 +554,12 @@ void RenderZones()
 
     auto shouldRender = [&](const RoutePoint& p) -> bool
     {
-        if (!RoutePointIsSet(p))                          return false;
-        if (p.MapID == 0)                                 return true;
+        if (!RoutePointIsSet(p))                     return false;
+        if (p.MapID == 0)                                   return true;
+        
+        if (p.TriggerType == ETriggerType::AllCheckpoints)  return false;
         // MapChange zones render on any map when MapID == 0, or on their configured map only.
-        if (p.TriggerType == ETriggerType::MapChange)     return p.MapID == 0 || currMapID == p.MapID;
+        if (p.TriggerType == ETriggerType::MapChange)       return p.MapID == 0 || currMapID == p.MapID;
         return currMapID == p.MapID;
     };
 
@@ -656,15 +658,15 @@ void RenderZones()
     Checkpoint* start = GetStart(CurrentRoute);
     Checkpoint* goal  = GetGoal(CurrentRoute);
 
-    if (start) renderPoint(start->Point, 0.2f, 1.0f, 0.2f, 0.0f,  startIdx);
-    if (goal)  renderPoint(goal->Point,  0.2f, 0.5f, 1.0f, 80.0f, goalIdx);
+    if (start) renderPoint(start->Point, ColorStart[0],      ColorStart[1],      ColorStart[2],      0.0f,  startIdx);
+    if (goal)  renderPoint(goal->Point,  ColorGoal[0],       ColorGoal[1],       ColorGoal[2],       80.0f, goalIdx);
 
     int dbgIdx = 0;
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
     {
         const Checkpoint& cp = CurrentRoute.Checkpoints[i];
         if (cp.IsStart || cp.IsGoal) continue;
-        renderPoint(cp.Point, 1.0f, 1.0f, 1.0f, 160.0f + dbgIdx * 80.0f, i);
+        renderPoint(cp.Point, ColorCheckpoint[0], ColorCheckpoint[1], ColorCheckpoint[2], 160.0f + dbgIdx * 80.0f, i);
         dbgIdx++;
     }
 }

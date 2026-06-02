@@ -1,8 +1,8 @@
 // renderer_shared.cpp
 // Implements the utility functions shared across all renderer_*.cpp files:
-//   • FormatTime   — formats a seconds value into a HH:MM:SS[.mmm] string
-//   • FormatDiff   — formats a signed time delta with context-aware precision
-//   • TimeColor    — returns the green/red/white colour for a split time cell
+//   • FormatTime    — formats a seconds value into a HH:MM:SS[.mmm] string
+//   • FormatDiff    — formats a signed time delta with context-aware precision
+//   • TimeColor     — returns the ahead/behind/neutral color for a split time cell
 //   • LoadRouteFile — loads a route + its history from disk into the global state
 
 #include "renderer_shared.h"
@@ -39,6 +39,22 @@ void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis)
         else
             snprintf(buf, bufSize, "%d", seconds);
     }
+}
+
+// ---------------------------------------------------------------------------
+// FormatTimeCSV
+// ---------------------------------------------------------------------------
+// Always outputs H:MM:SS.mmm with no leading-zero stripping, so spreadsheet
+// applications like Google Sheets auto-recognise the value as a time type.
+// e.g. 2.5 seconds → "0:00:02.500"
+// ---------------------------------------------------------------------------
+void FormatTimeExport(char* buf, int bufSize, double elapsed)
+{
+    int hours   = (int)(elapsed / 3600);
+    int minutes = (int)(elapsed / 60) % 60;
+    int seconds = (int)(elapsed) % 60;
+    int millis  = (int)(elapsed * 1000) % 1000;
+    snprintf(buf, bufSize, "%d:%02d:%02d.%03d", hours, minutes, seconds, millis);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,20 +139,20 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
 // ---------------------------------------------------------------------------
 // TimeColor
 // ---------------------------------------------------------------------------
-// Returns the ImGui colour to use when drawing a split time cell:
-//   White  — the segment/split is still in progress (running = true)
-//   Green  — no best time to compare against yet, or current <= best
-//   Red    — current time is slower than the best time for this split
+// Returns the ImGui color to use when drawing a split time cell:
+//   White        — the segment/split is still in progress (running = true)
+//   ColorAhead   — no best time to compare against yet, or current <= best
+//   ColorBehind  — current time is slower than the best time for this split
 // ---------------------------------------------------------------------------
 ImVec4 TimeColor(double current, double best, bool running)
 {
     if (running)
         return ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // White — still running
     if (best <= 0.0)
-        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f); // Green — no best to beat yet
+        return ImVec4(ColorAhead[0], ColorAhead[1], ColorAhead[2], 1.0f); // ColorAhead — no best to beat yet
     if (current <= best)
-        return ImVec4(0.2f, 1.0f, 0.2f, 1.0f); // Green — ahead of or matched best
-    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);     // Red   — behind best
+        return ImVec4(ColorAhead[0], ColorAhead[1], ColorAhead[2], 1.0f); // ColorAhead — ahead of or matched best
+    return ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f);  // ColorBehind — behind best
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +189,8 @@ void LoadRouteFile(const RouteFile& rf)
     BestRun.clear();
     HistoryRuns.clear();
     BestRunIndex = -1;
-    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, BestRunIndex);
+    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+    RecalcSegments(HistoryRuns, SegmentRecords);
 
     FullReset();
     CurrentRoute.IsValid = true;
