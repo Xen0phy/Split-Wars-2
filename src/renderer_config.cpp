@@ -13,6 +13,7 @@
 #include "renderer_shared.h"
 #include "route.h"
 #include <algorithm>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -20,8 +21,16 @@ void RenderConfigWindow()
 {
     if (!ShowConfig) return;
 
-    ImGui::SetNextWindowSize(ImVec2(800.0f, 400.0f), ImGuiCond_FirstUseEver);
+    // Window size
+    static bool firstFrame = true;
+    if (firstFrame) {
+        ImGui::SetNextWindowSize(ImVec2(ConfigWindowW, ConfigWindowH), ImGuiCond_Always);
+        firstFrame = false;
+    }
     ImGui::Begin("Split Wars 2 - Route Config", &ShowConfig);
+    ImVec2 sz = ImGui::GetWindowSize();
+    ConfigWindowW = sz.x;
+    ConfigWindowH = sz.y;
 
     // -------------------------------------------------------------------------
     // Route name field
@@ -138,15 +147,47 @@ void RenderConfigWindow()
     // The footer is taller when an Interact trigger is present because an extra
     // warning line is appended.
     // -------------------------------------------------------------------------
-    bool hasInteract = false;
+    bool hasInteract    = false;
+    bool hasCombat      = false;
+    bool hasPlaneStart  = false;
     for (const auto& cp : CurrentRoute.Checkpoints)
-        if (cp.Point.TriggerType == ETriggerType::CircleInteract)
-            { hasInteract = true; break; }
+    {
+        if (cp.Point.TriggerType == ETriggerType::CircleInteract) hasInteract   = true;
+        if (cp.Point.TriggerType == ETriggerType::CombatArena)    hasCombat     = true;
+        if (cp.Point.TriggerType == ETriggerType::Plane && cp.IsStart) hasPlaneStart = true;
+    }
+    bool showCombatWarning = hasCombat && (GS.ActiveSource != EDataSource::RTAPI);
+
+    // Calculator state — persisted across frames, cleared on map change.
+    static bool  showCalculator = false;
+    static float calcP1X = 0, calcP1Y = 0, calcP1Z = 0;
+    static float calcP2X = 0, calcP2Y = 0, calcP2Z = 0;
+    static unsigned int calcMapID = 0;
+    static float calcCX = 0, calcCY = 0, calcCZ = 0, calcRadius = 0;
+    static bool  calcHasResult = false;
+    static unsigned int calcLastMapID = 0;
+    if (GS.MapID != calcLastMapID && calcLastMapID != 0)
+    {
+        // Map changed — clear points and result.
+        calcP1X = calcP1Y = calcP1Z = 0;
+        calcP2X = calcP2Y = calcP2Z = 0;
+        calcMapID = 0;
+        calcHasResult = false;
+    }
+    calcLastMapID = GS.MapID;
 
     float footerReserve = ImGui::GetFrameHeightWithSpacing() * 2.0f
                         + ImGui::GetStyle().ItemSpacing.y * 3.0f + 1.0f;
     if (hasInteract)
         footerReserve += ImGui::GetFrameHeightWithSpacing() * 1.0f;
+    if (showCombatWarning)
+        footerReserve += ImGui::GetFrameHeightWithSpacing() * 2.0f;
+    if (hasPlaneStart)
+        footerReserve += ImGui::GetFrameHeightWithSpacing() * 1.0f;
+    if (showCalculator)
+    {
+        footerReserve += ImGui::GetFrameHeightWithSpacing() * 2.0f + 4.0f; // two rows + separator
+    }
 
     // -------------------------------------------------------------------------
     // Checkpoint table (scrollable)
@@ -170,22 +211,22 @@ void RenderConfigWindow()
         ImGuiTableFlags_SizingStretchProp |
         ImGuiTableFlags_ScrollY))
     {
-        ImGui::TableSetupColumn("Name",         ImGuiTableColumnFlags_WidthFixed,    100.0f);
-        ImGui::TableSetupColumn("S",            ImGuiTableColumnFlags_WidthFixed,    20.0f);
-        ImGui::TableSetupColumn("G",            ImGuiTableColumnFlags_WidthFixed,    20.0f);
-        ImGui::TableSetupColumn("Trigger",      ImGuiTableColumnFlags_WidthFixed,    90.0f);
-        ImGui::TableSetupColumn("MapID",        ImGuiTableColumnFlags_WidthFixed,    60.0f);
-        ImGui::TableSetupColumn("X",            ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Y",            ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Z",            ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("R/W",          ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Density",      ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Center",       ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Up",           ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Down",         ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Angle/Arm",    ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Capture",      ImGuiTableColumnFlags_WidthFixed,    30.0f);
-        ImGui::TableSetupColumn("Remove",       ImGuiTableColumnFlags_WidthFixed,    20.0f);
+        ImGui::TableSetupColumn("Name",          ImGuiTableColumnFlags_WidthFixed,    100.0f);
+        ImGui::TableSetupColumn("Start",         ImGuiTableColumnFlags_WidthFixed,    20.0f);
+        ImGui::TableSetupColumn("Goal",          ImGuiTableColumnFlags_WidthFixed,    20.0f);
+        ImGui::TableSetupColumn("Trigger",       ImGuiTableColumnFlags_WidthFixed,    90.0f);
+        ImGui::TableSetupColumn("MapID",         ImGuiTableColumnFlags_WidthFixed,    60.0f);
+        ImGui::TableSetupColumn("X",             ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Y",             ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Z",             ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Radius\nWidth", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Density",       ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Center",        ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Up",            ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Down",          ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Angle\nRe-Arm", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Capture",       ImGuiTableColumnFlags_WidthFixed,    30.0f);
+        ImGui::TableSetupColumn("Menu\nDrag",    ImGuiTableColumnFlags_WidthFixed,    20.0f);
         ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
         for (int col = 0; col < 16; col++)
         {
@@ -218,11 +259,15 @@ void RenderConfigWindow()
                                        "Shows a Re-Arm button for combat trigger.\n"
                                        "Adjust MapChange indicators hyperbole strength."); break;
                 case 14: Tooltip("Captures current MapID, XYZ location and plane angle if available."); break;
-                case 15: Tooltip("Button to remove a checkpoint."); break;
+                case 15: Tooltip("Click for copy / paste / delete.\nClick and drag to reorder row."); break;
             }
         }
 
-        int removeIndex = -1; // Set to a row index if the player clicks a Remove button
+        int removeIndex   = -1; // Set if Delete is chosen from context menu
+        int dragReorderFrom = -1;
+        int dragReorderTo   = -1;
+        static Checkpoint clipboard;
+        static bool       hasClipboard = false;
         for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
         {
             ImGui::TableNextRow();
@@ -230,6 +275,9 @@ void RenderConfigWindow()
             RoutePoint& point     = cp.Point;
             bool isMapChange      = point.TriggerType == ETriggerType::MapChange;
             bool isAllCheckpoints = point.TriggerType == ETriggerType::AllCheckpoints;
+            bool isNullCircle     = point.TriggerType == ETriggerType::NullCircle;
+            bool isNullPlane      = point.TriggerType == ETriggerType::NullPlane;
+            bool isNull           = isNullCircle || isNullPlane;
 
             // --- Name ---
             ImGui::TableSetColumnIndex(0);
@@ -267,11 +315,13 @@ void RenderConfigWindow()
 
             // --- Goal checkbox ---
             // Same single-selection enforcement as the Start checkbox.
+            // Multiple goals are allowed right now, see commented if(isGoalVal)
             ImGui::TableSetColumnIndex(2);
             bool isGoalVal = cp.IsGoal;
             char goalLabel[32]; snprintf(goalLabel, sizeof(goalLabel), "##g_%d", i);
             if (ImGui::Checkbox(goalLabel, &isGoalVal))
             {
+                // Uncomment to bring back singular goal
                 //if (isGoalVal)
                 //{
                 //    for (auto& other : CurrentRoute.Checkpoints)
@@ -293,16 +343,21 @@ void RenderConfigWindow()
             // --- Trigger type dropdown ---
             // AllCheckpoints is always available — selecting it automatically locks
             // this checkpoint as a goal since it has no meaning otherwise.
+            // NullCircle and NullPlane are decorative — they render in the world but
+            // never fire as triggers. Their display color is set separately in options.
             ImGui::TableSetColumnIndex(3);
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints" };
-            int currentType = (point.TriggerType == ETriggerType::CombatArena) ? 4 : (int)point.TriggerType;
-            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 6))
+            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints", "Null (Circle)", "Null (Plane)" };
+            int currentType = (int)point.TriggerType;
+            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 8))
             {
-                point.TriggerType = (currentType == 4) ? ETriggerType::CombatArena : (ETriggerType)currentType;
+                point.TriggerType = (ETriggerType)currentType;
                 if (point.TriggerType == ETriggerType::AllCheckpoints)
-                    cp.IsGoal = true; // AllCheckpoints implies goal — lock it automatically
+                    cp.IsGoal = true;
+                // Changing trigger type can invalidate CombatCheckpoints state
+                // (e.g. Circle → CombatArena), so reset to avoid stale trigger data
+                FullReset();
             }
             
             // Enforce start/goal compatibility whenever trigger type may have changed
@@ -488,13 +543,73 @@ void RenderConfigWindow()
                 ImGui::TextDisabled("—"); // No capture for All Checkpoints
             }
 
-            // --- Remove button ---
-            // We can't erase from the vector while iterating it, so we just
-            // record the index and remove it after the loop finishes.
+            // --- Grip / menu button (col 15) ---
+            // Single click → opens copy/paste/delete context menu.
+            // Click-hold + drag → drag source for row reordering.
             ImGui::TableSetColumnIndex(15);
-            char removeLabel[32]; snprintf(removeLabel, sizeof(removeLabel), "X##rm_%d", i);
-            if (ImGui::Button(removeLabel))
-                removeIndex = i;
+            char gripLabel[32]; snprintf(gripLabel, sizeof(gripLabel), u8": : : :##grip_%d", i);
+
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,0.1f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(1,1,1,0.2f));
+            ImGui::Button(gripLabel, ImVec2(-1, 0));
+            ImGui::PopStyleColor(3);
+
+            // --- Drag source ---
+            static bool wasDragging = false;
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+            {
+                wasDragging = true;
+                ImGui::SetDragDropPayload("ROUTE_ROW", &i, sizeof(int));
+                ImGui::Text("Row %d: %s", i + 1, cp.Name);
+                ImGui::EndDragDropSource();
+            }
+
+            // --- Drag target ---
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ROUTE_ROW"))
+                {
+                    dragReorderFrom = *(const int*)payload->Data;
+                    dragReorderTo   = i;
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            // --- Context menu (click without drag) ---
+            char popupId[32]; snprintf(popupId, sizeof(popupId), "##rowctx_%d", i);
+            if (ImGui::IsItemDeactivated())
+            {
+                if (!wasDragging)
+                    ImGui::OpenPopup(popupId);
+                wasDragging = false;
+            }
+            if (ImGui::BeginPopup(popupId))
+            {
+                if (ImGui::MenuItem("Copy"))
+                {
+                    clipboard    = cp;
+                    hasClipboard = true;
+                }
+                if (ImGui::MenuItem("Paste above", nullptr, false, hasClipboard))
+                {
+                    CurrentRoute.Checkpoints.insert(
+                        CurrentRoute.Checkpoints.begin() + i, clipboard);
+                    FullReset();
+                    ImGui::CloseCurrentPopup();
+                }
+                if (ImGui::MenuItem("Paste below", nullptr, false, hasClipboard))
+                {
+                    CurrentRoute.Checkpoints.insert(
+                        CurrentRoute.Checkpoints.begin() + i + 1, clipboard);
+                    FullReset();
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Delete"))
+                    removeIndex = i;
+                ImGui::EndPopup();
+            }
         }
 
         ImGui::EndTable();
@@ -504,6 +619,18 @@ void RenderConfigWindow()
         {        
             CurrentRoute.Checkpoints.erase(CurrentRoute.Checkpoints.begin() + removeIndex);
             FullReset(); // Resync trigger-state arrays and reset the timer
+        }
+
+        // Deferred drag reorder — move row dragReorderFrom to position dragReorderTo.
+        if (dragReorderFrom >= 0 && dragReorderTo >= 0 && dragReorderFrom != dragReorderTo)
+        {
+            auto& cps = CurrentRoute.Checkpoints;
+            Checkpoint moved = cps[dragReorderFrom];
+            cps.erase(cps.begin() + dragReorderFrom);
+            // Adjust target index if source was before it.
+            int insertAt = (dragReorderFrom < dragReorderTo) ? dragReorderTo : dragReorderTo;
+            cps.insert(cps.begin() + insertAt, moved);
+            FullReset();
         }
     }
 
@@ -521,9 +648,6 @@ void RenderConfigWindow()
     {
         Checkpoint cp;
         snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
-        // Position and map ID come from GS, which is populated each frame from
-        // whichever source is active (RTAPI or Mumble).  Zero-initialised defaults
-        // are acceptable if neither source is available yet.
         cp.Point.X     = GS.PlayerX;
         cp.Point.Y     = GS.PlayerY;
         cp.Point.Z     = GS.PlayerZ;
@@ -533,7 +657,13 @@ void RenderConfigWindow()
     }
     ImGui::SameLine();
 
-    // Clear Route — wipes everything: checkpoints, history, file paths.
+    // Calculator toggle button.
+    if (ImGui::Button(showCalculator ? "Calculator [-]" : "Calculator [+]"))
+        showCalculator = !showCalculator;
+
+    // Clear Route — pushed to the far right of the same line.
+    float clearWidth = ImGui::CalcTextSize("Clear Route").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - clearWidth);
     if (ImGui::Button("Clear Route"))
     {
         CurrentRoute.Checkpoints.clear();
@@ -544,6 +674,114 @@ void RenderConfigWindow()
         BestRun.clear();
         HistoryRuns.clear();
         FullReset();
+    }
+
+    // -------------------------------------------------------------------------
+    // Calculator expansion
+    // -------------------------------------------------------------------------
+    if (showCalculator)
+    {
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("##calctable", 3, ImGuiTableFlags_SizingStretchProp))
+        {
+            ImGui::TableSetupColumn("##points",  ImGuiTableColumnFlags_WidthStretch, 3.0f);
+            ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed,   80.0f);
+            ImGui::TableSetupColumn("##results", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+
+            // --- Row 1: P1 | Calculate | Center XYZ + Radius ---
+            ImGui::TableNextRow();
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("P1"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(55); ImGui::InputInt("##calcmapid", (int*)&calcMapID, 0, 0); ImGui::SameLine();
+            ImGui::SetNextItemWidth(60); ImGui::DragFloat("##p1x", &calcP1X, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(60); ImGui::DragFloat("##p1y", &calcP1Y, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(60); ImGui::DragFloat("##p1z", &calcP1Z, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+            if (ImGui::Button("Cap##p1") && (MumbleLink || GS.RTAPIAvailable))
+            {
+                calcP1X   = GS.PlayerX;
+                calcP1Y   = GS.PlayerY;
+                calcP1Z   = GS.PlayerZ;
+                calcMapID = GS.MapID;
+            }
+
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Button("Calculate", ImVec2(-1, 0)))
+            {
+                calcCX     = (calcP1X + calcP2X) * 0.5f;
+                calcCY     = (calcP1Y + calcP2Y) * 0.5f;
+                calcCZ     = (calcP1Z + calcP2Z) * 0.5f;
+                float dx   = calcP2X - calcP1X;
+                float dy   = calcP2Y - calcP1Y;
+                float dz   = calcP2Z - calcP1Z;
+                calcRadius = std::sqrt(dx*dx + dy*dy + dz*dz) * 0.5f;
+                calcHasResult = true;
+            }
+
+            ImGui::TableSetColumnIndex(2);
+            if (calcHasResult)
+            {
+                ImGui::Text("C"); ImGui::SameLine();
+                ImGui::SetNextItemWidth(60); ImGui::DragFloat("##cx", &calcCX, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+                ImGui::SetNextItemWidth(60); ImGui::DragFloat("##cy", &calcCY, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+                ImGui::SetNextItemWidth(60); ImGui::DragFloat("##cz", &calcCZ, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+                ImGui::Text("R"); ImGui::SameLine();
+                ImGui::SetNextItemWidth(60); ImGui::DragFloat("##cr", &calcRadius, 0.1f, 0, 0, "%.2f");
+            }
+
+            // --- Row 2: P2 | Clear | Add Checkpoint + Copy ---
+            ImGui::TableNextRow();
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("P2"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(55); ImGui::TextDisabled("       "); ImGui::SameLine();
+            ImGui::SetNextItemWidth(60); ImGui::DragFloat("##p2x", &calcP2X, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(60); ImGui::DragFloat("##p2y", &calcP2Y, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(60); ImGui::DragFloat("##p2z", &calcP2Z, 0.1f, 0, 0, "%.2f"); ImGui::SameLine();
+            if (ImGui::Button("Cap##p2") && (MumbleLink || GS.RTAPIAvailable))
+            {
+                calcP2X = GS.PlayerX;
+                calcP2Y = GS.PlayerY;
+                calcP2Z = GS.PlayerZ;
+            }
+
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Button("Clear##calc", ImVec2(-1, 0)))
+            {
+                calcP1X = calcP1Y = calcP1Z = 0;
+                calcP2X = calcP2Y = calcP2Z = 0;
+                calcMapID = 0;
+                calcHasResult = false;
+            }
+
+            ImGui::TableSetColumnIndex(2);
+            if (calcHasResult)
+            {
+                if (ImGui::Button("Add as Checkpoint##calc"))
+                {
+                    Checkpoint cp;
+                    snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
+                    cp.Point.X           = calcCX;
+                    cp.Point.Y           = calcCY;
+                    cp.Point.Z           = calcCZ;
+                    cp.Point.MapID       = calcMapID;
+                    cp.Point.RadiusWidth = calcRadius;
+                    CurrentRoute.Checkpoints.push_back(cp);
+                    FullReset();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Copy##calc"))
+                {
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "MapID:%u X:%.2f Y:%.2f Z:%.2f R:%.2f",
+                        calcMapID, calcCX, calcCY, calcCZ, calcRadius);
+                    ImGui::SetClipboardText(buf);
+                }
+            }
+
+            ImGui::EndTable();
+        }
     }
 
     ImGui::Spacing();
@@ -570,6 +808,22 @@ void RenderConfigWindow()
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.0f, 1.0f)); // Orange text
         ImGui::TextWrapped("Interact trigger detected - ensure Interact button is set and passthrough is enabled in Nexus -> Keybinds.");
+        ImGui::PopStyleColor();
+    }
+
+    if (showCombatWarning)
+    {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f)); // Red text
+        ImGui::TextWrapped("Combat trigger detected without RTAPI — death detection uses movement heuristics. Keep moving for 2+ seconds after combat ends or the segment will be marked tainted.");
+        ImGui::PopStyleColor();
+    }
+
+    if (hasPlaneStart)
+    {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.0f, 1.0f)); // Orange
+        ImGui::TextWrapped("Plane trigger set as Start — loading into the map may cause a false start. Reset the timer if this occurs.");
         ImGui::PopStyleColor();
     }
 

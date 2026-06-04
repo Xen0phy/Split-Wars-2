@@ -43,7 +43,9 @@ enum class ETriggerType : unsigned char
     MapChange       = 2,
     CircleInteract  = 3,
     CombatArena     = 4,
-    AllCheckpoints  = 5
+    AllCheckpoints  = 5,
+    NullCircle      = 6,  // Decorative only — renders like Circle but never triggers
+    NullPlane       = 7,  // Decorative only — renders like Plane but never triggers
 };
 
 // ---------------------------------------------------------------------------
@@ -85,11 +87,19 @@ enum class ECombatState : unsigned char
 // ---------------------------------------------------------------------------
 struct CombatTriggerState
 {
-    bool                                  active     = false;
-    ECombatState                          state      = ECombatState::Armed;
-    double                                dropTime   = 0.0;
+    bool                                  active        = false;
+    ECombatState                          state         = ECombatState::Armed;
+    double                                dropTime      = 0.0;
     std::chrono::steady_clock::time_point graceStart;
-    bool                                  finished   = false;
+    // Mumble only: accumulated seconds of grace that have elapsed while the
+    // player was moving. Grace only counts down while moving, so this is
+    // compared against GraceDuration rather than raw wall-clock elapsed.
+    double                                graceAccum    = 0.0;
+    bool                                  finished      = false;
+    // Set when RTAPI detects the player is fully dead mid-segment.
+    // A __TAINTED__ split has been injected; we wait for IsAlive to
+    // become true again before firing a clean combat end.
+    bool                                  taintedPending = false;
 };
 
 // ---------------------------------------------------------------------------

@@ -102,9 +102,16 @@ struct Settings
     float ColorStart[3]      = { 0.2f, 1.0f, 0.2f };
     float ColorGoal[3]       = { 0.2f, 0.5f, 1.0f };
     float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
+    float ColorNull[3]       = { 1.0f, 0.6f, 0.0f };
     float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
     float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
     float ColorBestRow[3]    = { 0.2f, 0.3f, 0.2f };
+    float ConfigWindowW  = 800.0f;
+    float ConfigWindowH  = 400.0f;
+    float HistoryWindowW = 400.0f;
+    float HistoryWindowH = 400.0f;
+    float BrowserWindowW = 400.0f;
+    float BrowserWindowH = 400.0f;
 };
 
 // ---------------------------------------------------------------------------

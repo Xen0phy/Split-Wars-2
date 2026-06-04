@@ -25,6 +25,15 @@ extern Mumble::Data*  MumbleLink; // Mumble shared-memory block; used as fallbac
 extern RTAPI::RealTimeData* RTAPIData;      // Null when RTAPI is not loaded or has been hot-unloaded
 
 // ---------------------------------------------------------------------------
+// Addon lifecycle helpers (implemented in addon.cpp and entry.cpp)
+// ---------------------------------------------------------------------------
+void RegisterKeybinds();      // Registers all keybinds with Nexus (addon.cpp)
+void DeregisterKeybinds();    // Deregisters all keybinds from Nexus (addon.cpp)
+void SaveCurrentSettings();   // Persists current globals to disk (entry.cpp)
+void AddonRender();           // Per-frame render callback registered with Nexus
+void AddonOptions();          // Nexus options panel callback
+
+// ---------------------------------------------------------------------------
 // Data source
 // ---------------------------------------------------------------------------
 // Controls which API supplies player position, camera, map ID, and combat state.
@@ -122,6 +131,7 @@ extern bool ShowRouteBrowser; // Route file browser window
 extern float ColorStart[3];       // default: { 0.2f, 1.0f, 0.2f }
 extern float ColorGoal[3];        // default: { 0.2f, 0.5f, 1.0f }
 extern float ColorCheckpoint[3];  // default: { 1.0f, 1.0f, 1.0f }
+extern float ColorNull[3];        // deafult: { 1.0f, 0.6f, 0.0f }
 
 // ---------------------------------------------------------------------------
 // Time colors
@@ -129,6 +139,16 @@ extern float ColorCheckpoint[3];  // default: { 1.0f, 1.0f, 1.0f }
 extern float ColorAhead[3];
 extern float ColorBehind[3];
 extern float ColorBestRow[3]; // slightly different from ColorAhead since it's a background
+
+// ---------------------------------------------------------------------------
+// Window sizes
+// ---------------------------------------------------------------------------
+extern float ConfigWindowW;
+extern float ConfigWindowH;
+extern float HistoryWindowW;
+extern float HistoryWindowH;
+extern float BrowserWindowW;
+extern float BrowserWindowH;
 
 // ---------------------------------------------------------------------------
 // TimerMode / Timer display settings

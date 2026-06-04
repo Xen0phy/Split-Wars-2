@@ -17,10 +17,11 @@
 //   bandUpInput    — extent upward   from centre (fade boundary; degrees / metres)
 //   bandDownInput  — extent downward from centre (fade boundary; degrees / metres)
 //
-// Color convention (set by RenderZones):
-//   Green  — start checkpoint
-//   Blue   — goal checkpoint
-//   White  — intermediate checkpoints
+// Color convention (set by RenderZones, all user-adjustable in options):
+//   ColorStart      — start checkpoint
+//   ColorGoal       — goal checkpoint
+//   ColorCheckpoint — intermediate checkpoints
+//   ColorNull       — Null(Circle) and Null(Plane) decorative zones
 //
 // Zones are hidden automatically when the in-game map is open, and are
 // only drawn for the current map (unless a checkpoint has MapID = 0).
@@ -572,8 +573,11 @@ void RenderZones()
     {
         if (!shouldRender(p)) return;
 
-        // Hide triggered checkpoints
-        if (idx >= 0 && idx < (int)checkpointTriggered.size() && checkpointTriggered[idx])
+        // Hide triggered checkpoints — but never hide Null types since they
+        // are purely decorative and have no triggered state.
+        bool isNull = (p.TriggerType == ETriggerType::NullCircle ||
+                       p.TriggerType == ETriggerType::NullPlane);
+        if (!isNull && idx >= 0 && idx < (int)checkpointTriggered.size() && checkpointTriggered[idx])
             return;
     
         // MapChange zones are screen-space — skip world-space distance culling.
@@ -615,7 +619,7 @@ void RenderZones()
     
             auto t0 = std::chrono::high_resolution_clock::now();
     
-            if (p.TriggerType == ETriggerType::Plane)
+            if (p.TriggerType == ETriggerType::Plane || p.TriggerType == ETriggerType::NullPlane)
                 RenderZonePlane(p, r, g, b);
             else if (p.TriggerType == ETriggerType::MapChange)
                 RenderZoneMap(p, r, g, b);
@@ -639,7 +643,7 @@ void RenderZones()
         }
         else
         {
-            if (p.TriggerType == ETriggerType::Plane)
+            if (p.TriggerType == ETriggerType::Plane || p.TriggerType == ETriggerType::NullPlane)
                 RenderZonePlane(p, r, g, b);
             else if (p.TriggerType == ETriggerType::MapChange)
                 RenderZoneMap(p, r, g, b);
@@ -666,7 +670,12 @@ void RenderZones()
     {
         const Checkpoint& cp = CurrentRoute.Checkpoints[i];
         if (cp.IsStart || cp.IsGoal) continue;
-        renderPoint(cp.Point, ColorCheckpoint[0], ColorCheckpoint[1], ColorCheckpoint[2], 160.0f + dbgIdx * 80.0f, i);
+        bool isNull = (cp.Point.TriggerType == ETriggerType::NullCircle ||
+                       cp.Point.TriggerType == ETriggerType::NullPlane);
+        float r = isNull ? ColorNull[0] : ColorCheckpoint[0];
+        float g = isNull ? ColorNull[1] : ColorCheckpoint[1];
+        float b = isNull ? ColorNull[2] : ColorCheckpoint[2];
+        renderPoint(cp.Point, r, g, b, 160.0f + dbgIdx * 80.0f, i);
         dbgIdx++;
     }
 }

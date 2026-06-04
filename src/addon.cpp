@@ -1,80 +1,16 @@
 // addon.cpp
-// This is the main entry point for the Split Wars 2 Nexus addon.
-// It handles:
-//   - Registering the addon with the Nexus loader (name, version, author, etc.)
-//   - Loading and saving settings on startup/shutdown
-//   - Registering all keybinds and their callback functions
-//   - The per-frame render loop: loading screen detection, trigger evaluation
-//     (start / checkpoint / goal), and dispatching to the individual UI windows
-//   - The Nexus options panel (checkboxes, mode buttons, etc.)
+// Implements the per-frame render loop and all keybind callbacks.
+//
+// Responsibilities:
+//   - Per-frame game state update (UpdateGameState)
+//   - Load screen detection and timer pause/resume
+//   - Trigger evaluation: start, checkpoint, and goal detection
+//   - Dispatching to the individual UI renderer windows
+//   - All keybind callback functions
+//   - RegisterKeybinds() / DeregisterKeybinds() wrappers
 
-#include "hotbar_icon.h"
 #include "renderer_shared.h"
 #include "worldrender.h"
-#include <algorithm>
-
-// The global addon descriptor filled in by GetAddonDef() and handed to Nexus.
-AddonDefinition_t AddonDef{};
-
-// Forward declarations — these functions are defined later in this file.
-void AddonLoad(AddonAPI_t* aApi);
-void AddonUnload();
-void AddonRender();
-void AddonOptions();
-
-// ---------------------------------------------------------------------------
-// GetAddonDef
-// ---------------------------------------------------------------------------
-// Nexus calls this function when it first discovers the DLL.
-// We fill out every field of the AddonDefinition_t struct here so Nexus
-// knows who we are, what version we are, and which callbacks to call.
-// The function is exported as a plain C symbol so Nexus can find it
-// regardless of C++ name mangling.
-// ---------------------------------------------------------------------------
-extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
-{
-    AddonDef.Signature    = 0x53573200;           // Unique numeric ID for this addon
-    AddonDef.APIVersion   = NEXUS_API_VERSION;    // Nexus API version this addon was built against
-    AddonDef.Name         = "Split Wars 2";
-    AddonDef.Version      = {0, 18,4,0};
-    AddonDef.Author       = "Xenophy.2716";
-    AddonDef.Description  = "A speedrun timer with coordinate-based triggers.";
-    AddonDef.Load         = AddonLoad;            // Called once when the addon is loaded
-    AddonDef.Unload       = AddonUnload;          // Called once when the addon is unloaded
-    AddonDef.Flags        = AF_None;
-    AddonDef.Provider     = UP_GitHub;            // Where Nexus should look for updates
-    AddonDef.UpdateLink   = "https://github.com/Xen0phy/Split-Wars-2";
-
-    return &AddonDef;
-}
-
-// ---------------------------------------------------------------------------
-// OnAddonLoaded / OnAddonUnloaded
-// ---------------------------------------------------------------------------
-// Nexus broadcasts EV_ADDON_LOADED and EV_ADDON_UNLOADED whenever any addon
-// is loaded or unloaded at runtime (including after the initial load pass).
-// aEventArgs points to the integer signature of the addon that changed.
-//
-// We listen for RTAPI_SIG specifically so RTAPIData stays valid across
-// hot-load/unload cycles — e.g. if the user enables RTAPI after Split Wars 2
-// is already running, or disables it mid-session.  Without these handlers,
-// RTAPIData would remain a stale pointer after RTAPI unloads.
-// ---------------------------------------------------------------------------
-void OnAddonLoaded(void* aEventArgs)
-{
-    int* sig = (int*)aEventArgs;
-    if (!sig) return;
-    if (*sig == RTAPI_SIG)
-        RTAPIData = (RTAPI::RealTimeData*)APIDefs->DataLink_Get(DL_RTAPI);
-}
-
-void OnAddonUnloaded(void* aEventArgs)
-{
-    int* sig = (int*)aEventArgs;
-    if (!sig) return;
-    if (*sig == RTAPI_SIG)
-        RTAPIData = nullptr;
-}
 
 // ---------------------------------------------------------------------------
 // Keybind callbacks
@@ -244,86 +180,11 @@ static void OnResetTimerKey(const char* aIdentifier, bool aIsRelease)
 }
 
 // ---------------------------------------------------------------------------
-// Settings helpers
-// These two functions translate between the flat Settings struct (which is
-// what gets serialised to disk) and the individual global booleans / enums
-// used throughout the rest of the code.
-// ---------------------------------------------------------------------------
-
-// Push a loaded Settings object into the global variables.
-static void ApplySettings(const Settings& s)
-{
-    ShowTimer        = s.ShowTimer;
-    ShowConfig       = s.ShowConfig;
-    ShowZones        = s.ShowZones;
-    ZoneFadeEnd      = s.ZoneFadeEnd;
-    ZoneFadeStart    = s.ZoneFadeStart;
-    ShowDebug        = s.ShowDebug;
-    TimerDisplayMode = (TimerMode)s.TimerDisplayMode;
-    CompactMode      = s.CompactMode;
-    ShowHistory      = s.ShowHistory;
-    ShowGrandTotal   = s.ShowGrandTotal;
-    ShowRouteBrowser = s.ShowRouteBrowser;
-    MaxHistoryRuns   = s.MaxHistoryRuns;
-    PreferredSource  = (EDataSource)s.DataSource;
-    std::copy(s.ColorStart,      s.ColorStart      + 3, ColorStart);
-    std::copy(s.ColorGoal,       s.ColorGoal       + 3, ColorGoal);
-    std::copy(s.ColorCheckpoint, s.ColorCheckpoint + 3, ColorCheckpoint);
-    std::copy(s.ColorAhead,    s.ColorAhead    + 3, ColorAhead);
-    std::copy(s.ColorBehind,   s.ColorBehind   + 3, ColorBehind);
-    std::copy(s.ColorBestRow,  s.ColorBestRow  + 3, ColorBestRow);
-}
-
-// Snapshot the current global variables into a Settings struct ready for saving.
-static Settings GatherSettings()
-{
-    Settings s;
-    s.ShowTimer        = ShowTimer;
-    s.ShowConfig       = ShowConfig;
-    s.ShowZones        = ShowZones;
-    s.ZoneFadeStart    = ZoneFadeStart;
-    s.ZoneFadeEnd      = ZoneFadeEnd;
-    s.ShowDebug        = ShowDebug;
-    s.TimerDisplayMode = (int)TimerDisplayMode;
-    s.CompactMode      = CompactMode;
-    s.ShowHistory      = ShowHistory;
-    s.ShowGrandTotal   = ShowGrandTotal;
-    s.ShowRouteBrowser = ShowRouteBrowser;
-    s.MaxHistoryRuns   = MaxHistoryRuns;
-    s.DataSource       = (int)PreferredSource;
-    std::copy(ColorStart,      ColorStart      + 3, s.ColorStart);
-    std::copy(ColorGoal,       ColorGoal       + 3, s.ColorGoal);
-    std::copy(ColorCheckpoint, ColorCheckpoint + 3, s.ColorCheckpoint);
-    std::copy(ColorAhead,    ColorAhead    + 3, s.ColorAhead);
-    std::copy(ColorBehind,   ColorBehind   + 3, s.ColorBehind);
-    std::copy(ColorBestRow,  ColorBestRow  + 3, s.ColorBestRow);
-    return s;
-}
-
-// ---------------------------------------------------------------------------
-// AddonQuickAccessMenu
-// ---------------------------------------------------------------------------
-// Draws the right-click context menu that appears when the player right-clicks
-// the Split Wars 2 icon in the Nexus Quick Access bar.  Each item is a
-// checkbox-style menu entry that toggles the matching window directly.
-// ---------------------------------------------------------------------------
-static void AddonQuickAccessMenu()
-{
-    if (ImGui::MenuItem("Timer",         nullptr, &ShowTimer))        {}
-    ImGui::Separator();
-    if (ImGui::MenuItem("Route Config",  nullptr, &ShowConfig))       {}
-    if (ImGui::MenuItem("History",       nullptr, &ShowHistory))      {}
-    if (ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser)) {}
-    ImGui::Separator();
-    if (ImGui::MenuItem("Checkpoints",   nullptr, &ShowZones))        {}
-}
-
-// ---------------------------------------------------------------------------
 // Keybind registration table
 // ---------------------------------------------------------------------------
-// All keybinds are listed here in one place.  AddonLoad() and AddonUnload()
-// iterate over this array to register / deregister them all in one loop,
-// avoiding the need to touch both functions when a new keybind is added.
+// All keybinds are listed here in one place. RegisterKeybinds() and
+// DeregisterKeybinds() iterate over this array, so adding a new keybind
+// only requires a single entry here.
 // ---------------------------------------------------------------------------
 using KeybindHandler = void(*)(const char*, bool);
 static const struct { const char* ID; KeybindHandler Fn; } Keybinds[] =
@@ -343,141 +204,29 @@ static const struct { const char* ID; KeybindHandler Fn; } Keybinds[] =
 };
 
 // ---------------------------------------------------------------------------
-// HandleIdentityUpdate
+// RegisterKeybinds
 // ---------------------------------------------------------------------------
-// Nexus fires this event whenever the player's identity changes (character
-// swap, FOV slider, etc.).  We only care about FOV so we can pass it on to
-// the world-space overlay renderer (worldrender.cpp).
+// Registers every entry in the Keybinds table with Nexus.
+// Called by AddonLoad() in entry.cpp. Defined here so the Keybinds array
+// and all handler functions stay private to this file.
 // ---------------------------------------------------------------------------
-void HandleIdentityUpdate(void* aEventArgs)
+void RegisterKeybinds()
 {
-    if (!aEventArgs) return;
-    Mumble::Identity* identity = (Mumble::Identity*)aEventArgs;
-    SetMumbleFOV(identity->FOV);
-}
-
-
-// ---------------------------------------------------------------------------
-// AddonLoad
-// ---------------------------------------------------------------------------
-// Called once by Nexus after the DLL is loaded.  This is where we do all
-// one-time setup:
-//   1. Store the API pointer and hook into ImGui's allocator so our ImGui
-//      calls share the same heap as the host process.
-//   2. Grab the MumbleLink shared-memory pointer (always-present fallback
-//      for position, map, FOV, and IsMapOpen).
-//   3. Attempt to grab the RTAPI data pointer (optional higher-accuracy
-//      source; null if RTAPI is not installed).
-//   4. Subscribe to EV_ADDON_LOADED/UNLOADED to keep RTAPIData valid if
-//      RTAPI is hot-loaded or unloaded mid-session.
-//   5. Load persisted settings from disk if a settings file exists.
-//   6. Register the render and options callbacks with Nexus.
-//   7. Subscribe to EV_MUMBLE_IDENTITY_UPDATED (for camera FOV changes).
-//   8. Upload the hotbar icon textures and add the Quick Access button.
-//   9. Register all keybinds.
-// ---------------------------------------------------------------------------
-void AddonLoad(AddonAPI_t* aApi)
-{
-    APIDefs = aApi;
-
-    // Point ImGui at the host's context and memory allocator so all ImGui
-    // state is shared — without this, font atlases and style settings would
-    // be duplicated and potentially crash.
-    ImGui::SetCurrentContext((ImGuiContext*)APIDefs->ImguiContext);
-    ImGui::SetAllocatorFunctions(
-        (void* (*)(size_t, void*))APIDefs->ImguiMalloc,
-        (void(*)(void*, void*))APIDefs->ImguiFree
-    );
-
-    // MumbleLink is a shared-memory block that GW2 writes every frame with
-    // player position, map ID, combat state, and more.  It is always the
-    // fallback data source and the sole source for IsMapOpen and FOV.
-    MumbleLink = (Mumble::Data*)APIDefs->DataLink_Get("DL_MUMBLE_LINK");
-
-    // RTAPIData is an optional higher-accuracy data source provided by the
-    // RTAPI addon.  Null if RTAPI is not installed or not yet loaded.
-    // UpdateGameState() selects the active source each frame based on
-    // PreferredSource and whether RTAPIData is non-null.
-    RTAPIData = (RTAPI::RealTimeData*)APIDefs->DataLink_Get(DL_RTAPI);
-
-    // Subscribe to addon lifecycle events so RTAPIData is kept in sync if
-    // RTAPI is loaded or unloaded after Split Wars 2 is already running.
-    APIDefs->Events_Subscribe("EV_ADDON_LOADED",   OnAddonLoaded);
-    APIDefs->Events_Subscribe("EV_ADDON_UNLOADED", OnAddonUnloaded);
-    AddonDir   = GetAddonDir();
-
-    // Apply persisted settings if a settings file is found; otherwise the
-    // compiled-in defaults from shared.h remain active.
-    Settings s;
-    if (LoadSettings(AddonDir, s))
-        ApplySettings(s);
-
-    // Register the per-frame render callback and the Nexus options panel callback.
-    APIDefs->GUI_Register(RT_Render, AddonRender);
-    APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
- 
-    // Subscribe to identity updates so we can keep CameraFOV in sync.
-    APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
-
-    // Load hotbar icon textures from embedded memory and register QuickAccess shortcut.
-    // The icon images are baked into hotbar_icon.h as byte arrays at compile time.
-    APIDefs->Textures_GetOrCreateFromMemory(
-        "TEX_SW2_HOTBAR",
-        (void*)g_HotbarIconData,
-        g_HotbarIconData_size
-    );
-    APIDefs->Textures_GetOrCreateFromMemory(
-        "TEX_SW2_HOTBAR_HOVER",
-        (void*)g_HotbarIconHoverData,
-        g_HotbarIconHoverData_size
-    );
-    // The Quick Access button uses the hotbar toggle keybind action so a left-click
-    // on the icon triggers the same show/hide behaviour as the keybind.
-    APIDefs->QuickAccess_Add(
-        "QA_SW2_HIDE_TOGGLE",
-        "TEX_SW2_HOTBAR",
-        "TEX_SW2_HOTBAR_HOVER",
-        "SW2 Toggle Hide All Windows",
-        "Split Wars 2: Hide/Restore Windows"
-    );
-    APIDefs->QuickAccess_AddContextMenu("QA_SW2_CTXMENU", "QA_SW2_HIDE_TOGGLE", AddonQuickAccessMenu);
-
-    // Register all keybinds defined in the table above.
     for (auto& kb : Keybinds)
-    APIDefs->InputBinds_RegisterWithStruct(kb.ID, kb.Fn, Keybind_t{});
-
-    APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 loaded.");
+        APIDefs->InputBinds_RegisterWithStruct(kb.ID, kb.Fn, Keybind_t{});
 }
 
 // ---------------------------------------------------------------------------
-// AddonUnload
+// DeregisterKeybinds
 // ---------------------------------------------------------------------------
-// Called by Nexus just before the DLL is unloaded (e.g. on game exit or when
-// the user disables the addon).  We mirror everything done in AddonLoad:
-// save settings, deregister all keybinds, remove the Quick Access button,
-// and unsubscribe from all events (including EV_ADDON_LOADED/UNLOADED for
-// RTAPI lifecycle tracking) and render callbacks so no dangling function
-// pointers remain inside Nexus after our DLL is gone.
+// Deregisters every entry in the Keybinds table from Nexus.
+// Called by AddonUnload() in entry.cpp to ensure no dangling function
+// pointers remain after the DLL is unloaded.
 // ---------------------------------------------------------------------------
-void AddonUnload()
+void DeregisterKeybinds()
 {
-    SaveSettings(AddonDir, GatherSettings());
-    
-    // Deregister all keybinds.
     for (auto& kb : Keybinds)
         APIDefs->InputBinds_Deregister(kb.ID);
-
-    APIDefs->QuickAccess_Remove("QA_SW2_HIDE_TOGGLE");
-    APIDefs->QuickAccess_RemoveContextMenu("QA_SW2_CTXMENU");
-    APIDefs->GUI_Deregister(AddonRender);
-    APIDefs->GUI_Deregister(AddonOptions);
-
-    // Unsubscribe all event listeners registered in AddonLoad.
-    APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
-    APIDefs->Events_Unsubscribe("EV_ADDON_LOADED",            OnAddonLoaded);
-    APIDefs->Events_Unsubscribe("EV_ADDON_UNLOADED",          OnAddonUnloaded);
-
-    APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 unloaded.");
 }
 
 // ---------------------------------------------------------------------------
@@ -530,10 +279,38 @@ void AddonRender()
     static bool         prevInCombat     = false;
     static std::chrono::steady_clock::time_point loadScreenStart;
 
+    // RTAPI alive tracking — previous frame's alive state so we can detect
+    // the dead→alive rising edge that triggers a clean combat end after revive.
+    static bool prevIsAlive = true;
+
+    // Mumble stillness tracking — records when the player last moved while a
+    // grace period was running. Used to detect death via 5-second no-movement.
+    static std::chrono::steady_clock::time_point lastMoveTime;
+    static bool stillnessTimerActive = false;
+
+    // Frame delta — time since last render call, used by the Mumble grace accumulator.
+    static std::chrono::steady_clock::time_point prevFrameTime = std::chrono::steady_clock::now();
+    auto   frameNow   = std::chrono::steady_clock::now();
+    double frameDelta = std::chrono::duration<double>(frameNow - prevFrameTime).count();
+    prevFrameTime     = frameNow;
+
     // Snapshot current game state for this frame.
     Vector3      currPos      = Vector3{GS.PlayerX, GS.PlayerY, GS.PlayerZ};
     unsigned int currMapID    = GS.MapID;
     bool         currInCombat = GS.IsInCombat;
+
+    // RTAPI: derive alive/downed flags from CharacterState bitfield.
+    // When Mumble is active these are always true (no such signal available).
+    bool currIsAlive  = true;
+    bool currIsDowned = false;
+    if (GS.RTAPIAvailable && GS.ActiveSource == EDataSource::RTAPI && RTAPIData)
+    {
+        uint32_t state = (uint32_t)RTAPIData->CharacterState;
+        currIsAlive  = (state & (uint32_t)RTAPI::ECharacterState::IsAlive)   != 0;
+        currIsDowned = (state & (uint32_t)RTAPI::ECharacterState::IsDowned)  != 0;
+    }
+    // Fully dead = not alive and not merely downed.
+    bool currFullyDead = !currIsAlive && !currIsDowned;
 
     // -------------------------------------------------------------------------
     // CombatArena trigger helper (lambda, defined inline for access to frame state)
@@ -544,29 +321,81 @@ void AddonRender()
     //   • The player drops combat inside the zone and a 2-second grace period
     //     expires without combat resuming (catches brief combat drops mid-fight)
     //
-    // The state machine has two states: Armed (in combat) and GracePending
-    // (combat dropped, timer running until either re-enter combat or grace expires).
+    // Death handling:
+    //   RTAPI — fully dead (!IsAlive && !IsDowned) immediately injects a tainted
+    //           split and keeps the timer running. When the player is revived
+    //           (IsAlive rising edge) combat end fires as a clean finish.
+    //   Mumble — no alive signal available; uses a movement heuristic instead.
+    //           The first 0.5s of grace ignores left-circle exits (covers the
+    //           death-teleport window). If the player stops moving for 5 seconds
+    //           during grace, a tainted split is injected and the segment resolves.
+    //           Grace only counts down while the player is moving.
+    //
+    // Returns true when the segment resolves (clean or tainted).
+    // NOTE: this function only advances the Armed → GracePending → finished
+    // state machine. Recording "Combat Start" and "Combat End" splits is
+    // the caller's responsibility.
     // -------------------------------------------------------------------------
     auto TickCombat = [&](CombatTriggerState& cs, const RoutePoint& point,
                           bool onCorrectMap, bool inCircle) -> bool
     {
-        constexpr double GraceDuration = 2.0; // seconds to wait after combat drops
+        constexpr double GraceDuration       = 2.0;  // seconds — clean combat-drop window
+        constexpr double StillnessTimeout    = 5.0;  // seconds — Mumble dead heuristic
+        constexpr double ExitIgnoreWindow    = 0.5;  // seconds — ignore left-circle after grace starts
+        constexpr float  MovementThreshold   = 0.001f; // metres — minimum delta to count as moving
 
         if (cs.finished) return false;
 
+        // -----------------------------------------------------------------
+        // RTAPI path: handle revive rising edge regardless of cs.active.
+        // If the player was dead last frame and is alive this frame, fire a
+        // clean combat end so the timer advances past the tainted segment.
+        // -----------------------------------------------------------------
+        if (GS.ActiveSource == EDataSource::RTAPI)
+        {
+            bool revivedThisFrame = currIsAlive && !prevIsAlive;
+            if (revivedThisFrame && cs.active && cs.taintedPending)
+            {
+                cs.active        = false;
+                cs.finished      = true;
+                cs.taintedPending = false;
+                return true; // clean finish after revive
+            }
+
+            // Fully dead while the segment is active → inject tainted, keep running.
+            if (cs.active && currFullyDead && !cs.taintedPending)
+            {
+                cs.taintedPending = true;
+                Split taint;
+                taint.Timestamp = SpeedrunTimer.GetElapsedSeconds();
+                strncpy(taint.Name, "__TAINTED__", sizeof(taint.Name) - 1);
+                SpeedrunTimer.AddSplitAt(taint);
+                return false;
+            }
+
+            // While dead, suppress all other resolution paths.
+            if (cs.active && currFullyDead) return false;
+        }
+
+        // -----------------------------------------------------------------
         // Not yet active — wait for a rising combat edge inside the zone.
+        // -----------------------------------------------------------------
         if (!cs.active)
         {
             bool risingEdge = currInCombat && !prevInCombat;
             if (risingEdge && onCorrectMap && inCircle)
             {
-                cs.active = true;
-                cs.state  = ECombatState::Armed;
+                cs.active            = true;
+                cs.state             = ECombatState::Armed;
+                lastMoveTime         = std::chrono::steady_clock::now();
+                stillnessTimerActive = false;
             }
             return false;
         }
 
+        // -----------------------------------------------------------------
         // Armed: player is in combat inside the zone.
+        // -----------------------------------------------------------------
         if (cs.state == ECombatState::Armed)
         {
             // Left the zone while still in combat — trigger immediately.
@@ -579,26 +408,71 @@ void AddonRender()
             // Dropped combat while still in zone — start grace period.
             if (!currInCombat)
             {
-                cs.state      = ECombatState::GracePending;
-                cs.dropTime   = SpeedrunTimer.GetElapsedSeconds();
-                cs.graceStart = std::chrono::steady_clock::now();
+                cs.state             = ECombatState::GracePending;
+                cs.dropTime          = SpeedrunTimer.GetElapsedSeconds();
+                cs.graceStart        = std::chrono::steady_clock::now();
+                cs.graceAccum        = 0.0;
+                lastMoveTime         = std::chrono::steady_clock::now();
+                stillnessTimerActive = true;
             }
             return false;
         }
 
+        // -----------------------------------------------------------------
         // GracePending: combat dropped, waiting to see if it comes back.
+        // -----------------------------------------------------------------
         else if (cs.state == ECombatState::GracePending)
         {
+            auto now = std::chrono::steady_clock::now();
+            // Wall-clock elapsed — used only for ExitIgnoreWindow (always real time).
+            double wallElapsed = std::chrono::duration<double>(now - cs.graceStart).count();
+
+            // --- Mumble movement / stillness heuristic ---
+            // Only runs when Mumble is the active source (RTAPI handles death above).
+            if (GS.ActiveSource != EDataSource::RTAPI)
+            {
+                float dx = currPos.X - prevPos.X;
+                float dy = currPos.Y - prevPos.Y;
+                float dz = currPos.Z - prevPos.Z;
+                bool moving = (dx*dx + dy*dy + dz*dz) > (MovementThreshold * MovementThreshold);
+
+                if (moving)
+                {
+                    // Accumulate grace time only while the player is moving.
+                    cs.graceAccum += frameDelta;
+                    lastMoveTime   = now;
+                }
+                else if (stillnessTimerActive)
+                {
+                    // Check if the player has been still long enough to be dead.
+                    double stillSeconds = std::chrono::duration<double>(now - lastMoveTime).count();
+                    if (stillSeconds >= StillnessTimeout)
+                    {
+                        Split taint;
+                        taint.Timestamp = cs.dropTime;
+                        strncpy(taint.Name, "__TAINTED__", sizeof(taint.Name) - 1);
+                        SpeedrunTimer.AddSplitAt(taint);
+                        cs.active            = false;
+                        cs.finished          = true;
+                        stillnessTimerActive = false;
+                        return true;
+                    }
+                }
+            }
+
             // Still out of combat and inside the zone — check if grace period expired.
+            // RTAPI: use wall-clock elapsed. Mumble: use graceAccum (moving-time only).
             if (!currInCombat && inCircle)
             {
-                auto elapsed = std::chrono::duration<double>(
-                    std::chrono::steady_clock::now() - cs.graceStart).count();
-                if (elapsed >= GraceDuration)
+                double graceElapsed = (GS.ActiveSource != EDataSource::RTAPI)
+                    ? cs.graceAccum
+                    : wallElapsed;
+
+                if (graceElapsed >= GraceDuration)
                 {
-                    // Grace period expired — combat segment is done.
-                    cs.active   = false;
-                    cs.finished = true;
+                    cs.active            = false;
+                    cs.finished          = true;
+                    stillnessTimerActive = false;
                     return true;
                 }
                 return false;
@@ -607,14 +481,22 @@ void AddonRender()
             // Re-entered combat before grace expired — go back to Armed.
             if (currInCombat && inCircle)
             {
-                cs.state    = ECombatState::Armed;
-                cs.dropTime = 0.0;
+                cs.state             = ECombatState::Armed;
+                cs.dropTime          = 0.0;
+                cs.graceAccum        = 0.0;
+                stillnessTimerActive = false;
                 return false;
             }
 
-            // Left the zone during grace period — trigger immediately.
-            cs.active   = false;
-            cs.finished = true;
+            // Left the zone during grace period.
+            // Ignore exits within the first ExitIgnoreWindow seconds (wall-clock) —
+            // covers the death-teleport case where the game ports the character out.
+            if (wallElapsed < ExitIgnoreWindow)
+                return false;
+
+            cs.active            = false;
+            cs.finished          = true;
+            stillnessTimerActive = false;
             return true;
         }
 
@@ -831,6 +713,11 @@ void AddonRender()
 
                     const RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
 
+                    // Null types are decorative — never trigger.
+                    if (cp.TriggerType == ETriggerType::NullCircle ||
+                        cp.TriggerType == ETriggerType::NullPlane)
+                        continue;
+
                     // MapChange checkpoints don't need to be on a specific map (the
                     // trigger is the act of leaving), so we skip the map filter for them.
                     bool onCorrectMap = cp.TriggerType == ETriggerType::MapChange ||
@@ -962,11 +849,42 @@ void AddonRender()
                             }
                             else
                             {
-                                goalTriggered = TickCombat(CombatGoal, goalPt, onCorrectMap, inCircle);
-                                if (goalTriggered)
-                                    goalTime = CombatGoal.dropTime > 0.0
+                                bool combatFinished = TickCombat(CombatGoal, goalPt, onCorrectMap, inCircle);
+                                if (combatFinished)
+                                {
+                                    double t = CombatGoal.dropTime > 0.0
                                         ? CombatGoal.dropTime
                                         : SpeedrunTimer.GetElapsedSeconds();
+
+                                    // Always inject the Combat End split so it appears in the timer.
+                                    Split s;
+                                    s.Timestamp = t;
+                                    snprintf(s.Name, sizeof(s.Name), "%s Combat End", goalCp->Name);
+                                    SpeedrunTimer.AddSplitAt(s);
+
+                                    // Check whether a __TAINTED__ split exists after the most recent
+                                    // Combat Start for this goal — covers both RTAPI and Mumble paths.
+                                    bool wasTainted = false;
+                                    char startName[68];
+                                    snprintf(startName, sizeof(startName), "%s Combat Start", goalCp->Name);
+                                    const auto& splits = SpeedrunTimer.GetSplits();
+                                    for (int si = (int)splits.size() - 1; si >= 0; si--)
+                                    {
+                                        if (strcmp(splits[si].Name, "__TAINTED__") == 0) { wasTainted = true; break; }
+                                        if (strcmp(splits[si].Name, startName)     == 0) break; // reached start, no tainted
+                                    }
+
+                                    if (!wasTainted)
+                                    {
+                                        goalTriggered = true;
+                                        goalTime      = t;
+                                    }
+                                    else
+                                    {
+                                        // Reset goal tracker so the user can re-arm.
+                                        CombatGoal = {};
+                                    }
+                                }
                             }
                         }
                     }
@@ -1007,12 +925,16 @@ void AddonRender()
 
                         // Ensure the goal checkpoint itself appears as the final split entry
                         // even if the goal trigger type doesn't naturally produce one.
-                        if (run.Splits.empty() || strcmp(run.Splits.back().Name, goalCp->Name) != 0)
+                        // CombatArena goals already injected a "X Combat End" split — skip.
+                        if (goalPt.TriggerType != ETriggerType::CombatArena)
                         {
-                            Split goalSplit;
-                            strncpy(goalSplit.Name, goalCp->Name, sizeof(goalSplit.Name) - 1);
-                            goalSplit.Timestamp = run.TotalTime;
-                            run.Splits.push_back(goalSplit);
+                            if (run.Splits.empty() || strcmp(run.Splits.back().Name, goalCp->Name) != 0)
+                            {
+                                Split goalSplit;
+                                strncpy(goalSplit.Name, goalCp->Name, sizeof(goalSplit.Name) - 1);
+                                goalSplit.Timestamp = run.TotalTime;
+                                run.Splits.push_back(goalSplit);
+                            }
                         }
 
                         HistoryRuns.insert(HistoryRuns.begin(), run);
@@ -1074,6 +996,7 @@ void AddonRender()
         prevMapID = isCharSelect ? 0 : currMapID;
     }
     prevInCombat       = currInCombat;
+    prevIsAlive        = currIsAlive;
     InteractKeyPressed = false; // Consumed — clear for next frame
 
     // --- Draw overlays ---
@@ -1083,157 +1006,4 @@ void AddonRender()
     RenderHistoryWindow();
     RenderRouteBrowserWindow();
     RenderDebugWindow();
-}
-
-// ---------------------------------------------------------------------------
-// AddonOptions
-// ---------------------------------------------------------------------------
-// Draws the Split Wars 2 section inside the Nexus options panel.
-// All the standard ImGui widgets write directly into the global booleans and
-// enums; the "Save Settings" button at the bottom persists them to disk.
-// ---------------------------------------------------------------------------
-void AddonOptions()
-{
-    //Timer related UI
-    ImGui::Checkbox("Show Timer",         &ShowTimer);
-    Tooltip("Toggles the speedrun timer overlay.");
-    ImGui::SameLine();
-    // Cycle button — label reflects the current mode so the player always
-    // knows what clicking it will do.
-    const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
-                               : (TimerDisplayMode == TimerMode::LiveSplit) ? "Mode: LiveSplit"
-                               :                                               "Mode: Split";
-    if (ImGui::Button(timerModeLabel))
-        TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3);
-    Tooltip("Controls how split times and differences are displayed.\n\n"
-            "Segment   - Each row shows the time for that segment only.\n"
-            "            Diffs compare against your best time for that segment.\n\n"
-            "Split     - Each row shows the elapsed time since the run started.\n"
-            "            Diffs show how far ahead or behind you are overall.\n\n"
-            "LiveSplit - Each row shows the time for that segment only.\n"
-            "            Diffs still show your overall lead or deficit,\n"
-            "            matching the behaviour of LiveSplit.");
-    ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
-    Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
-    ImGui::Checkbox("Compact Mode",       &CompactMode);
-    Tooltip("Reduces the timer to one line.");
-    ImGui::Separator();
-
-    //Route related UI
-    ImGui::Checkbox("Show Route Config", &ShowConfig);
-    Tooltip("Toggles the route configuration window.");
-    ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
-    Tooltip("Toggles the route file browser.");
-    ImGui::Checkbox("Show History",       &ShowHistory);
-    Tooltip("Toggles the history window.");
-    ImGui::SameLine();
-    ImGui::Dummy(ImVec2(5.0f, ImGui::GetFrameHeight()));
-    ImGui::SameLine();
-    // Max History Runs — clamped to [1, 100].
-    ImGui::Text("Max");
-    Tooltip("Set an amount between 1 and 100.");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::DragInt("##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
-    ImGui::Separator();
-
-    //Checkpoint/Zone related UI
-    ImGui::Checkbox("Show Checkpoints",   &ShowZones);
-    Tooltip("Toggles the visibility of checkpoints.");
-    ImGui::SameLine();
-    if (!ShowZones)
-    {
-        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
-        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-    }
-    float prevStart = ZoneFadeStart;
-    float prevEnd   = ZoneFadeEnd;
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::DragFloat("##fadestart", &ZoneFadeStart, 1.0f, 0.0f, 0.0f, "%.0fm");
-    Tooltip("Distance at which zones start fading out (metres)");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::DragFloat("##fadeend", &ZoneFadeEnd, 1.0f, 0.0f, 0.0f, "%.0fm");
-    Tooltip("Distance at which zones are fully hidden (metres)");
-    if (!ShowZones)
-    {
-        ImGui::PopItemFlag();
-        ImGui::PopStyleVar();
-    }
-    // absolute bounds
-    ZoneFadeStart = std::clamp(ZoneFadeStart, 1.0f, 1000.0f);
-    ZoneFadeEnd   = std::clamp(ZoneFadeEnd,   1.0f, 1000.0f);
-    
-    // relationship
-    if (ZoneFadeStart != prevStart && ZoneFadeStart >= ZoneFadeEnd)
-        ZoneFadeEnd = ZoneFadeStart + 1.0f;
-    if (ZoneFadeEnd != prevEnd && ZoneFadeEnd <= ZoneFadeStart)
-        ZoneFadeStart = ZoneFadeEnd - 1.0f;
-    ImGui::Separator();
-    
-    // Data source selector — lets the user choose between RTAPI and Mumble.
-    ImGui::Text("Data Source:");
-    ImGui::SameLine();
-    const char* sourceLabel = (PreferredSource == EDataSource::RTAPI)   ? "RTAPI"
-                            : (PreferredSource == EDataSource::Mumble)  ? "Mumble"
-                            :                                              "Default";
-    ImGui::SetNextItemWidth(80.0f);
-    if (ImGui::BeginCombo("##datasource", sourceLabel))
-    {
-        if (ImGui::Selectable("Default", PreferredSource == EDataSource::Default))
-            PreferredSource = EDataSource::Default;
-        Tooltip("Use RTAPI if available, otherwise Mumble.");
-        if (ImGui::Selectable("Mumble",  PreferredSource == EDataSource::Mumble))
-            PreferredSource = EDataSource::Mumble;
-        Tooltip("Always use Mumble, even if RTAPI is available.");
-        if (ImGui::Selectable("RTAPI",   PreferredSource == EDataSource::RTAPI))
-            PreferredSource = EDataSource::RTAPI;
-        Tooltip("Always use RTAPI. Falls back to Mumble if RTAPI is unavailable.");
-        ImGui::EndCombo();
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled(GS.RTAPIAvailable ? "(RTAPI connected)" : "(RTAPI not available)");
-
-    ImGui::Separator();
-
-    // Colors
-    ImGui::Text("Zone Colors:");
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::ColorEdit3("Start",       ColorStart,      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::ColorEdit3("Goal",        ColorGoal,       ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Checkpoint",  ColorCheckpoint, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
-    ImGui::Text("Time Colors:");
-    ImGui::ColorEdit3("Ahead",    ColorAhead,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Behind",   ColorBehind,  ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Best Row", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueBar);
-    ImGui::SameLine();
-if (ImGui::Button("Reset Colors"))
-{
-    float defStart[3]      = { 0.2f, 1.0f, 0.2f };
-    float defGoal[3]       = { 0.2f, 0.5f, 1.0f };
-    float defCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
-    float defAhead[3]      = { 0.2f, 1.0f, 0.2f };
-    float defBehind[3]     = { 1.0f, 0.3f, 0.3f };
-    float defBestRow[3]    = { 0.2f, 0.3f, 0.2f };
-    std::copy(defStart,      defStart      + 3, ColorStart);
-    std::copy(defGoal,       defGoal       + 3, ColorGoal);
-    std::copy(defCheckpoint, defCheckpoint + 3, ColorCheckpoint);
-    std::copy(defAhead,      defAhead      + 3, ColorAhead);
-    std::copy(defBehind,     defBehind     + 3, ColorBehind);
-    std::copy(defBestRow,    defBestRow    + 3, ColorBestRow);
-}
-
-    // Debug
-    ImGui::Separator();
-    ImGui::Checkbox("Show Debug", &ShowDebug);
-    Tooltip("Toggles debugging text which is not fully implemented");
-
-    //Save Settings
-    if (ImGui::Button("Save Settings"))
-        SaveSettings(AddonDir, GatherSettings());
 }

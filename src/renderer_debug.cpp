@@ -35,6 +35,8 @@ static const char* TriggerTypeName(ETriggerType t)
         case ETriggerType::CircleInteract: return "Circle Interact";
         case ETriggerType::CombatArena:    return "Combat (Native)";
         case ETriggerType::AllCheckpoints: return "All Checkpoints";
+        case ETriggerType::NullCircle:     return "Null (Circle)";
+        case ETriggerType::NullPlane:      return "Null (Plane)";
         default:                           return "Unknown";
     }
 }

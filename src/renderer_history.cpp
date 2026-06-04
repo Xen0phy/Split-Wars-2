@@ -18,8 +18,16 @@ void RenderHistoryWindow()
 {
     if (!ShowHistory) return;
 
-    ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f), ImGuiCond_FirstUseEver);
+    // Window size
+    static bool firstFrame = true;
+    if (firstFrame) {
+        ImGui::SetNextWindowSize(ImVec2(HistoryWindowW, HistoryWindowH), ImGuiCond_Always);
+        firstFrame = false;
+    }
     ImGui::Begin("Split Wars 2 - Run History", &ShowHistory);
+    ImVec2 sz = ImGui::GetWindowSize();
+    HistoryWindowW = sz.x;
+    HistoryWindowH = sz.y;
 
     ImGui::Text("Route: %s", CurrentRouteName.c_str());
     ImGui::Separator();

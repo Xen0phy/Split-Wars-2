@@ -156,13 +156,12 @@ void RenderTimerOverlay()
 
             // (goalCp / goalIsAllCheckpoints / manualStop are declared above BeginTable)
 
-            // -------------------------------------------------------------------------
             // Current segment row (live or finished-but-no-goal-split)
-            // Shown while the timer is running, and also when the run has finished
-            // without an AllCheckpoints goal (which generates its own final split)
-            // and wasn't manually stopped.
-            // -------------------------------------------------------------------------
-            if (running || (finished && !goalIsAllCheckpoints && !manualStop))
+            // Shown while running, and when the run has finished without a self-contained
+            // final split. Excluded: AllCheckpoints (generates its own split), CombatArena
+            // goals (inject "X Combat End" directly into splits), and manual stops.
+            bool goalIsCombatArena = goalCp && goalCp->Point.TriggerType == ETriggerType::CombatArena;
+            if (running || (finished && !goalIsAllCheckpoints && !goalIsCombatArena && !manualStop))
             {
                 // Segment time = elapsed since the last recorded split (or from 0 if
                 // no splits yet). In Split mode we just show the total elapsed time.
@@ -327,12 +326,15 @@ void RenderTimerOverlay()
             {
                 BestRun      = splits;
 
-                // When the goal is a plain trigger (not AllCheckpoints) the final
-                // segment's endpoint only exists in `elapsed`, never in `splits`.
+                // When the goal is a plain trigger (not AllCheckpoints and not CombatArena)
+                // the final segment's endpoint only exists in `elapsed`, never in `splits`.
+                // CombatArena goals already have their final entry via the "X Combat End"
+                // split injected in addon.cpp, so they are excluded here too.
                 // Append it so that:
                 //   • BestRun.back().Timestamp == true run total  (fixes Total diff)
                 //   • The last segment has a reference entry       (fixes last-seg diff)
-                if (finished && !manualStop && !goalIsAllCheckpoints)
+                if (finished && !manualStop && !goalIsAllCheckpoints &&
+                    (!goalCp || goalCp->Point.TriggerType != ETriggerType::CombatArena))
                 {
                     decltype(BestRun)::value_type goalEntry{};
                     goalEntry.Timestamp = elapsed;

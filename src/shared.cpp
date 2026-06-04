@@ -41,7 +41,6 @@ GameState GS = {};
 // IsLoading is derived from RTAPI's GameState enum when RTAPI is active;
 // Mumble does not expose a reliable loading flag so it is always false there.
 // ---------------------------------------------------------------------------
-
 static float s_MumbleFOV = 0.873f;              // updated by SetMumbleFOV() via the identity event
 void SetMumbleFOV(float fov) { s_MumbleFOV = fov; }
 void UpdateGameState()
@@ -128,6 +127,7 @@ bool  ShowRouteBrowser = false;
 float ColorStart[3]      = { 0.2f, 1.0f, 0.2f };
 float ColorGoal[3]       = { 0.2f, 0.5f, 1.0f };
 float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
+float ColorNull[3]       = { 1.0f, 0.6f, 0.0f };
 
 // ---------------------------------------------------------------------------
 // Zone colors
@@ -135,7 +135,17 @@ float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
 float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
 float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
 float ColorBestRow[3]    = { 0.2f, 0.3f, 0.2f }; // slightly different from ColorAhead since it's a background
- 
+
+// ---------------------------------------------------------------------------
+// Window sizes
+// ---------------------------------------------------------------------------
+float ConfigWindowW  = 800.0f;
+float ConfigWindowH  = 400.0f;
+float HistoryWindowW = 400.0f;
+float HistoryWindowH = 400.0f;
+float BrowserWindowW = 400.0f;
+float BrowserWindowH = 400.0f;
+
 // ---------------------------------------------------------------------------
 // TimerMode / Timer display settings
 // ---------------------------------------------------------------------------

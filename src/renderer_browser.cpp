@@ -205,8 +205,16 @@ void RenderRouteBrowserWindow()
         needsRefresh = false;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f), ImGuiCond_FirstUseEver);
+    // Window size
+    static bool firstFrame = true;
+    if (firstFrame) {
+        ImGui::SetNextWindowSize(ImVec2(BrowserWindowW, BrowserWindowH), ImGuiCond_Always);
+        firstFrame = false;
+    }
     ImGui::Begin("Split Wars 2 - Route Browser", &ShowRouteBrowser);
+    ImVec2 sz = ImGui::GetWindowSize();
+    BrowserWindowW = sz.x;
+    BrowserWindowH = sz.y;
 
     if (ImGui::Button("Refresh"))
         needsRefresh = true;

@@ -11,7 +11,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "shared.h"
-#include "storage.h"
+#include <algorithm>
 #include <cstring>
 #include <cstdio>
 #include <cmath>
@@ -35,8 +35,6 @@ void RenderDebugWindow();
 // showMillis = true  → includes milliseconds  (default, used on the live timer)
 // showMillis = false → whole seconds only      (used in history/tooltip tables)
 void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis = true);
-
-// Formats a run hostory to easily copy paste it to a spreadsheet
 void FormatTimeExport(char* buf, int bufSize, double elapsed);
 
 // Formats a signed time delta (current - best) as a compact "+/-" string.

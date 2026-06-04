@@ -320,8 +320,9 @@ void RecalcSegments(const std::vector<HistoricalRun>& runs,
 void UpdateSegments(const HistoricalRun& run,
     std::vector<SegmentRecord>& segments)
 {
-    static const std::string START_SUFFIX = " Start";
-    static const std::string END_SUFFIX   = " End";
+    static const std::string START_SUFFIX  = " Start";
+    static const std::string END_SUFFIX    = " End";
+    static const std::string TAINTED_NAME  = "__TAINTED__";
 
     for (int i = 0; i < (int)run.Splits.size(); i++)
     {
@@ -338,6 +339,9 @@ void UpdateSegments(const HistoricalRun& run,
         // Find the nearest matching " End" after this split.
         for (int j = i + 1; j < (int)run.Splits.size(); j++)
         {
+            // A tainted split between Start and End invalidates this segment.
+            if (run.Splits[j].Name == TAINTED_NAME) break;
+
             if (run.Splits[j].Name != endName) continue;
 
             double delta = run.Splits[j].Timestamp - run.Splits[i].Timestamp;
@@ -523,11 +527,12 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"max_history_runs",      settings.MaxHistoryRuns},
             {"data_source",           settings.DataSource},
             {"color_start",      {settings.ColorStart[0],      settings.ColorStart[1],      settings.ColorStart[2]}},
-            {"color_goal",       {settings.ColorGoal[0],        settings.ColorGoal[1],       settings.ColorGoal[2]}},
-            {"color_checkpoint", {settings.ColorCheckpoint[0],  settings.ColorCheckpoint[1], settings.ColorCheckpoint[2]}},
-            {"color_ahead",      {settings.ColorAhead[0],    settings.ColorAhead[1],    settings.ColorAhead[2]}},
-            {"color_behind",     {settings.ColorBehind[0],   settings.ColorBehind[1],   settings.ColorBehind[2]}},
-            {"color_best_row",   {settings.ColorBestRow[0],  settings.ColorBestRow[1],  settings.ColorBestRow[2]}}
+            {"color_goal",       {settings.ColorGoal[0],       settings.ColorGoal[1],       settings.ColorGoal[2]}},
+            {"color_checkpoint", {settings.ColorCheckpoint[0], settings.ColorCheckpoint[1], settings.ColorCheckpoint[2]}},
+            {"color_null",       {settings.ColorNull[0],       settings.ColorNull[1],       settings.ColorNull[2]}},
+            {"color_ahead",      {settings.ColorAhead[0],      settings.ColorAhead[1],      settings.ColorAhead[2]}},
+            {"color_behind",     {settings.ColorBehind[0],     settings.ColorBehind[1],     settings.ColorBehind[2]}},
+            {"color_best_row",   {settings.ColorBestRow[0],    settings.ColorBestRow[1],    settings.ColorBestRow[2]}}
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -574,6 +579,8 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
             for (int i = 0; i < 3; i++) settings.ColorGoal[i] = j["color_goal"][i].get<float>();
         if (j.contains("color_checkpoint") && j["color_checkpoint"].size() == 3)
             for (int i = 0; i < 3; i++) settings.ColorCheckpoint[i] = j["color_checkpoint"][i].get<float>();
+        if (j.contains("color_null") && j["color_null"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.ColorNull[i] = j["color_null"][i].get<float>();
         if (j.contains("color_ahead") && j["color_ahead"].size() == 3)
             for (int i = 0; i < 3; i++) settings.ColorAhead[i] = j["color_ahead"][i].get<float>();
         if (j.contains("color_behind") && j["color_behind"].size() == 3)

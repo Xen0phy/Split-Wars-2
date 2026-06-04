@@ -7,7 +7,9 @@ set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
 set(CMAKE_CXX_STANDARD 17)
 
 add_library(SplitWars2 SHARED
+    src/entry.cpp
     src/addon.cpp
+    src/addon_options.cpp
     src/shared.cpp
     src/timer.cpp
     src/route.cpp
