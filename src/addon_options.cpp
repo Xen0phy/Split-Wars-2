@@ -6,7 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
-#include "renderer_shared.h"
+#include "render_shared.h"
 
 // ---------------------------------------------------------------------------
 // AddonOptions

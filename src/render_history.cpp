@@ -12,7 +12,7 @@
 //   • A "Clear History" button (with a confirmation popup) wipes all runs.
 //   • All changes are persisted to the .history file on disk immediately.
 
-#include "renderer_shared.h"
+#include "render_shared.h"
 
 void RenderHistoryWindow()
 {

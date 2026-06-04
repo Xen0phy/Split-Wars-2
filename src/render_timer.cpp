@@ -25,7 +25,7 @@
 // 
 // After a run finishes, "Save as best" and "Reset Timer" buttons are shown.
 
-#include "renderer_shared.h"
+#include "render_shared.h"
 
 void RenderTimerOverlay()
 {

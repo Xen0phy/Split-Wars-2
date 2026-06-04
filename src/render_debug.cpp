@@ -12,7 +12,7 @@
 // All data is read directly from shared globals — no copies are made.
 
 #include "imgui.h"
-#include "renderer_shared.h"
+#include "render_shared.h"
 #include "worldrender.h"
 #include <algorithm>
 

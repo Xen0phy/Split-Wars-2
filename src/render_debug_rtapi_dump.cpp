@@ -6,9 +6,7 @@
 // so there is no per-frame overhead when the tab is not visible.
 // If RTAPIData is null the function shows a single warning line and returns.
 
-#include "RTAPI.hpp"
-#include "imgui.h"
-#include "shared.h"
+#include "render_shared.h" // IWYU pragma: keep
 
 // ---------------------------------------------------------------------------
 // File-private helpers

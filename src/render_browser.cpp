@@ -8,7 +8,7 @@
 // Drag-and-drop between folder nodes moves the underlying .json (and its
 // paired .history) file on disk and triggers a tree refresh.
 
-#include "renderer_shared.h"
+#include "render_shared.h"
 
 namespace fs = std::filesystem;
 

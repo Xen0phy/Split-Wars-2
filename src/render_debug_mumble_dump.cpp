@@ -6,9 +6,7 @@
 // so there is no per-frame overhead when the tab is not visible.
 // If MumbleLink is null the function shows a single warning line and returns.
 
-#include "Mumble.h"
-#include "imgui.h"
-#include "shared.h"
+#include "render_shared.h" // IWYU pragma: keep
 
 // ---------------------------------------------------------------------------
 // MapTypeName / MountName  (file-private helpers)

@@ -13,15 +13,15 @@ add_library(SplitWars2 SHARED
     src/shared.cpp
     src/timer.cpp
     src/route.cpp
-    src/renderer_browser.cpp
-    src/renderer_config.cpp
-    src/renderer_debug.cpp
-    src/renderer_history.cpp
-    src/renderer_shared.cpp
-    src/renderer_timer.cpp
+    src/render_browser.cpp
+    src/render_config.cpp
+    src/render_debug_mumble_dump.cpp
+    src/render_debug_rtapi_dump.cpp
+    src/render_debug.cpp
+    src/render_history.cpp
+    src/render_shared.cpp
+    src/render_timer.cpp
     src/worldrender.cpp
-    src/window_debug_dump.cpp
-    src/window_rtapi_dump.cpp
     src/storage.cpp
     include/imgui.cpp
     include/imgui_draw.cpp

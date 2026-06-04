@@ -9,7 +9,7 @@
 //   - All keybind callback functions
 //   - RegisterKeybinds() / DeregisterKeybinds() wrappers
 
-#include "renderer_shared.h"
+#include "render_shared.h"
 #include "worldrender.h"
 
 // ---------------------------------------------------------------------------
