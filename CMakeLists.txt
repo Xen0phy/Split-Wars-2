@@ -20,6 +20,8 @@ add_library(SplitWars2 SHARED
     src/renderer_shared.cpp
     src/renderer_timer.cpp
     src/worldrender.cpp
+    src/window_debug_dump.cpp
+    src/window_rtapi_dump.cpp
     src/storage.cpp
     include/imgui.cpp
     include/imgui_draw.cpp

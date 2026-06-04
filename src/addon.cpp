@@ -309,8 +309,6 @@ void AddonRender()
         currIsAlive  = (state & (uint32_t)RTAPI::ECharacterState::IsAlive)   != 0;
         currIsDowned = (state & (uint32_t)RTAPI::ECharacterState::IsDowned)  != 0;
     }
-    // Fully dead = not alive and not merely downed.
-    bool currFullyDead = !currIsAlive && !currIsDowned;
 
     // -------------------------------------------------------------------------
     // CombatArena trigger helper (lambda, defined inline for access to frame state)
@@ -363,7 +361,7 @@ void AddonRender()
             }
 
             // Fully dead while the segment is active → inject tainted, keep running.
-            if (cs.active && currFullyDead && !cs.taintedPending)
+            if (cs.active && !currIsAlive && !cs.taintedPending)
             {
                 cs.taintedPending = true;
                 Split taint;
@@ -374,7 +372,7 @@ void AddonRender()
             }
 
             // While dead, suppress all other resolution paths.
-            if (cs.active && currFullyDead) return false;
+            if (cs.active && !currIsAlive) return false;
         }
 
         // -----------------------------------------------------------------
@@ -526,7 +524,6 @@ void AddonRender()
             if (isLoading && !wasLoading)
             {
                 SpeedrunTimer.Pause();
-
                 // Special case for MapChange goals: if the goal fires on the map
                 // transition itself, snapshot the GrandTimer now (before the map
                 // actually changes) so load-screen time is excluded from the grand total.
@@ -990,16 +987,22 @@ void AddonRender()
     prevPos      = currPos;
     // Only update prevMapID when not loading — this keeps the MapChange trigger
     // stable across load screens (prevMapID still reflects the map we came from).
+    bool isCharSelect = GS.RTAPIAvailable && RTAPIData &&
+        RTAPIData->GameState == RTAPI::EGameState::CharacterSelection;
     if (!isLoading)
     {
-        bool isCharSelect = (GS.PlayerX == 0.0f && GS.PlayerY == 0.0f && GS.PlayerZ == 0.0f);
-        prevMapID = isCharSelect ? 0 : currMapID;
+        prevMapID = currMapID;
+    }
+    else if (isCharSelect) {
+        prevMapID = 0;
     }
     prevInCombat       = currInCombat;
     prevIsAlive        = currIsAlive;
     InteractKeyPressed = false; // Consumed — clear for next frame
 
     // --- Draw overlays ---
+    // Skip world and timer rendering on the character selection screen
+    // (detected by player position being exactly zero).
     RenderZones();
     RenderTimerOverlay();
     RenderConfigWindow();

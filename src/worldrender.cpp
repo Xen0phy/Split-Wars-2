@@ -546,6 +546,7 @@ void RenderZones()
     // GS.IsMapOpen is always sourced from Mumble (RTAPI does not expose this
     // flag); skip rendering while the in-game map is fullscreen.
     if (GS.IsMapOpen) return;
+    if (GS.IsLoading) return;
 
     UpdateUIRects(); // snapshot UI window rects before drawing any dots
     
