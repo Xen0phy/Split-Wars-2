@@ -1,5 +1,6 @@
 backups/
 build/
+src/PNG/
 *.o
 *.obj
 *.pdb
@@ -10,4 +11,3 @@ build/
 *.gz
 *.tar
 *.tar.gz
-*.png
