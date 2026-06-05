@@ -37,7 +37,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Signature    = 0x53573200;           // Unique numeric ID for this addon
     AddonDef.APIVersion   = NEXUS_API_VERSION;    // Nexus API version this addon was built against
     AddonDef.Name         = "Split Wars 2";
-    AddonDef.Version      = {0, 19,1,0};
+    AddonDef.Version      = {0, 19,2,1};
     AddonDef.Author       = "Xenophy.2716";
     AddonDef.Description  = "A speedrun timer with coordinate-based triggers.";
     AddonDef.Load         = AddonLoad;            // Called once when the addon is loaded

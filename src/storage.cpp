@@ -241,36 +241,42 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
             route.Checkpoints.push_back(c);
         }
 
-        // --- Duplicate start/goal correction ---
-        // Keep the first occurrence of each flag and clear the rest, logging
-        // a warning so the user knows the file needed correcting.
-        bool foundStart = false;
-        bool foundGoal  = false;
+        // --- Duplicate start correction ---
+        // Only one start is meaningful — keep the first and clear any extras,
+        // logging a single warning if any correction was needed.
+        // Goal deduplication is intentionally omitted: multiple goals are
+        // allowed so routes can diverge (e.g. two valid finish points).
+        // Uncomment the goal block below to restore singular-goal enforcement.
+        bool foundStart      = false;
+        bool correctedStart  = false;
         for (auto& cp : route.Checkpoints)
         {
             if (cp.IsStart)
             {
                 if (foundStart)
                 {
-                    cp.IsStart = false;
-                    if (APIDefs)
-                        APIDefs->Log(LOGL_WARNING, "Split Wars 2",
-                            (filename + ": multiple start checkpoints found, keeping the first.").c_str());
+                    cp.IsStart      = false;
+                    correctedStart  = true;
                 }
-                foundStart = true;
-            }
-            if (cp.IsGoal)
-            {
-                if (foundGoal)
+                else
                 {
-                    cp.IsGoal = false;
-                    if (APIDefs)
-                        APIDefs->Log(LOGL_WARNING, "Split Wars 2",
-                            (filename + ": multiple goal checkpoints found, keeping the first.").c_str());
+                    foundStart = true;
                 }
-                foundGoal = true;
             }
+            // Uncomment to restore singular-goal enforcement:
+            //if (cp.IsGoal)
+            //{
+            //    if (foundGoal)
+            //    {
+            //        cp.IsGoal = false;
+            //        correctedGoal = true;
+            //    }
+            //    else { foundGoal = true; }
+            //}
         }
+        if (correctedStart && APIDefs)
+            APIDefs->Log(LOGL_WARNING, "Split Wars 2",
+                (filename + ": multiple start checkpoints found, keeping the first.").c_str());
 
         route.IsValid = true;
 

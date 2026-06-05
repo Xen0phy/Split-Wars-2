@@ -68,28 +68,44 @@ void RenderConfigWindow()
 
     // -------------------------------------------------------------------------
     // Save directory field
-    // Initialises from the directory of the currently loaded route file, or
-    // falls back to the addon directory when no file is loaded.  It auto-updates
-    // whenever the active route file path changes (e.g. after loading a route
-    // from the browser).
+    // Only the relative subfolder path (beneath AddonDir) is editable.
+    // The AddonDir prefix is shown as read-only grayed text so the user can
+    // see where routes are rooted but can't accidentally redirect saves
+    // outside the addon directory.
+    //
+    // subfolderBuf holds just the relative part, e.g. "Fractals\\Daily".
+    // Full save path = AddonDir + "\\" + subfolderBuf (or just AddonDir if empty).
+    //
+    // Auto-updates when the active route file changes: strips AddonDir from
+    // the loaded file's parent directory to recover the relative subfolder.
     // -------------------------------------------------------------------------
-    static char saveDirBuf[512]         = "";
-    static std::string lastSeenFilepath = "";
+    static char subfolderBuf[256]        = "";
+    static std::string lastSeenFilepath  = "";
     if (CurrentRouteFilepath != lastSeenFilepath)
     {
-        // The loaded route changed — refresh the directory shown in the field.
         lastSeenFilepath = CurrentRouteFilepath;
-        std::string dir = CurrentRouteFilepath.empty()
-            ? AddonDir
-            : fs::path(CurrentRouteFilepath).parent_path().string();
-        strncpy(saveDirBuf, dir.c_str(), sizeof(saveDirBuf) - 1);
-        saveDirBuf[sizeof(saveDirBuf) - 1] = '\0';
-    }
-    // Fallback: if the buffer is still empty (very first draw), fill it now.
-    if (saveDirBuf[0] == '\0' && !AddonDir.empty())
-    {
-        strncpy(saveDirBuf, AddonDir.c_str(), sizeof(saveDirBuf) - 1);
-        saveDirBuf[sizeof(saveDirBuf) - 1] = '\0';
+        if (CurrentRouteFilepath.empty())
+        {
+            subfolderBuf[0] = '\0'; // No route loaded — default to root
+        }
+        else
+        {
+            // Strip AddonDir prefix to get the relative subfolder.
+            // e.g. AddonDir="...\\Split Wars 2", parent="...\\Split Wars 2\\Fractals"
+            // → subfolderBuf = "Fractals". Empty when file is in AddonDir root.
+            std::string parentDir = fs::path(CurrentRouteFilepath).parent_path().string();
+            if (parentDir.size() > AddonDir.size() &&
+                parentDir.substr(0, AddonDir.size()) == AddonDir)
+            {
+                std::string rel = parentDir.substr(AddonDir.size() + 1); // +1 skips the backslash
+                strncpy(subfolderBuf, rel.c_str(), sizeof(subfolderBuf) - 1);
+                subfolderBuf[sizeof(subfolderBuf) - 1] = '\0';
+            }
+            else
+            {
+                subfolderBuf[0] = '\0'; // Outside AddonDir — fall back to root
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -101,7 +117,9 @@ void RenderConfigWindow()
     // -------------------------------------------------------------------------
     if (ImGui::Button("Save Route"))
     {
-        std::string dir   = saveDirBuf;
+        std::string dir   = (subfolderBuf[0] != '\0')
+                            ? AddonDir + "\\" + subfolderBuf
+                            : AddonDir;
         std::string newFP = dir + "\\" + CurrentRouteName + ".json";
         std::string newHP = dir + "\\" + CurrentRouteName + ".history";
 
@@ -110,7 +128,7 @@ void RenderConfigWindow()
             // Overwrite the existing file and keep history intact.
             SaveRoute(CurrentRouteFilepath, CurrentRoute);
             if (!CurrentHistoryPath.empty())
-            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
         }
         else
         {
@@ -132,11 +150,23 @@ void RenderConfigWindow()
 
     if (ImGui::Button("History"))
         ShowHistory = !ShowHistory;
+    ImGui::SameLine();
 
-    // Editable save directory — lets the player type or paste a custom path.
-    ImGui::Text("Dir:"); ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputText("##savedir", saveDirBuf, sizeof(saveDirBuf));
+    // Folder field — same row as the buttons, fixed 200px to match the route
+    // name field width. "Folder:" label makes it visually distinct from Route:.
+    // The grayed prefix shows the addon root; only the relative subfolder is editable.
+    // Hovering the prefix shows the full absolute path as a tooltip.
+    ImGui::Spacing(); ImGui::SameLine();
+    ImGui::Text("Folder:"); ImGui::SameLine();
+    {
+        std::string displayPrefix = "...\\" + fs::path(AddonDir).filename().string() + "\\";
+        ImGui::TextDisabled("%s", displayPrefix.c_str());
+        Tooltip(AddonDir.c_str());
+        ImGui::SameLine(0, 0);
+        ImGui::SetNextItemWidth(200.0f);
+        ImGui::InputText("##subfolder", subfolderBuf, sizeof(subfolderBuf));
+        Tooltip("Optional subfolder beneath the addon directory.\nLeave empty to save in the root. Example: Fractals\\Daily");
+    }
 
     ImGui::Separator();
 
@@ -147,14 +177,12 @@ void RenderConfigWindow()
     // The footer is taller when an Interact trigger is present because an extra
     // warning line is appended.
     // -------------------------------------------------------------------------
-    bool hasInteract    = false;
-    bool hasCombat      = false;
-    bool hasPlaneStart  = false;
+    bool hasInteract = false;
+    bool hasCombat   = false;
     for (const auto& cp : CurrentRoute.Checkpoints)
     {
-        if (cp.Point.TriggerType == ETriggerType::CircleInteract) hasInteract   = true;
-        if (cp.Point.TriggerType == ETriggerType::CombatArena)    hasCombat     = true;
-        if (cp.Point.TriggerType == ETriggerType::Plane && cp.IsStart) hasPlaneStart = true;
+        if (cp.Point.TriggerType == ETriggerType::CircleInteract) hasInteract = true;
+        if (cp.Point.TriggerType == ETriggerType::CombatArena)    hasCombat   = true;
     }
     bool showCombatWarning = hasCombat && (GS.ActiveSource != EDataSource::RTAPI);
 
@@ -182,8 +210,6 @@ void RenderConfigWindow()
         footerReserve += ImGui::GetFrameHeightWithSpacing() * 1.0f;
     if (showCombatWarning)
         footerReserve += ImGui::GetFrameHeightWithSpacing() * 2.0f;
-    if (hasPlaneStart)
-        footerReserve += ImGui::GetFrameHeightWithSpacing() * 1.0f;
     if (showCalculator)
     {
         footerReserve += ImGui::GetFrameHeightWithSpacing() * 2.0f + 4.0f; // two rows + separator
@@ -245,7 +271,7 @@ void RenderConfigWindow()
                                        "                     Combat start while in sphere.\n"
                                        "                     Combat end when out of combat or leaving sphere.\n"
                                        "  * MapChange:       Fires when leaving the selected map.\n"
-                                       "  * AllCheackpoints: Fires when all other Checkpoints in the list have been triggered."); break;
+                                       "  * AllCheckpoints:  Fires when all other Checkpoints in the list have been triggered."); break;
                 case 4:  Tooltip("Enter MapID here.\nEither you know or you press the capture button."); break;
                 case 5:  Tooltip("Enter X Coordinate here.\nEither you know or you press the capture button."); break;
                 case 6:  Tooltip("Enter Y Coordinate here.\nEither you know or you press the capture button."); break;
@@ -259,7 +285,7 @@ void RenderConfigWindow()
                                        "Shows a Re-Arm button for combat trigger.\n"
                                        "Adjust MapChange indicators hyperbole strength."); break;
                 case 14: Tooltip("Captures current MapID, XYZ location and plane angle if available."); break;
-                case 15: Tooltip("Click for copy / paste / delete.\nClick and drag to reorder row."); break;
+                case 15: Tooltip("Right-click for copy / paste / delete.\nLeft click and drag to reorder row."); break;
             }
         }
 
@@ -544,8 +570,8 @@ void RenderConfigWindow()
             }
 
             // --- Grip / menu button (col 15) ---
-            // Single click → opens copy/paste/delete context menu.
-            // Click-hold + drag → drag source for row reordering.
+            // Left click-hold + drag → reorder rows.
+            // Right click → opens copy/paste/delete context menu.
             ImGui::TableSetColumnIndex(15);
             char gripLabel[32]; snprintf(gripLabel, sizeof(gripLabel), u8": : : :##grip_%d", i);
 
@@ -556,10 +582,8 @@ void RenderConfigWindow()
             ImGui::PopStyleColor(3);
 
             // --- Drag source ---
-            static bool wasDragging = false;
             if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
             {
-                wasDragging = true;
                 ImGui::SetDragDropPayload("ROUTE_ROW", &i, sizeof(int));
                 ImGui::Text("Row %d: %s", i + 1, cp.Name);
                 ImGui::EndDragDropSource();
@@ -576,20 +600,18 @@ void RenderConfigWindow()
                 ImGui::EndDragDropTarget();
             }
 
-            // --- Context menu (click without drag) ---
+            // --- Context menu (right-click) ---
             char popupId[32]; snprintf(popupId, sizeof(popupId), "##rowctx_%d", i);
-            if (ImGui::IsItemDeactivated())
-            {
-                if (!wasDragging)
-                    ImGui::OpenPopup(popupId);
-                wasDragging = false;
-            }
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+                ImGui::OpenPopup(popupId);
             if (ImGui::BeginPopup(popupId))
             {
                 if (ImGui::MenuItem("Copy"))
                 {
-                    clipboard    = cp;
-                    hasClipboard = true;
+                    clipboard          = cp;
+                    clipboard.IsStart  = false; // Role flags are not copied — pasting geometry
+                    clipboard.IsGoal   = false; // into a new row shouldn't duplicate start/goal.
+                    hasClipboard       = true;
                 }
                 if (ImGui::MenuItem("Paste above", nullptr, false, hasClipboard))
                 {
@@ -816,14 +838,6 @@ void RenderConfigWindow()
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f)); // Red text
         ImGui::TextWrapped("Combat trigger detected without RTAPI — death detection uses movement heuristics. Keep moving for 2+ seconds after combat ends or the segment will be marked tainted.");
-        ImGui::PopStyleColor();
-    }
-
-    if (hasPlaneStart)
-    {
-        ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.0f, 1.0f)); // Orange
-        ImGui::TextWrapped("Plane trigger set as Start — loading into the map may cause a false start. Reset the timer if this occurs.");
         ImGui::PopStyleColor();
     }
 

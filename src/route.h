@@ -3,8 +3,8 @@
 //
 // A Route is an ordered list of Checkpoints.  Each Checkpoint wraps a
 // RoutePoint (the spatial trigger) plus a display name and start/goal flags.
-// Exactly one checkpoint should be flagged IsStart and one IsGoal for the
-// timer logic in AddonRender() to work correctly.
+// Exactly one checkpoint should be flagged IsStart; one or more may be
+// flagged IsGoal (multiple goals allow routes that diverge at a branch point).
 //
 // COORDINATE SYSTEM NOTE:
 // All position values (X, Y, Z, RadiusWidth) are in the units that
@@ -143,7 +143,8 @@ struct RoutePoint
 //   IsStart — the timer starts (or resets + starts) when this point fires.
 //             Only one checkpoint per route should have this set.
 //   IsGoal  — the timer stops and the run is recorded when this point fires.
-//             Only one checkpoint per route should have this set.
+//             Multiple checkpoints may have this set, allowing routes that
+//             diverge and finish at different endpoints.
 //
 // All other checkpoints (neither start nor goal) record intermediate splits.
 // ---------------------------------------------------------------------------

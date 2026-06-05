@@ -543,6 +543,11 @@ void AddonRender()
             }
             else if (!isLoading && wasLoading)
             {
+                // On the frame a load screen clears, prevPos is stale (it reflects a
+                // position from before the load). Snap it to currPos so movement-delta
+                // triggers (Plane) can't fire due to a phantom crossing on the first frame.
+                prevPos = currPos;
+
                 SpeedrunTimer.Resume();
 
                 // If we didn't actually leave the goal map (e.g. a mid-run load
