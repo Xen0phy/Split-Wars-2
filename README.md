@@ -53,9 +53,9 @@ Each checkpoint — including start and goal — can use any of these trigger mo
 | **Circle** | Enter the zone (all checkpoints); leave the zone (start only) | Dot sphere |
 | **Plane** | Cross the line from either direction | Dot plane |
 | **Map Change** | Leave a specified map | Dot corner |
-| **Interact** | Press your interact key inside the zone | Dot sphere |
-| **Combat (Native)** | Enter combat inside the zone; fire again when combat ends | Dot sphere |
-| **All Checkpoints** *(goal only)* | Every other checkpoint has been triggered | — |
+| **Interact** | Press your interact key inside the zone | Dot sphere (rotate) |
+| **Combat (Native)** | Enter combat inside the zone; fire again when combat ends | Dot sphere (lub-dub) |
+| **All Checkpoints** *(goal only)* | Every other checkpoint has been triggered | none |
 
 <table>
   <tr>
@@ -85,7 +85,7 @@ Cycle through display modes with a keybind at any time:
 | **Split** | Cumulative elapsed time | vs. your best cumulative time |
 | **LiveSplit** | Current segment time | vs. your best cumulative time (LiveSplit style) |
 
-A secondary **Grand Total** timer runs in parallel and tracks wall-clock time across the full session, including load screens — useful for runs where loads are part of the challenge.
+A secondary **Grand Total** timer runs in parallel and tracks wall-clock time across the full session, including load screens.
 
 ---
 
@@ -112,7 +112,12 @@ Every completed run is saved automatically to a `.history` file next to your rou
 
 Routes are stored as `.json` files and organised in folders beneath the Split Wars 2 addon directory. The browser window lets you navigate, load, and reorganise them without leaving the game.
 
-<img src="README/File_Browser.png" width="260"/>
+<table>
+  <tr>
+    <td align="center"><b>Run history with split hover</b><br><img src="README/Route_Config_Create_Folder.gif" width="340"/></td>
+    <td align="center"><b>Best segment times</b><br><img src="README/Route_Browser_Organize.gif" width="340"/></td>
+  </tr>
+</table>
 
 - Drag a route onto a folder to move it
 - Routes and their history files always move together
@@ -122,12 +127,12 @@ Routes are stored as `.json` files and organised in folders beneath the Split Wa
 
 ## World Overlay & Occlusion
 
-Trigger zones render as dot-based overlays directly in the game world. They respect character and ImGui's UI occlusion so they never clutter your screen when they're behind something.
+Trigger zones render as dot-based overlays directly in the game world. They're occluded by a fixed range around the character and ImGui's UI so they never clutter your screen when they're behind something.
 **Note** Everything is still rendered on top of GW2's UI.
 
-<img src="README/Character_and_ImGui_UI_occlusionOcclusion.png" width="340"/>
+Zone colors and fade distances are configurable globally in the options panel.
 
-Zone colors, dot density, and fade distances are all configurable per-zone or globally in the options panel.
+https://github.com/user-attachments/assets/b1ba9c16-92b8-40c9-8330-780ef8b5f114
 
 ---
 
