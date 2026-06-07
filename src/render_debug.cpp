@@ -18,6 +18,7 @@
 
 void RenderMumbleDump();
 void RenderRTAPIDump();
+void RenderArcDPSDump();
 
 // Index of the checkpoint currently selected in the left panel.
 // Persists across frames so the selection survives redraws.
@@ -402,6 +403,12 @@ void RenderDebugWindow()
         if (ImGui::BeginTabItem("RTAPI Dump"))
         {
             RenderRTAPIDump();
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("ArcDPS Dump"))
+        {
+            RenderArcDPSDump();
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

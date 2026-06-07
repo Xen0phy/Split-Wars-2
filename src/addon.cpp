@@ -767,13 +767,18 @@ void AddonRender()
                     if (triggered && !checkpointTriggered[i] &&
                         (cp.TriggerType != ETriggerType::Circle || !WasInCheckpoint[i]))
                     {
-                        if (cp.TriggerType == ETriggerType::CombatArena &&
-                            CombatCheckpoints[i].dropTime > 0.0)
+                        if (cp.TriggerType == ETriggerType::CombatArena)
                         {
-                            // Back-date the split to when combat actually dropped.
+                            // Always record "X Combat End" for CombatArena checkpoints.
+                            // Back-date to dropTime when available (clean grace-period finish).
+                            // On the RTAPI revive path the player died while Armed, so
+                            // GracePending was never entered and dropTime is 0 — in that
+                            // case use the current elapsed time instead.
                             Split s;
                             snprintf(s.Name, sizeof(s.Name), "%s Combat End", CurrentRoute.Checkpoints[i].Name);
-                            s.Timestamp = CombatCheckpoints[i].dropTime;
+                            s.Timestamp = CombatCheckpoints[i].dropTime > 0.0
+                                ? CombatCheckpoints[i].dropTime
+                                : SpeedrunTimer.GetElapsedSeconds();
                             SpeedrunTimer.AddSplitAt(s);
                         }
                         else

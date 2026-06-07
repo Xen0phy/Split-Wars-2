@@ -13,6 +13,7 @@
 AddonAPI_t*   APIDefs           = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
 Mumble::Data* MumbleLink        = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
 RTAPI::RealTimeData* RTAPIData  = nullptr;
+ArcDPS::PluginInfo* ArcDPSExports = nullptr;
 
 // ---------------------------------------------------------------------------
 // Data source
@@ -226,6 +227,14 @@ bool HotbarWindowsHidden         = false;
 bool HotbarSavedShowConfig       = false;
 bool HotbarSavedShowHistory      = false;
 bool HotbarSavedShowRouteBrowser = false;
+
+// ---------------------------------------------------------------------------
+// ArcDPS
+// ---------------------------------------------------------------------------
+bool             HasKillingBlow = false;
+KillingBlowEvent LastKillingBlow = {};
+bool      HasTarget   = false;
+uintptr_t LastTargetID = 0;
 
 // ---------------------------------------------------------------------------
 // Debug

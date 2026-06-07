@@ -10,6 +10,7 @@
 #include "Nexus.h"    // AddonAPI_t and Nexus type definitions
 #include "Mumble.h"   // Mumble::Data (shared-memory layout written by GW2)
 #include "RTAPI.hpp"  // RTAPI::RealTimeData (real-time position and state)
+#include "ArcDPS.h"
 #include "timer.h"    // Timer class
 #include "storage.h"  // Split, HistoricalRun, save/load functions
 #include <string>
@@ -23,6 +24,7 @@
 extern AddonAPI_t*    APIDefs;    // Nexus API; set in AddonLoad()
 extern Mumble::Data*  MumbleLink; // Mumble shared-memory block; used as fallback data source and for IsMapOpen
 extern RTAPI::RealTimeData* RTAPIData;      // Null when RTAPI is not loaded or has been hot-unloaded
+extern ArcDPS::PluginInfo* ArcDPSExports; // nullptr; set if this addon ever registers with ArcDPS
 
 // ---------------------------------------------------------------------------
 // Addon lifecycle helpers (implemented in addon.cpp and entry.cpp)
@@ -223,6 +225,21 @@ extern bool HotbarWindowsHidden;
 extern bool HotbarSavedShowConfig;
 extern bool HotbarSavedShowHistory;
 extern bool HotbarSavedShowRouteBrowser;
+
+// ---------------------------------------------------------------------------
+// ArcDPS
+// ---------------------------------------------------------------------------
+struct KillingBlowEvent {
+    uint64_t   Time;
+    uint64_t   SourceAgent;   // who dealt the killing blow
+    uint64_t   DestAgent;     // who died
+    char       DestName[64];  // name of the victim (valid at event time — copy it)
+    ArcDPS::EIsFriendFoe IFF;
+};
+extern bool             HasKillingBlow;
+extern KillingBlowEvent LastKillingBlow;
+extern bool      HasTarget;
+extern uintptr_t LastTargetID;
 
 // ---------------------------------------------------------------------------
 // Debug

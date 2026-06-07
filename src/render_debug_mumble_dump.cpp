@@ -70,113 +70,131 @@ void RenderMumbleDump()
         ImGui::TextDisabled("MumbleLink is not available.");
         return;
     }
-
+    
     const Mumble::Data&    ml  = *MumbleLink;
     const Mumble::Context& ctx = ml.Context;
-
+    
     // Helper: convert wchar_t field to a displayable char buffer.
     auto wToChar = [](const wchar_t* src, char* dst, int dstSize)
     {
         wcstombs(dst, src, dstSize - 1);
         dst[dstSize - 1] = '\0';
     };
-
+    
     char strBuf[512];
-
+    
     // -------------------------------------------------------------------------
     // UI
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("UI");
-    ImGui::Text("UIVersion : %u", ml.UIVersion);
-    ImGui::Text("UITick    : %u", ml.UITick);
-
+    if (ImGui::CollapsingHeader("UI"))
+    {
+        ImGui::Text("UIVersion : %u", ml.UIVersion);
+        ImGui::Text("UITick    : %u", ml.UITick);
+    }
+    
     // -------------------------------------------------------------------------
     // Strings
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Strings");
-    wToChar(ml.Name, strBuf, sizeof(strBuf));
-    ImGui::Text("Name     : %s", strBuf);
-    wToChar(ml.Identity, strBuf, sizeof(strBuf));
-    ImGui::Text("Identity : %s", strBuf);
-
+    if (ImGui::CollapsingHeader("Strings"))
+    {
+        wToChar(ml.Name, strBuf, sizeof(strBuf));
+        ImGui::Text("Name     : %s", strBuf);
+        wToChar(ml.Identity, strBuf, sizeof(strBuf));
+        ImGui::Text("Identity : %s", strBuf);
+    }
+    
     // -------------------------------------------------------------------------
     // Avatar (player)
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Avatar");
-    ImGui::Text("Position : %.4f  %.4f  %.4f", ml.AvatarPosition.X, ml.AvatarPosition.Y, ml.AvatarPosition.Z);
-    ImGui::Text("Front    : %.4f  %.4f  %.4f", ml.AvatarFront.X,    ml.AvatarFront.Y,    ml.AvatarFront.Z);
-    ImGui::Text("Top      : %.4f  %.4f  %.4f", ml.AvatarTop.X,      ml.AvatarTop.Y,      ml.AvatarTop.Z);
-
+    if (ImGui::CollapsingHeader("Avatar"))
+    {
+        ImGui::Text("Position : %.4f  %.4f  %.4f", ml.AvatarPosition.X, ml.AvatarPosition.Y, ml.AvatarPosition.Z);
+        ImGui::Text("Front    : %.4f  %.4f  %.4f", ml.AvatarFront.X,    ml.AvatarFront.Y,    ml.AvatarFront.Z);
+        ImGui::Text("Top      : %.4f  %.4f  %.4f", ml.AvatarTop.X,      ml.AvatarTop.Y,      ml.AvatarTop.Z);
+    }
+    
     // -------------------------------------------------------------------------
     // Camera
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Camera");
-    ImGui::Text("Position : %.4f  %.4f  %.4f", ml.CameraPosition.X, ml.CameraPosition.Y, ml.CameraPosition.Z);
-    ImGui::Text("Front    : %.4f  %.4f  %.4f", ml.CameraFront.X,    ml.CameraFront.Y,    ml.CameraFront.Z);
-    ImGui::Text("Top      : %.4f  %.4f  %.4f", ml.CameraTop.X,      ml.CameraTop.Y,      ml.CameraTop.Z);
-
+    if (ImGui::CollapsingHeader("Camera"))
+    {
+        ImGui::Text("Position : %.4f  %.4f  %.4f", ml.CameraPosition.X, ml.CameraPosition.Y, ml.CameraPosition.Z);
+        ImGui::Text("Front    : %.4f  %.4f  %.4f", ml.CameraFront.X,    ml.CameraFront.Y,    ml.CameraFront.Z);
+        ImGui::Text("Top      : %.4f  %.4f  %.4f", ml.CameraTop.X,      ml.CameraTop.Y,      ml.CameraTop.Z);
+    }
+    
     // -------------------------------------------------------------------------
     // Context — map / instance
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Context — Map");
-    ImGui::Text("MapID         : %u",   ctx.MapID);
-    ImGui::Text("MapType       : %s (%u)", MapTypeName(ctx.MapType), (unsigned)ctx.MapType);
-    ImGui::Text("ShardID       : %u",   ctx.ShardID);
-    ImGui::Text("InstanceID    : %u",   ctx.InstanceID);
-    ImGui::Text("BuildID       : %u",   ctx.BuildID);
-    ImGui::Text("ProcessID     : %u",   ctx.ProcessID);
-    ImGui::Text("ContextLength : %u",   ml.ContextLength);
-
+    if (ImGui::CollapsingHeader("Context — Map"))
+    {
+        ImGui::Text("MapID         : %u",   ctx.MapID);
+        ImGui::Text("MapType       : %s (%u)", MapTypeName(ctx.MapType), (unsigned)ctx.MapType);
+        ImGui::Text("ShardID       : %u",   ctx.ShardID);
+        ImGui::Text("InstanceID    : %u",   ctx.InstanceID);
+        ImGui::Text("BuildID       : %u",   ctx.BuildID);
+        ImGui::Text("ProcessID     : %u",   ctx.ProcessID);
+        ImGui::Text("ContextLength : %u",   ml.ContextLength);
+    }
+    
     // -------------------------------------------------------------------------
     // Context — flags
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Context — Flags");
-    ImGui::Text("IsMapOpen          : %s", ctx.IsMapOpen          ? "Yes" : "No");
-    ImGui::Text("IsCompassTopRight  : %s", ctx.IsCompassTopRight  ? "Yes" : "No");
-    ImGui::Text("IsCompassRotating  : %s", ctx.IsCompassRotating  ? "Yes" : "No");
-    ImGui::Text("IsGameFocused      : %s", ctx.IsGameFocused      ? "Yes" : "No");
-    ImGui::Text("IsCompetitive      : %s", ctx.IsCompetitive      ? "Yes" : "No");
-    ImGui::Text("IsTextboxFocused   : %s", ctx.IsTextboxFocused   ? "Yes" : "No");
-    ImGui::Text("IsInCombat         : %s", ctx.IsInCombat         ? "Yes" : "No");
-
+    if (ImGui::CollapsingHeader("Context — Flags"))
+    {
+        ImGui::Text("IsMapOpen          : %s", ctx.IsMapOpen          ? "Yes" : "No");
+        ImGui::Text("IsCompassTopRight  : %s", ctx.IsCompassTopRight  ? "Yes" : "No");
+        ImGui::Text("IsCompassRotating  : %s", ctx.IsCompassRotating  ? "Yes" : "No");
+        ImGui::Text("IsGameFocused      : %s", ctx.IsGameFocused      ? "Yes" : "No");
+        ImGui::Text("IsCompetitive      : %s", ctx.IsCompetitive      ? "Yes" : "No");
+        ImGui::Text("IsTextboxFocused   : %s", ctx.IsTextboxFocused   ? "Yes" : "No");
+        ImGui::Text("IsInCombat         : %s", ctx.IsInCombat         ? "Yes" : "No");
+    }
+    
     // -------------------------------------------------------------------------
     // Context — mount
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Context — Mount");
-    ImGui::Text("MountIndex : %s (%u)", MountName(ctx.MountIndex), (unsigned)ctx.MountIndex);
-
+    if (ImGui::CollapsingHeader("Context — Mount"))
+    {
+        ImGui::Text("MountIndex : %s (%u)", MountName(ctx.MountIndex), (unsigned)ctx.MountIndex);
+    }
+    
     // -------------------------------------------------------------------------
     // Compass
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Compass");
-    ImGui::Text("Size           : %u x %u",   ctx.Compass.Width, ctx.Compass.Height);
-    ImGui::Text("Rotation       : %.4f rad",  ctx.Compass.Rotation);
-    ImGui::Text("PlayerPosition : %.2f  %.2f", ctx.Compass.PlayerPosition.X, ctx.Compass.PlayerPosition.Y);
-    ImGui::Text("Center         : %.2f  %.2f", ctx.Compass.Center.X,         ctx.Compass.Center.Y);
-    ImGui::Text("Scale          : %.4f",       ctx.Compass.Scale);
-
+    if (ImGui::CollapsingHeader("Compass"))
+    {
+        ImGui::Text("Size           : %u x %u",   ctx.Compass.Width, ctx.Compass.Height);
+        ImGui::Text("Rotation       : %.4f rad",  ctx.Compass.Rotation);
+        ImGui::Text("PlayerPosition : %.2f  %.2f", ctx.Compass.PlayerPosition.X, ctx.Compass.PlayerPosition.Y);
+        ImGui::Text("Center         : %.2f  %.2f", ctx.Compass.Center.X,         ctx.Compass.Center.Y);
+        ImGui::Text("Scale          : %.4f",       ctx.Compass.Scale);
+    }
+    
     // -------------------------------------------------------------------------
     // Server address
     // Raw bytes — may be sockaddr_in (IPv4) or sockaddr_in6 (IPv6).
     // For IPv4 (family = 2): bytes 0-1 = family, 2-3 = port (BE), 4-7 = IP.
     // -------------------------------------------------------------------------
-    ImGui::CollapsingHeader("Server Address");
-    const unsigned char* addr   = ctx.ServerAddress;
-    uint16_t             family = (uint16_t)(addr[0] | (addr[1] << 8));
-    if (family == 2) // AF_INET
+    if (ImGui::CollapsingHeader("Server Address"))
     {
-        uint16_t port = (uint16_t)((addr[2] << 8) | addr[3]);
-        ImGui::Text("IPv4 : %u.%u.%u.%u : %u", addr[4], addr[5], addr[6], addr[7], port);
-    }
-    else
-    {
-        // Show first 16 bytes as hex for IPv6 or unknown families.
-        ImGui::Text("Family : %u (non-IPv4)", family);
-        ImGui::Text("Raw    : %02X %02X %02X %02X %02X %02X %02X %02X "
-                              "%02X %02X %02X %02X %02X %02X %02X %02X",
-            addr[0],  addr[1],  addr[2],  addr[3],
-            addr[4],  addr[5],  addr[6],  addr[7],
-            addr[8],  addr[9],  addr[10], addr[11],
-            addr[12], addr[13], addr[14], addr[15]);
+        const unsigned char* addr   = ctx.ServerAddress;
+        uint16_t             family = (uint16_t)(addr[0] | (addr[1] << 8));
+        if (family == 2) // AF_INET
+        {
+            uint16_t port = (uint16_t)((addr[2] << 8) | addr[3]);
+            ImGui::Text("IPv4 : %u.%u.%u.%u : %u", addr[4], addr[5], addr[6], addr[7], port);
+        }
+        else
+        {
+            // Show first 16 bytes as hex for IPv6 or unknown families.
+            ImGui::Text("Family : %u (non-IPv4)", family);
+            ImGui::Text("Raw    : %02X %02X %02X %02X %02X %02X %02X %02X "
+                "%02X %02X %02X %02X %02X %02X %02X %02X",
+                addr[0],  addr[1],  addr[2],  addr[3],
+                addr[4],  addr[5],  addr[6],  addr[7],
+                addr[8],  addr[9],  addr[10], addr[11],
+                addr[12], addr[13], addr[14], addr[15]);
+        }
     }
 }

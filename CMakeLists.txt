@@ -15,6 +15,7 @@ add_library(SplitWars2 SHARED
     src/route.cpp
     src/render_browser.cpp
     src/render_config.cpp
+    src/render_debug_arcdps_dump.cpp
     src/render_debug_mumble_dump.cpp
     src/render_debug_rtapi_dump.cpp
     src/render_debug.cpp

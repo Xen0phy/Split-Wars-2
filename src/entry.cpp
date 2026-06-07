@@ -37,7 +37,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Signature    = 0x53573200;           // Unique numeric ID for this addon
     AddonDef.APIVersion   = NEXUS_API_VERSION;    // Nexus API version this addon was built against
     AddonDef.Name         = "Split Wars 2";
-    AddonDef.Version      = {1, 0,0,0};
+    AddonDef.Version      = {1, 0,2,0};
     AddonDef.Author       = "Xenophy.2716";
     AddonDef.Description  = "A speedrun timer with coordinate-based triggers.";
     AddonDef.Load         = AddonLoad;            // Called once when the addon is loaded
@@ -192,6 +192,52 @@ void HandleIdentityUpdate(void* aEventArgs)
     SetMumbleFOV(identity->FOV);
 }
 
+// ---------------------------------------------------------------------------
+// OnCombatEvent
+// ---------------------------------------------------------------------------
+// Called by Nexus for every ArcDPS combat event relayed via the integration bridge.
+// aEventArgs is a pointer to an EvCombatData struct (squad and local use the same layout).
+// ---------------------------------------------------------------------------
+struct EvCombatData
+{
+    ArcDPS::CombatEvent* ev;
+    ArcDPS::AgentShort*  src;
+    ArcDPS::AgentShort*  dst;
+    const char*          skillname;
+    uint64_t             id;
+    uint64_t             revision;
+};
+
+static void OnCombatEvent(void* aEventArgs)
+{
+    if (!aEventArgs) return;
+    EvCombatData* data = (EvCombatData*)aEventArgs;
+
+    // Target changed: ev is null, src->Specialization == 1
+    if (!data->ev)
+    {
+        if (data->src && data->src->Specialization == 1)
+        {
+            LastTargetID = data->src->ID;
+            HasTarget    = true;
+        }
+        return;
+    }
+
+    // Only direct strike events
+    if (data->ev->IsStatechange != ArcDPS::CBTS_NONE) return;
+    if ((ArcDPS::ECombatResult)data->ev->Result != ArcDPS::CBTR_KILLINGBLOW) return;
+
+    HasKillingBlow              = true;
+    LastKillingBlow.Time        = data->ev->Time;
+    LastKillingBlow.SourceAgent = data->ev->SourceAgent;
+    LastKillingBlow.DestAgent   = data->ev->DestinationAgent;
+    LastKillingBlow.IFF         = (ArcDPS::EIsFriendFoe)data->ev->IFF;
+    if (data->dst && data->dst->Name)
+        strncpy(LastKillingBlow.DestName, data->dst->Name, sizeof(LastKillingBlow.DestName) - 1);
+    else
+        LastKillingBlow.DestName[0] = '\0';
+}
 
 // ---------------------------------------------------------------------------
 // AddonLoad
@@ -255,6 +301,9 @@ void AddonLoad(AddonAPI_t* aApi)
     // Subscribe to identity updates so we can keep CameraFOV in sync.
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
 
+    APIDefs->Events_Subscribe("EV_ARCDPS_COMBATEVENT_LOCAL_RAW",  OnCombatEvent);
+    APIDefs->Events_Subscribe("EV_ARCDPS_COMBATEVENT_SQUAD_RAW",  OnCombatEvent);
+
     // Load hotbar icon textures from embedded memory and register QuickAccess shortcut.
     // The icon images are baked into hotbar_icon.h as byte arrays at compile time.
     APIDefs->Textures_GetOrCreateFromMemory(
@@ -305,6 +354,9 @@ void AddonUnload()
     APIDefs->QuickAccess_RemoveContextMenu("QA_SW2_CTXMENU");
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
+
+    APIDefs->Events_Unsubscribe("EV_ARCDPS_COMBATEVENT_LOCAL_RAW",  OnCombatEvent);
+    APIDefs->Events_Unsubscribe("EV_ARCDPS_COMBATEVENT_SQUAD_RAW",  OnCombatEvent);
 
     // Unsubscribe all event listeners registered in AddonLoad.
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
