@@ -383,7 +383,6 @@ void RenderArcDPSDump()
         else
         {
             ImGui::Text("ID   : 0x%llX", (unsigned long long)LastTarget.ID);
-            ImGui::Text("Name : %s", LastTarget.Name[0] ? LastTarget.Name : "(was to lazy to put the work in, not really needed anyways)");
         }
     }
 

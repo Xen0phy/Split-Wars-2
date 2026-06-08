@@ -76,6 +76,11 @@ bool HasCrossedPlane(const Vector3& prevPos, const Vector3& currPos, const Route
     float alongPlane = dx * px + dz * pz;
     if (std::abs(alongPlane) > point.RadiusWidth * 0.5f) return false;
 
+    // Step 3b — height gate: reject if player is outside the band above/below Y.
+    float dy = currPos.Y - point.Y;
+    if (dy >  point.bandUpInput)   return false;
+    if (dy < -point.bandDownInput) return false;
+
     // Step 4 — sign-change test: project both positions onto the normal.
     // A sign change means the player moved from one side of the plane to the other.
     float prevDx  = prevPos.X - point.X;
