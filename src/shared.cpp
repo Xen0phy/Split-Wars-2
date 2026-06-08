@@ -231,10 +231,17 @@ bool HotbarSavedShowRouteBrowser = false;
 // ---------------------------------------------------------------------------
 // ArcDPS
 // ---------------------------------------------------------------------------
-bool             HasKillingBlow = false;
-KillingBlowEvent LastKillingBlow = {};
-bool      HasTarget   = false;
-uintptr_t LastTargetID = 0;
+std::vector<PendingKillingBlowSplit> PendingKillingBlowSplits;
+bool                            HasKillingBlow = false;
+KillingBlowEvent                LastKillingBlow = {};
+std::vector<KillingBlowEvent>   KillingBlows;
+std::vector<ChangeDeadEvent>    RewardEvents;
+bool                            HasTarget   = false;
+TargetInfo                      LastTarget = {};
+bool                            InCombat = false;
+std::vector<SquadCombatEntry>   CombatEntries = {};
+std::mutex                      CombatEntriesMutex;
+std::vector<SqCombatStartEvent> SqCombatStartEvents;
 
 // ---------------------------------------------------------------------------
 // Debug

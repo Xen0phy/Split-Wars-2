@@ -229,17 +229,65 @@ extern bool HotbarSavedShowRouteBrowser;
 // ---------------------------------------------------------------------------
 // ArcDPS
 // ---------------------------------------------------------------------------
+
+struct PendingKillingBlowSplit {
+    char     Name[64];
+    double   SplitTime;
+    bool     Ready;
+};
+extern std::vector<PendingKillingBlowSplit> PendingKillingBlowSplits;
+
 struct KillingBlowEvent {
-    uint64_t   Time;
-    uint64_t   SourceAgent;   // who dealt the killing blow
-    uint64_t   DestAgent;     // who died
-    char       DestName[64];  // name of the victim (valid at event time — copy it)
+    uint64_t             ArcTime;
+    uint64_t             LocalTime;
+    uint64_t             SourceAgent;   // who dealt the killing blow
+    uint64_t             DestAgent;     // who died
+    char                 SourceName[64];
+    char                 DestName[64];  // name of the victim (valid at event time — copy it)
     ArcDPS::EIsFriendFoe IFF;
+    bool                 IsLocal;
 };
 extern bool             HasKillingBlow;
 extern KillingBlowEvent LastKillingBlow;
-extern bool      HasTarget;
-extern uintptr_t LastTargetID;
+extern std::vector<KillingBlowEvent> KillingBlows;
+
+struct ChangeDeadEvent {
+    uint64_t ArcTime;
+    uint64_t LocalTime;
+    uint64_t AgentID;
+    char     Name[64];
+    bool     IsLocal;
+};
+extern std::vector<ChangeDeadEvent> RewardEvents;
+
+struct TargetInfo {
+    uintptr_t ID;
+    char      Name[64];
+};
+extern bool             HasTarget;
+extern TargetInfo       LastTarget;
+
+struct SquadCombatEntry {
+    uintptr_t AgentID;
+    char      Name[64];
+    uint64_t  ArcTimeEnter;
+    uint64_t  LocalTimeEnter;
+    uint64_t  ArcTimeExit;
+    uint64_t  LocalTimeExit;
+    bool      HasExited;
+    bool      IsLocal;       // true = LOCAL_RAW, false = SQUAD_RAW
+};
+
+extern bool                             InCombat;
+extern std::vector<SquadCombatEntry>    CombatEntries;
+extern std::mutex                       CombatEntriesMutex;
+
+struct SqCombatStartEvent {
+    uint64_t ArcTime;
+    uint64_t LocalTime;
+    bool     IsLocal;
+};
+extern std::vector<SqCombatStartEvent> SqCombatStartEvents;
 
 // ---------------------------------------------------------------------------
 // Debug
@@ -250,3 +298,4 @@ extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle ca
 // Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
 extern float ZoneRenderAvgMs;
 extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender
+

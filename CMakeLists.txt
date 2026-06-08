@@ -6,6 +6,15 @@ set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
 set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
 set(CMAKE_CXX_STANDARD 17)
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+add_custom_target(bump_rev
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/bump_rev.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Bumping revision..."
+    VERBATIM
+)
+
 add_library(SplitWars2 SHARED
     src/entry.cpp
     src/addon.cpp
@@ -29,6 +38,8 @@ add_library(SplitWars2 SHARED
     include/imgui_tables.cpp
     include/imgui_widgets.cpp
 )
+
+add_dependencies(SplitWars2 bump_rev)
 
 target_include_directories(SplitWars2 PRIVATE include)
 

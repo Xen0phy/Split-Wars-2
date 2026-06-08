@@ -8,6 +8,7 @@
 // which is essential for accurate split times.
 
 #include "timer.h"
+#include "algorithm"
 #include <cstring>
 
 // ---------------------------------------------------------------------------
@@ -148,7 +149,9 @@ void Timer::AddSplit(const char* name)
 // ---------------------------------------------------------------------------
 void Timer::AddSplitAt(const Split& split)
 {
-    m_Splits.push_back(split);
+    auto it = std::lower_bound(m_Splits.begin(), m_Splits.end(), split,
+    [](const Split& a, const Split& b) { return a.Timestamp < b.Timestamp; });
+    m_Splits.insert(it, split);
 }
 
 // ---------------------------------------------------------------------------
