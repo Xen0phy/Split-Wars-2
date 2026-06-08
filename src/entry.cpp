@@ -12,6 +12,7 @@
 //   - AddonQuickAccessMenu(): right-click context menu on the hotbar icon
 //   - RTAPI hot-load/unload event handlers
 
+#include "arcdps_events.h"
 #include "hotbar_icon.h"
 #include "imgui.h"
 #include "shared.h"
@@ -194,162 +195,6 @@ void HandleIdentityUpdate(void* aEventArgs)
 }
 
 // ---------------------------------------------------------------------------
-// OnCombatEvent
-// ---------------------------------------------------------------------------
-// Called by Nexus for every ArcDPS combat event relayed via the integration bridge.
-// aEventArgs is a pointer to an EvCombatData struct (squad and local use the same layout).
-// ---------------------------------------------------------------------------
-struct EvCombatData
-{
-    ArcDPS::CombatEvent* ev;
-    ArcDPS::AgentShort*  src;
-    ArcDPS::AgentShort*  dst;
-    const char*          skillname;
-    uint64_t             id;
-    uint64_t             revision;
-};
-
-static void OnCombatEventInternal(void* aEventArgs, bool isLocal);
-
-static void OnCombatEventLocal(void* aEventArgs)
-{
-    OnCombatEventInternal(aEventArgs, true);
-}
-
-static void OnCombatEventSquad(void* aEventArgs)
-{
-    OnCombatEventInternal(aEventArgs, false);
-}
-
-static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
-{
-    if (!aEventArgs) return;
-    EvCombatData* data = (EvCombatData*)aEventArgs;
-
-    if (!data->ev)
-    {
-        if (data->src && data->src->Specialization == 1)
-        {
-            HasTarget     = true;
-            LastTarget.ID = data->src->ID;
-            if (data->src->Name)
-                strncpy(LastTarget.Name, data->src->Name, sizeof(LastTarget.Name) - 1);
-            else
-                LastTarget.Name[0] = '\0';
-        }
-        return;
-    }
-
-    if (data->ev->IsStatechange == ArcDPS::CBTS_SQCOMBATSTART)
-    {
-        SqCombatStartEvent ev = {};
-        ev.ArcTime   = data->ev->Time;
-        ev.LocalTime = GetTickCount64();
-        ev.IsLocal   = isLocal;
-
-        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
-        SqCombatStartEvents.push_back(ev);
-        return;
-    }
-
-    if (data->ev->IsStatechange == ArcDPS::CBTS_ENTERCOMBAT)
-    {
-        SquadCombatEntry entry = {};
-        entry.AgentID        = data->ev->SourceAgent;
-        entry.ArcTimeEnter   = data->ev->Time;
-        entry.LocalTimeEnter = GetTickCount64();
-        entry.HasExited      = false;
-        entry.IsLocal        = isLocal;
-        if (data->src && data->src->Name)
-            strncpy(entry.Name, data->src->Name, sizeof(entry.Name) - 1);
-
-        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
-        if (CombatEntries.size() < 100)
-            CombatEntries.push_back(entry);
-        InCombat = true;
-        return;
-    }
-
-    if (data->ev->IsStatechange == ArcDPS::CBTS_EXITCOMBAT)
-    {
-        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
-        for (auto& e : CombatEntries)
-        {
-            if (e.AgentID == data->ev->SourceAgent && e.IsLocal == isLocal && !e.HasExited)
-            {
-                e.ArcTimeExit   = data->ev->Time;
-                e.LocalTimeExit = GetTickCount64();
-                e.HasExited     = true;
-                break;
-            }
-        }
-        return;
-    }
-
-    if (data->ev->IsStatechange == ArcDPS::CBTS_REWARD)
-    {
-        ChangeDeadEvent ev = {};
-        ev.ArcTime   = data->ev->Time;
-        ev.LocalTime = GetTickCount64();
-        ev.AgentID   = data->ev->DestinationAgent;
-        ev.IsLocal   = isLocal;
-
-        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
-        if (RewardEvents.size() >= 20)
-            RewardEvents.erase(RewardEvents.begin());
-        RewardEvents.push_back(ev);
-        return;
-    }
-
-    if (data->ev->IsStatechange != ArcDPS::CBTS_NONE) return;
-    if ((ArcDPS::ECombatResult)data->ev->Result != ArcDPS::CBTR_KILLINGBLOW) return;
-
-    {
-        KillingBlowEvent ev = {};
-        ev.ArcTime     = data->ev->Time;
-        ev.LocalTime   = GetTickCount64();
-        ev.SourceAgent = data->ev->SourceAgent;
-        ev.DestAgent   = data->ev->DestinationAgent;
-        ev.IFF         = (ArcDPS::EIsFriendFoe)data->ev->IFF;
-        ev.IsLocal     = isLocal;
-        if (data->dst && data->dst->Name)
-            strncpy(ev.DestName, data->dst->Name, sizeof(ev.DestName) - 1);
-        if (data->src && data->src->Name)
-            strncpy(ev.SourceName, data->src->Name, sizeof(ev.SourceName) - 1);
-
-        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
-        if (KillingBlows.size() >= 20)
-            KillingBlows.erase(KillingBlows.begin());
-        KillingBlows.push_back(ev);
-    }
-
-    if (!isLocal &&
-        (ArcDPS::EIsFriendFoe)data->ev->IFF == ArcDPS::IFF_FOE &&
-        data->dst && data->dst->Name &&
-        SpeedrunTimer.IsRunning())
-    {
-        int64_t offsetMs  = (int64_t)GetTickCount64() - (int64_t)data->ev->Time;
-        double  offsetSec = offsetMs / 1000.0;
-        
-        for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
-        {
-            auto& cp = CurrentRoute.Checkpoints[i];
-            if (cp.Point.TriggerType != ETriggerType::KillingBlow) continue;
-            if (checkpointTriggered[i]) continue;
-            if (strcmp(cp.Name, data->dst->Name) != 0) continue;
-        
-            PendingKillingBlowSplit pending = {};
-            pending.SplitTime = SpeedrunTimer.GetElapsedSeconds() - offsetSec;
-            strncpy(pending.Name, cp.Name, sizeof(pending.Name) - 1);
-            pending.Ready = true;
-            PendingKillingBlowSplits.push_back(pending);
-            checkpointTriggered[i] = true;
-            break;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // AddonLoad
 // ---------------------------------------------------------------------------
 // Called once by Nexus after the DLL is loaded.  This is where we do all
@@ -411,8 +256,7 @@ void AddonLoad(AddonAPI_t* aApi)
     // Subscribe to identity updates so we can keep CameraFOV in sync.
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
 
-    APIDefs->Events_Subscribe("EV_ARCDPS_COMBATEVENT_LOCAL_RAW", OnCombatEventLocal);
-    APIDefs->Events_Subscribe("EV_ARCDPS_COMBATEVENT_SQUAD_RAW", OnCombatEventSquad);
+    ArcDPS_Subscribe();
 
     // Load hotbar icon textures from embedded memory and register QuickAccess shortcut.
     // The icon images are baked into hotbar_icon.h as byte arrays at compile time.
@@ -465,8 +309,7 @@ void AddonUnload()
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
 
-    APIDefs->Events_Unsubscribe("EV_ARCDPS_COMBATEVENT_LOCAL_RAW", OnCombatEventLocal);
-    APIDefs->Events_Unsubscribe("EV_ARCDPS_COMBATEVENT_SQUAD_RAW", OnCombatEventSquad);
+    ArcDPS_Unsubscribe();
 
     // Unsubscribe all event listeners registered in AddonLoad.
     APIDefs->Events_Unsubscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);

@@ -231,9 +231,6 @@ bool HotbarSavedShowRouteBrowser = false;
 // ---------------------------------------------------------------------------
 // ArcDPS
 // ---------------------------------------------------------------------------
-std::vector<PendingKillingBlowSplit> PendingKillingBlowSplits;
-bool                            HasKillingBlow = false;
-KillingBlowEvent                LastKillingBlow = {};
 std::vector<KillingBlowEvent>   KillingBlows;
 std::vector<ChangeDeadEvent>    RewardEvents;
 bool                            HasTarget   = false;

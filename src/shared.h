@@ -229,14 +229,6 @@ extern bool HotbarSavedShowRouteBrowser;
 // ---------------------------------------------------------------------------
 // ArcDPS
 // ---------------------------------------------------------------------------
-
-struct PendingKillingBlowSplit {
-    char     Name[64];
-    double   SplitTime;
-    bool     Ready;
-};
-extern std::vector<PendingKillingBlowSplit> PendingKillingBlowSplits;
-
 struct KillingBlowEvent {
     uint64_t             ArcTime;
     uint64_t             LocalTime;
@@ -247,8 +239,6 @@ struct KillingBlowEvent {
     ArcDPS::EIsFriendFoe IFF;
     bool                 IsLocal;
 };
-extern bool             HasKillingBlow;
-extern KillingBlowEvent LastKillingBlow;
 extern std::vector<KillingBlowEvent> KillingBlows;
 
 struct ChangeDeadEvent {

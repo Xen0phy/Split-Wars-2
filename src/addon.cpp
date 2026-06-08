@@ -704,29 +704,6 @@ void AddonRender()
                 }
             }
 
-            // Flush pending KillingBlow splits regardless of timer state —
-            // they may arrive after the run has already finished.
-            if (!PendingKillingBlowSplits.empty())
-            {
-                for (auto& pending : PendingKillingBlowSplits)
-                {
-                    if (!pending.Ready) continue;
-                    Split s;
-                    s.Timestamp = pending.SplitTime;
-                    strncpy(s.Name, pending.Name, sizeof(s.Name) - 1);
-                    SpeedrunTimer.AddSplitAt(s);
-                }
-                PendingKillingBlowSplits.clear();
-
-                // If the run is already finished, patch the history entry too.
-                if (SpeedrunTimer.IsFinished() && !HistoryRuns.empty())
-                {
-                    HistoryRuns[0].Splits = SpeedrunTimer.GetSplits();
-                    if (!CurrentHistoryPath.empty())
-                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
-                }
-            }
-
             // --- Checkpoint and goal logic (skipped during load screens) ---
             if (!isLoading && SpeedrunTimer.IsRunning())
             {
@@ -740,8 +717,7 @@ void AddonRender()
 
                     // Null types are decorative — never trigger.
                     if (cp.TriggerType == ETriggerType::NullCircle ||
-                        cp.TriggerType == ETriggerType::NullPlane  ||
-                        cp.TriggerType == ETriggerType::KillingBlow)
+                        cp.TriggerType == ETriggerType::NullPlane)
                         continue;
 
                     // MapChange checkpoints don't need to be on a specific map (the

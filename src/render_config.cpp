@@ -304,7 +304,6 @@ void RenderConfigWindow()
             bool isNullCircle     = point.TriggerType == ETriggerType::NullCircle;
             bool isNullPlane      = point.TriggerType == ETriggerType::NullPlane;
             bool isNull           = isNullCircle || isNullPlane;
-            bool isKillingBlow    = point.TriggerType == ETriggerType::KillingBlow;
 
             // --- Name ---
             ImGui::TableSetColumnIndex(0);
@@ -331,7 +330,7 @@ void RenderConfigWindow()
                 if (cp.IsStart)
                 {
                     ETriggerType t = point.TriggerType;
-                    if (t == ETriggerType::AllCheckpoints || t == ETriggerType::KillingBlow)
+                    if (t == ETriggerType::AllCheckpoints)
                         cp.IsStart = false; // AllCheckpoints is goal-only, never start
                     else if (t == ETriggerType::MapChange      ||
                              t == ETriggerType::CircleInteract ||
@@ -375,9 +374,9 @@ void RenderConfigWindow()
             ImGui::TableSetColumnIndex(3);
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints", "Killing Blow (ArcDPS)", "Null (Circle)", "Null (Plane)" };
+            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints", "Null (Circle)", "Null (Plane)" };
             int currentType = (int)point.TriggerType;
-            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 9))
+            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 8))
             {
                 point.TriggerType = (ETriggerType)currentType;
                 if (point.TriggerType == ETriggerType::AllCheckpoints)
@@ -389,7 +388,7 @@ void RenderConfigWindow()
             
             // Enforce start/goal compatibility whenever trigger type may have changed
             ETriggerType t = point.TriggerType;
-            if (t == ETriggerType::AllCheckpoints || t == ETriggerType::KillingBlow)
+            if (t == ETriggerType::AllCheckpoints)
                 cp.IsStart = false;
             else if (t == ETriggerType::MapChange      ||
                      t == ETriggerType::CircleInteract ||
@@ -401,7 +400,7 @@ void RenderConfigWindow()
             // --- MapID ---
             // Hidden for "All Checkpoints" since that trigger has no spatial context.
             ImGui::TableSetColumnIndex(4);
-            if (!isAllCheckpoints && !isKillingBlow)
+            if (!isAllCheckpoints)
             {
                 ImGui::SetNextItemWidth(-1);
                 char mapIdLabel[32]; snprintf(mapIdLabel, sizeof(mapIdLabel), "##mapid_%d", i);
@@ -414,7 +413,7 @@ void RenderConfigWindow()
             // Hidden for Map Change (position is irrelevant — only the map ID matters)
             // and for All Checkpoints (no spatial component at all).
             ImGui::TableSetColumnIndex(5);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##x_%d", i);
@@ -422,7 +421,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(6);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##y_%d", i);
@@ -430,7 +429,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(7);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##z_%d", i);
@@ -442,7 +441,7 @@ void RenderConfigWindow()
             // trigger plane perpendicular to its facing angle).
             // For all other spatial triggers it shows the circle Radius.
             ImGui::TableSetColumnIndex(8);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##r_%d", i);
@@ -455,7 +454,7 @@ void RenderConfigWindow()
             // Higher values produce denser coverage; lower values are sparser.
             // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(9);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 char l[32]; snprintf(l, sizeof(l), "##dotDensity_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -471,7 +470,7 @@ void RenderConfigWindow()
             //   BandDown   — degrees below centre where dot alpha fades to 0.
             // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(10);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandCenter_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -480,7 +479,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(11);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandUp_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -489,7 +488,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(12);
-            if (!isMapChange && !isAllCheckpoints && !isKillingBlow)
+            if (!isMapChange && !isAllCheckpoints)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandDown_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -541,7 +540,7 @@ void RenderConfigWindow()
             // direction so the plane is perpendicular to the direction the player is
             // looking. Hidden for "All Checkpoints" (no position to capture).
             ImGui::TableSetColumnIndex(14);
-            if (!isAllCheckpoints && !isKillingBlow)
+            if (!isAllCheckpoints)
             {
                 char capLabel[32]; snprintf(capLabel, sizeof(capLabel), "Cap##%d", i);
                 if (ImGui::Button(capLabel) && (MumbleLink || GS.RTAPIAvailable))

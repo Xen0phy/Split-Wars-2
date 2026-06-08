@@ -44,9 +44,8 @@ enum class ETriggerType : unsigned char
     CircleInteract  = 3,
     CombatArena     = 4,
     AllCheckpoints  = 5,
-    KillingBlow     = 6,
-    NullCircle      = 7,  // Decorative only — renders like Circle but never triggers
-    NullPlane       = 8,  // Decorative only — renders like Plane but never triggers
+    NullCircle      = 6,  // Decorative only — renders like Circle but never triggers
+    NullPlane       = 7,  // Decorative only — renders like Plane but never triggers
 };
 
 // ---------------------------------------------------------------------------

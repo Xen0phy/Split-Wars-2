@@ -19,6 +19,7 @@ add_library(SplitWars2 SHARED
     src/entry.cpp
     src/addon.cpp
     src/addon_options.cpp
+    src/arcdps_events.cpp
     src/shared.cpp
     src/timer.cpp
     src/route.cpp
