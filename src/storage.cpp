@@ -538,7 +538,8 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"color_null",       {settings.ColorNull[0],       settings.ColorNull[1],       settings.ColorNull[2]}},
             {"color_ahead",      {settings.ColorAhead[0],      settings.ColorAhead[1],      settings.ColorAhead[2]}},
             {"color_behind",     {settings.ColorBehind[0],     settings.ColorBehind[1],     settings.ColorBehind[2]}},
-            {"color_best_row",   {settings.ColorBestRow[0],    settings.ColorBestRow[1],    settings.ColorBestRow[2]}}
+            {"color_best_row",   {settings.ColorBestRow[0],    settings.ColorBestRow[1],    settings.ColorBestRow[2]}},
+            {"timer_font_scale", settings.TimerFontScale},
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -593,6 +594,7 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
             for (int i = 0; i < 3; i++) settings.ColorBehind[i] = j["color_behind"][i].get<float>();
         if (j.contains("color_best_row") && j["color_best_row"].size() == 3)
             for (int i = 0; i < 3; i++) settings.ColorBestRow[i] = j["color_best_row"][i].get<float>();
+        settings.TimerFontScale = j.value("timer_font_scale", 1.0);
         return true;
     }
     catch (...) { return false; }

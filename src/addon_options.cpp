@@ -49,6 +49,9 @@ void AddonOptions()
     Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
     ImGui::Checkbox("Compact Mode",       &CompactMode);
     Tooltip("Reduces the timer to one line.");
+    ImGui::Checkbox("Streamer Mode", &StreamerMode);
+    Tooltip("Uses a larger font (FontBig) for better stream visibility. Overrides Timer Scale.");
+    ImGui::SliderFloat("Timer Scale", &TimerFontScale, 0.5f, 4.0f, "%.1fx");
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();

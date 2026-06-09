@@ -39,6 +39,12 @@ void RenderTimerOverlay()
         ImGuiWindowFlags_NoFocusOnAppearing|  // Don't steal keyboard focus on show
         ImGuiWindowFlags_NoNav               // Not keyboard-navigable
     );
+    ImFont* activeFont = StreamerMode ? GetStreamerFont() : nullptr;
+    // Temporary debug:
+    ImGui::Text("StreamerMode: %d  StreamerFont: %p  activeFont: %p",
+        StreamerMode, StreamerFont, activeFont);
+    if (activeFont) ImGui::PushFont(activeFont);
+    ImGui::SetWindowFontScale(TimerFontScale);
 
     // Snapshot all the state we'll need so we're not calling getters repeatedly.
     const auto& splits    = SpeedrunTimer.GetSplits();
@@ -363,6 +369,6 @@ void RenderTimerOverlay()
             }
         }
     }
-
+    if (activeFont) ImGui::PopFont();
     ImGui::End();
 }

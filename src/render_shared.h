@@ -22,6 +22,7 @@
 // Render entry points — one per UI window, each implemented in its own .cpp
 // ---------------------------------------------------------------------------
 void RenderTimerOverlay();
+void RenderTimerOverlayStream();
 void RenderConfigWindow();
 void RenderHistoryWindow();
 void RenderRouteBrowserWindow();
@@ -53,6 +54,10 @@ ImVec4 TimeColor(double current, double best, bool running);
 // Loads a route file from disk and updates all shared global state
 // (CurrentRoute, history, file paths, timer reset).
 void LoadRouteFile(const RouteFile& rf);
+
+// bigger numbers are better, right?
+extern ImFont* StreamerFont; // FontBig from NexusLinkData
+ImFont* GetStreamerFont();
 
 // ---------------------------------------------------------------------------
 // Tooltip  (inline helper)

@@ -1014,7 +1014,10 @@ void AddonRender()
     // Skip world and timer rendering on the character selection screen
     // (detected by player position being exactly zero).
     RenderZones();
-    RenderTimerOverlay();
+    if (StreamerMode)
+        RenderTimerOverlayStream();
+    else
+        RenderTimerOverlay();
     RenderConfigWindow();
     RenderHistoryWindow();
     RenderRouteBrowserWindow();

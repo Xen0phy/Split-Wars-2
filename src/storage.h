@@ -112,6 +112,8 @@ struct Settings
     float HistoryWindowH = 400.0f;
     float BrowserWindowW = 400.0f;
     float BrowserWindowH = 400.0f;
+    float TimerFontScale = 1.0f;
+    bool StreamerMode = false;
 };
 
 // ---------------------------------------------------------------------------

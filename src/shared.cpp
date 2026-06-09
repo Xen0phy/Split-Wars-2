@@ -152,6 +152,8 @@ float BrowserWindowH = 400.0f;
 // ---------------------------------------------------------------------------
 TimerMode TimerDisplayMode = TimerMode::Split;
 bool      CompactMode      = false;
+float TimerFontScale = 1.0f;
+bool StreamerMode = false;
 
 // ---------------------------------------------------------------------------
 // History / best run data

@@ -155,6 +155,18 @@ ImVec4 TimeColor(double current, double best, bool running)
     return ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f);  // ColorBehind — behind best
 }
 
+ImFont* StreamerFont = nullptr;
+
+ImFont* GetStreamerFont()
+{
+    if (!StreamerFont && APIDefs)
+    {
+        NexusLinkData_t* nl = (NexusLinkData_t*)APIDefs->DataLink_Get(DL_NEXUS_LINK);
+        if (nl) StreamerFont = (ImFont*)nl->FontBig;
+    }
+    return StreamerFont;
+}
+
 // ---------------------------------------------------------------------------
 // LoadRouteFile
 // ---------------------------------------------------------------------------
