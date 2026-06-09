@@ -26,6 +26,7 @@
 // After a run finishes, "Save as best" and "Reset Timer" buttons are shown.
 
 #include "render_shared.h"
+#include "stream_fonts.h"
 
 void RenderTimerOverlay()
 {
@@ -40,9 +41,6 @@ void RenderTimerOverlay()
         ImGuiWindowFlags_NoNav               // Not keyboard-navigable
     );
     ImFont* activeFont = StreamerMode ? GetStreamerFont() : nullptr;
-    // Temporary debug:
-    ImGui::Text("StreamerMode: %d  StreamerFont: %p  activeFont: %p",
-        StreamerMode, StreamerFont, activeFont);
     if (activeFont) ImGui::PushFont(activeFont);
     ImGui::SetWindowFontScale(TimerFontScale);
 

@@ -55,10 +55,6 @@ ImVec4 TimeColor(double current, double best, bool running);
 // (CurrentRoute, history, file paths, timer reset).
 void LoadRouteFile(const RouteFile& rf);
 
-// bigger numbers are better, right?
-extern ImFont* StreamerFont; // FontBig from NexusLinkData
-ImFont* GetStreamerFont();
-
 // ---------------------------------------------------------------------------
 // Tooltip  (inline helper)
 // ---------------------------------------------------------------------------

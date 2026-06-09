@@ -10,6 +10,7 @@
 // CMakeLists.txt).
 
 #include "render_shared.h"
+#include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
 // Layout constants

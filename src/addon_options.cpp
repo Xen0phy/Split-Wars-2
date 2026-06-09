@@ -7,6 +7,7 @@
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
 #include "render_shared.h"
+#include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
 // AddonOptions
@@ -52,6 +53,48 @@ void AddonOptions()
     ImGui::Checkbox("Streamer Mode", &StreamerMode);
     Tooltip("Uses a larger font (FontBig) for better stream visibility. Overrides Timer Scale.");
     ImGui::SliderFloat("Timer Scale", &TimerFontScale, 0.5f, 4.0f, "%.1fx");
+
+    // Streamer font picker
+    const auto& fontNames = GetStreamFontNames();
+    if (!fontNames.empty())
+    {
+        ImGui::Spacing();
+        ImGui::Text("Streamer Mode Font:");
+
+        const char* preview = StreamerFontName.empty() ? fontNames[0].c_str() : StreamerFontName.c_str();
+        if (ImGui::BeginCombo("Font##streamer", preview))
+        {
+            for (auto& name : fontNames)
+            {
+                bool selected = (StreamerFontName == name);
+                if (ImGui::Selectable(name.c_str(), selected))
+                {
+                    StreamerFontName = name;
+                    SaveCurrentSettings();
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        Tooltip("Font used in Streamer Mode. Drop .ttf/.otf files into\nthe Split Wars 2/fonts/ folder and restart.");
+
+        int size = StreamerFontSize;
+        if (ImGui::SliderInt("Size##streamer", &size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX))
+        {
+            size = ((size + 1) / 2) * 2;
+            size = std::clamp(size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX);
+            StreamerFontSize = size;
+            SaveCurrentSettings();
+        }
+        Tooltip("Pixel size of the streamer font (2px steps, pre-rasterized).");
+    }
+    else
+    {
+        ImGui::Spacing();
+        ImGui::TextDisabled("No fonts found in Split Wars 2/fonts/");
+        ImGui::TextDisabled("Drop .ttf or .otf files there and restart.");
+    }
+
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
