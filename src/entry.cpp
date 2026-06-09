@@ -119,6 +119,7 @@ static void ApplySettings(const Settings& s)
     StreamerMode      = s.StreamerMode;
     StreamerFontName  = s.StreamerFontName;
     StreamerFontSize  = s.StreamerFontSize;
+    StreamerShowRunningMillis = s.StreamerShowRunningMillis;
 }
 
 // Snapshot the current global variables into a Settings struct ready for saving.
@@ -154,6 +155,7 @@ static Settings GatherSettings()
     s.StreamerMode      = StreamerMode;
     s.StreamerFontName  = StreamerFontName;
     s.StreamerFontSize  = StreamerFontSize;
+    s.StreamerShowRunningMillis = StreamerShowRunningMillis;
     return s;
 }
 

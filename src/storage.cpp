@@ -543,6 +543,7 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"streamer_mode",         settings.StreamerMode},
             {"streamer_font_name",    settings.StreamerFontName},
             {"streamer_font_size",    settings.StreamerFontSize},
+            {"streamer_show_running_millis", settings.StreamerShowRunningMillis},
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -601,6 +602,7 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.StreamerMode   = j.value("streamer_mode",    false);
         settings.StreamerFontName = j.value("streamer_font_name", std::string(""));
         settings.StreamerFontSize = j.value("streamer_font_size", 32);
+        settings.StreamerShowRunningMillis = j.value("streamer_show_running_millis", false);
         return true;
     }
     catch (...) { return false; }

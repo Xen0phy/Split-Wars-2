@@ -93,37 +93,164 @@ static void SDrawHeaderBarAlpha(ImDrawList* dl, ImVec2 pos, float width,
     dl->AddText(tp, SToU32Alpha(SC_TextHeader(), alpha), label);
 }
 
+// ---------------------------------------------------------------------------
+// SFontSet -- the four ImFont* pointers derived from the user's chosen size.
+//
+//   mainFont        h:m:s  of the running time          (chosen size, e.g. 36)
+//   mainMillisFont  .xxx   of the running time          (chosen - 2,  e.g. 34)
+//   compFont        h:m:s  of the comparison / diff     (chosen - 2,  e.g. 34)
+//   compMillisFont  .xxx   of the comparison / diff     (chosen - 4,  e.g. 32)
+//
+// All four are resolved once per frame in RenderTimerOverlayStream and passed
+// down to every drawing helper so the lookups happen only once.
+// ---------------------------------------------------------------------------
+struct SFontSet
+{
+    ImFont* main        = nullptr;  // running h:m:s      (S)
+    ImFont* mainMillis  = nullptr;  // running .xxx       (S-2)
+    ImFont* comp        = nullptr;  // comparison h:m:s   (S-2)
+    ImFont* compMillis  = nullptr;  // comparison .xxx    (S-4)
+};
+
+// ---------------------------------------------------------------------------
+// Helper: split a formatted time string "H:MM:SS.mmm" into two parts.
+//   out_main receives everything up to (but not including) the last '.'
+//   out_millis receives '.' and everything after it
+// If no '.' is found, out_main gets the whole string, out_millis is empty.
+// ---------------------------------------------------------------------------
+static void SplitTimeAtDot(const char* buf,
+                            char* out_main,   int main_sz,
+                            char* out_millis, int millis_sz)
+{
+    const char* dot = strrchr(buf, '.');
+    if (dot)
+    {
+        int len = (int)(dot - buf);
+        if (len >= main_sz) len = main_sz - 1;
+        strncpy(out_main, buf, len);
+        out_main[len] = '\0';
+        strncpy(out_millis, dot, millis_sz - 1);
+        out_millis[millis_sz - 1] = '\0';
+    }
+    else
+    {
+        strncpy(out_main, buf, main_sz - 1);
+        out_main[main_sz - 1] = '\0';
+        out_millis[0] = '\0';
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Core drawing primitive used by both the live and the fade-out path.
+//
+// timeBuf      : full formatted running time (e.g. "0:01:23.456")
+// showMillis   : whether milliseconds are present in timeBuf
+// diffMainBuf  : h:m:s part of diff (may be empty)
+// diffDecBuf   : .xxx part of diff  (may be empty)
+// hasDiff      : whether to draw diff at all
+// fonts        : resolved SFontSet (nullptrs fall back gracefully)
+// alpha        : overall transparency (1.0 = opaque)
+// ---------------------------------------------------------------------------
 static void SDrawTimeRowAlpha(ImDrawList* dl, ImVec2 pos, float width,
                               const char* timeBuf,
                               const char* diffMainBuf, const char* diffDecBuf, bool hasDiff,
                               ImVec4 timeColor, ImVec4 diffColor,
-                              ImFont* bigFont, float alpha)
+                              const SFontSet& fonts, float alpha)
 {
     ImVec2 rowMax = ImVec2(pos.x + width, pos.y + STIME_ROW_H);
     dl->AddRectFilled(pos, rowMax, SToU32Alpha(SC_Bg(), alpha), ImGui::GetStyle().WindowRounding, ImDrawCornerFlags_Bot);
 
-    float bigSize    = bigFont ? bigFont->FontSize : ImGui::GetFontSize();
-    float bigScale   = ImGui::GetCurrentWindow()->FontWindowScale;
-    float scaledSize = bigSize * bigScale;
-    float timeY      = pos.y + (STIME_ROW_H - scaledSize) * 0.5f;
+    float bigScale = ImGui::GetCurrentWindow()->FontWindowScale;
 
-    if (bigFont) dl->AddText(bigFont, scaledSize, ImVec2(pos.x + SPAD_X, timeY), SToU32Alpha(timeColor, alpha), timeBuf);
-    else         dl->AddText(ImVec2(pos.x + SPAD_X, timeY), SToU32Alpha(timeColor, alpha), timeBuf);
+    // --- Running time: split into h:m:s and .xxx, draw at different sizes ---
+    {
+        ImFont* fMain   = fonts.main;
+        ImFont* fMillis = fonts.mainMillis;
 
+        // Determine rendered pixel sizes
+        float sizeMain   = (fMain ? fMain->FontSize : ImGui::GetFontSize()) * bigScale;
+        // Use the millis font size if it is a distinct rasterization; if the fallback
+        // collapsed mainMillis to the same pointer as main, render millis 2px smaller.
+        float sizeMillis;
+        if (fMillis && fMillis != fMain)
+            sizeMillis = fMillis->FontSize * bigScale;
+        else
+            sizeMillis = sizeMain - 2.0f * bigScale;
+
+        // Split timeBuf at the decimal point
+        char hms[32] = {}, ms[16] = {};
+        SplitTimeAtDot(timeBuf, hms, sizeof(hms), ms, sizeof(ms));
+
+        // Vertically centre the larger (main) part in the row
+        float timeY = pos.y + (STIME_ROW_H - sizeMain) * 0.5f;
+        ImU32 tc    = SToU32Alpha(timeColor, alpha);
+
+        // Draw h:m:s
+        float curX = pos.x + SPAD_X;
+        if (fMain)
+            dl->AddText(fMain, sizeMain, ImVec2(curX, timeY), tc, hms);
+        else
+            dl->AddText(ImVec2(curX, timeY), tc, hms);
+
+        // Draw .xxx aligned to bottom of h:m:s baseline
+        if (ms[0] != '\0')
+        {
+            // Compute width of the h:m:s part to advance X
+            float hmsW = fMain
+                ? fMain->CalcTextSizeA(sizeMain, FLT_MAX, 0.0f, hms).x
+                : ImGui::GetFont()->CalcTextSizeA(sizeMain, FLT_MAX, 0.0f, hms).x;
+            // Baseline-align: bottom of millis == bottom of main
+            float msY = timeY + (sizeMain - sizeMillis);
+            if (fMillis)
+                dl->AddText(fMillis, sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+            else
+                dl->AddText(ImGui::GetFont(), sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+        }
+    }
+
+    // --- Comparison / diff: h:m:s at comp size, .xxx at compMillis size ---
     if (hasDiff && diffMainBuf[0] != '\0')
     {
-        ImU32  dc         = SToU32Alpha(diffColor, alpha);
-        float  normalSize = ImGui::GetFontSize() * bigScale;
-        float  smallSize  = normalSize * 0.72f;
-        float  diffY      = pos.y + (STIME_ROW_H - normalSize) * 0.5f;
-        float  decY       = diffY + (normalSize - smallSize);
+        ImFont* fComp       = fonts.comp;
+        ImFont* fCompMillis = fonts.compMillis;
 
-        ImVec2 mainSz = ImGui::GetFont()->CalcTextSizeA(normalSize, FLT_MAX, 0.0f, diffMainBuf);
-        ImVec2 decSz  = ImGui::GetFont()->CalcTextSizeA(smallSize,  FLT_MAX, 0.0f, diffDecBuf);
-        float  startX = pos.x + width - mainSz.x - decSz.x - SDIFF_PAD_X;
+        float sizeComp       = (fComp ? fComp->FontSize : ImGui::GetFontSize()) * bigScale;
+        float sizeCompMillis;
+        if (fCompMillis && fCompMillis != fComp)
+            sizeCompMillis = fCompMillis->FontSize * bigScale;
+        else
+            sizeCompMillis = sizeComp - 2.0f * bigScale;
 
-        dl->AddText(ImGui::GetFont(), normalSize, ImVec2(startX,            diffY), dc, diffMainBuf);
-        dl->AddText(ImGui::GetFont(), smallSize,  ImVec2(startX + mainSz.x, decY),  dc, diffDecBuf);
+        ImU32 dc    = SToU32Alpha(diffColor, alpha);
+        float diffY = pos.y + (STIME_ROW_H - sizeComp) * 0.5f;
+
+        // Measure both parts to right-align the whole diff block
+        float mainW = fComp
+            ? fComp->CalcTextSizeA(sizeComp, FLT_MAX, 0.0f, diffMainBuf).x
+            : ImGui::GetFont()->CalcTextSizeA(sizeComp, FLT_MAX, 0.0f, diffMainBuf).x;
+        float decW  = (diffDecBuf[0] != '\0')
+            ? (fCompMillis
+                ? fCompMillis->CalcTextSizeA(sizeCompMillis, FLT_MAX, 0.0f, diffDecBuf).x
+                : ImGui::GetFont()->CalcTextSizeA(sizeCompMillis, FLT_MAX, 0.0f, diffDecBuf).x)
+            : 0.0f;
+
+        float startX = pos.x + width - mainW - decW - SDIFF_PAD_X;
+
+        // Draw h:m:s part of diff
+        if (fComp)
+            dl->AddText(fComp, sizeComp, ImVec2(startX, diffY), dc, diffMainBuf);
+        else
+            dl->AddText(ImGui::GetFont(), sizeComp, ImVec2(startX, diffY), dc, diffMainBuf);
+
+        // Draw .xxx part of diff, baseline-aligned
+        if (diffDecBuf[0] != '\0')
+        {
+            float decY = diffY + (sizeComp - sizeCompMillis);
+            if (fCompMillis)
+                dl->AddText(fCompMillis, sizeCompMillis, ImVec2(startX + mainW, decY), dc, diffDecBuf);
+            else
+                dl->AddText(ImGui::GetFont(), sizeCompMillis, ImVec2(startX + mainW, decY), dc, diffDecBuf);
+        }
     }
 }
 
@@ -138,7 +265,7 @@ static float SDrawHeaderBar(ImDrawList* dl, ImVec2 pos, float width,
 static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
                           double timeVal, bool showMillis,
                           bool hasDiff, double diff, bool isSplit,
-                          ImVec4 timeColor, ImFont* bigFont)
+                          ImVec4 timeColor, const SFontSet& fonts)
 {
     char timeBuf[32], diffBuf[32];
     FormatTime(timeBuf, sizeof(timeBuf), timeVal, showMillis);
@@ -176,7 +303,7 @@ static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
                       (hasDiff && diffValid) ? mainPart : "",
                       (hasDiff && diffValid) ? decPart  : "",
                       hasDiff && diffValid,
-                      timeColor, diffColor, bigFont, 1.0f);
+                      timeColor, diffColor, fonts, 1.0f);
     return pos.y + STIME_ROW_H;
 }
 
@@ -233,7 +360,28 @@ void RenderTimerOverlayStream()
     bool showPostRun    = finished && RunFinished;
     bool showIdle       = !running && !finished;
 
-    ImFont* bigFont = GetStreamerFont();
+    // Build the four-font set for this frame.
+    // mainFont (S) is the user's chosen size; others derive from it in -2 steps.
+    // GetStreamFont() returns nullptr if the atlas hasn't delivered yet -- all
+    // drawing helpers fall back gracefully to ImGui's current font in that case.
+    SFontSet fonts;
+    {
+        const std::string& name = StreamerFontName;
+        float S  = (float)StreamerFontSize;        // e.g. 36
+        float S2 = S - 4.0f;                       // e.g. 32  (running millis + comp hms)
+        float S4 = S - 8.0f;                       // e.g. 28  (comp millis)
+        fonts.main       = name.empty() ? nullptr : GetStreamFont(name, S);
+        fonts.mainMillis = name.empty() ? nullptr : GetStreamFont(name, S2);
+        fonts.comp       = fonts.mainMillis;        // running millis == comp hms
+        fonts.compMillis = name.empty() ? nullptr : GetStreamFont(name, S4);
+
+        // Fallback chain: if a specific size isn't ready yet, use the nearest
+        // available slot from GetStreamerFont() so the overlay is never blank.
+        if (!fonts.main) fonts.main = GetStreamerFont();
+        if (!fonts.mainMillis) fonts.mainMillis = fonts.main;
+        if (!fonts.comp)       fonts.comp       = fonts.mainMillis;
+        if (!fonts.compMillis) fonts.compMillis = fonts.comp;
+    }
     float   dt      = ImGui::GetIO().DeltaTime;
 
     // -------------------------------------------------------------------------
@@ -347,7 +495,7 @@ void RenderTimerOverlayStream()
                               s_Outgoing.timeBuf,
                               s_Outgoing.diffMainBuf, s_Outgoing.diffDecBuf, s_Outgoing.hasDiff,
                               s_Outgoing.timeColor, s_Outgoing.diffColor,
-                              bigFont, alpha);
+                              fonts, alpha);
         }
         ImGui::End();
     }
@@ -417,7 +565,7 @@ void RenderTimerOverlayStream()
             float curY = wp.y;
             curY = SDrawHeaderBar(dl, ImVec2(wp.x, curY), SSW, label, accent);
             SDrawTimeRow(dl, ImVec2(wp.x, curY), SSW,
-                         timeVal, showMillis, hasDiff, diff, isSplit, timeColor, bigFont);
+                         timeVal, showMillis, hasDiff, diff, isSplit, timeColor, fonts);
             // Border around the whole section, respecting Nexus style
             const ImGuiStyle& st = ImGui::GetStyle();
             if (st.WindowBorderSize > 0.0f)
@@ -490,7 +638,7 @@ void RenderTimerOverlayStream()
             : SC_AccentIdle();
 
         RenderSec(segLabel, accent,
-                  segmentTime, !running,
+                  segmentTime, !running || StreamerShowRunningMillis,
                   hasDiff && std::abs(diff) > 0.0005, diff, finished,
                   TimeColor(diffCurSeg, diffBestSeg, running));
     }
@@ -508,7 +656,7 @@ void RenderTimerOverlayStream()
             : SC_AccentIdle();
 
         RenderSec("TOTAL", accent,
-                  elapsed, !running,
+                  elapsed, !running || StreamerShowRunningMillis,
                   hasBest && std::abs(totalDiff) > 0.0005, totalDiff, finished,
                   TimeColor(elapsed, bestTotal, running));
     }

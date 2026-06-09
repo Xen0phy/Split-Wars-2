@@ -2,8 +2,11 @@
 // Streamer-mode font manager.
 //
 // Scans <AddonDir>/fonts/ on startup, registers every .ttf/.otf file at
-// every size from 24px to 48px in 2px steps with Nexus, and caches the
-// resulting ImFont* pointers as Nexus delivers them via callbacks.
+// every size from 20px (STREAM_FONT_ATLAS_MIN) to 48px in 2px steps with
+// Nexus, and caches the resulting ImFont* pointers as Nexus delivers them
+// via callbacks.  The atlas starts at 20px so that derived sizes used by
+// the streamer timer (main − 2, main − 4) are always available even at the
+// minimum user-selectable font size of 24px.
 //
 // Font identifiers registered with Nexus follow the pattern:
 //   "SW2_STREAM_<STEM>_<SIZE>"
@@ -94,8 +97,11 @@ void InitStreamFonts()
     // Sort for deterministic dropdown order
     std::sort(files.begin(), files.end());
 
-    // Register every file x size combination
-    int numSizes = (int)((STREAM_FONT_SIZE_MAX - STREAM_FONT_SIZE_MIN) / STREAM_FONT_SIZE_STEP) + 1;
+    // Register every file x size combination.
+    // The atlas covers STREAM_FONT_ATLAS_MIN (20px) through STREAM_FONT_SIZE_MAX (48px)
+    // so that derived sizes (main - 2, main - 4) are baked even when the user
+    // selects the minimum user-facing size of 24px.
+    int numSizes = (int)((STREAM_FONT_SIZE_MAX - STREAM_FONT_ATLAS_MIN) / STREAM_FONT_SIZE_STEP) + 1;
     s_Slots.reserve(files.size() * numSizes);
 
     for (auto& path : files)
@@ -106,7 +112,7 @@ void InitStreamFonts()
         if (std::find(s_Names.begin(), s_Names.end(), stem) == s_Names.end())
             s_Names.push_back(stem);
 
-        for (float sz = STREAM_FONT_SIZE_MIN; sz <= STREAM_FONT_SIZE_MAX + 0.01f; sz += STREAM_FONT_SIZE_STEP)
+        for (float sz = STREAM_FONT_ATLAS_MIN; sz <= STREAM_FONT_SIZE_MAX + 0.01f; sz += STREAM_FONT_SIZE_STEP)
         {
             char id[128];
             snprintf(id, sizeof(id), "SW2_STREAM_%s_%.0f", stem.c_str(), sz);

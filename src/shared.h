@@ -172,6 +172,7 @@ extern float        TimerFontScale; // 1.0 = default, up to 4.0 for streaming
 extern bool         StreamerMode;
 extern std::string  StreamerFontName;
 extern int          StreamerFontSize;
+extern bool         StreamerShowRunningMillis;
 
 // ---------------------------------------------------------------------------
 // History / best run

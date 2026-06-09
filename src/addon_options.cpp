@@ -79,6 +79,9 @@ void AddonOptions()
         Tooltip("Font used in Streamer Mode. Drop .ttf/.otf files into\nthe Split Wars 2/fonts/ folder and restart.");
 
         int size = StreamerFontSize;
+        // Slider is intentionally restricted to the user-facing range (24-48 px).
+        // The font atlas bakes 20-48 px so that derived sizes used by the streamer
+        // timer (main-2, main-4) are always available even at the minimum size.
         if (ImGui::SliderInt("Size##streamer", &size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX))
         {
             size = ((size + 1) / 2) * 2;
@@ -86,7 +89,11 @@ void AddonOptions()
             StreamerFontSize = size;
             SaveCurrentSettings();
         }
-        Tooltip("Pixel size of the streamer font (2px steps, pre-rasterized).");
+        Tooltip("Pixel size of the main time digits (2px steps). Milliseconds and comparison times use smaller sizes automatically.");
+
+        if (ImGui::Checkbox("Show milliseconds while running##streamer", &StreamerShowRunningMillis))
+            SaveCurrentSettings();
+        Tooltip("When enabled, the live segment and total rows show milliseconds\nwhile the timer is running (h:m:s at chosen size, .xxx two sizes smaller).\nDisabled by default: milliseconds only appear once the segment is stopped.");
     }
     else
     {

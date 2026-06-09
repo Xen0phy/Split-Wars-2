@@ -4,8 +4,12 @@
 //
 // On startup, scans <AddonDir>/fonts/ for .ttf/.otf files and registers
 // every combination of (file x size) with Nexus, where sizes run from
-// STREAM_FONT_SIZE_MIN to STREAM_FONT_SIZE_MAX in STREAM_FONT_SIZE_STEP steps.
+// STREAM_FONT_ATLAS_MIN to STREAM_FONT_SIZE_MAX in STREAM_FONT_SIZE_STEP steps.
 // Up to STREAM_FONT_MAX_FILES fonts are loaded.
+//
+// The atlas covers 20–48 px so that derived sizes (main size − 2, − 4) are
+// always available even when the user picks the minimum selectable size (24).
+// The user-facing size picker is intentionally restricted to 24–48 px.
 //
 // Usage:
 //   InitStreamFonts();              // call once from AddonLoad after APIDefs ready
@@ -17,6 +21,11 @@
 #include <string>
 #include <vector>
 
+// Atlas baked range — 16 px gives headroom for the −4/−8 derived sizes
+// used by the streamer timer even at the lowest user-selectable size (24).
+static constexpr float STREAM_FONT_ATLAS_MIN = 16.0f;
+
+// User-selectable range (shown in the options slider)
 static constexpr float STREAM_FONT_SIZE_MIN  = 24.0f;
 static constexpr float STREAM_FONT_SIZE_MAX  = 48.0f;
 static constexpr float STREAM_FONT_SIZE_STEP =  2.0f;

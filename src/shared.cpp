@@ -156,6 +156,7 @@ float TimerFontScale = 1.0f;
 bool StreamerMode = false;
 std::string StreamerFontName = "";
 int         StreamerFontSize = 32;
+bool        StreamerShowRunningMillis = false;
 
 // ---------------------------------------------------------------------------
 // History / best run data
