@@ -10,6 +10,7 @@
 // CMakeLists.txt).
 
 #include "render_shared.h"
+#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -82,26 +83,32 @@ static int          s_LastSplitStart = -1;
 // Drawing helpers
 // ---------------------------------------------------------------------------
 static void SDrawHeaderBarAlpha(ImDrawList* dl, ImVec2 pos, float width,
-                                const char* label, ImVec4 accent, float alpha)
+                                const char* label, ImVec4 accent, float alpha,
+                                ImFont* headerFont = nullptr, float headerH = 0.0f)
 {
-    ImVec2 barMax = ImVec2(pos.x + width, pos.y + SHEADER_H);
+    ImVec2 barMax = ImVec2(pos.x + width, pos.y + headerH);
     const float rounding = ImGui::GetStyle().WindowRounding;
     dl->AddRectFilled(pos, barMax, SToU32Alpha(SC_HeaderBg(), alpha), rounding, ImDrawCornerFlags_Top);
     dl->AddRectFilled(pos, ImVec2(pos.x + SACCENT_W, barMax.y), SToU32Alpha(accent, alpha));
+    float fontSize = headerFont ? headerFont->FontSize : ImGui::GetFontSize();
     ImVec2 tp = ImVec2(pos.x + SACCENT_W + SPAD_X,
-                       pos.y + (SHEADER_H - ImGui::GetFontSize()) * 0.5f);
-    dl->AddText(tp, SToU32Alpha(SC_TextHeader(), alpha), label);
+                       pos.y + (headerH - fontSize) * 0.5f);
+    if (headerFont)
+        dl->AddText(headerFont, fontSize, tp, SToU32Alpha(SC_TextHeader(), alpha), label);
+    else
+        dl->AddText(tp, SToU32Alpha(SC_TextHeader(), alpha), label);
 }
 
 // ---------------------------------------------------------------------------
-// SFontSet -- the four ImFont* pointers derived from the user's chosen size.
+// SFontSet -- the five ImFont* pointers derived from the user's chosen size.
 //
 //   mainFont        h:m:s  of the running time          (chosen size, e.g. 36)
 //   mainMillisFont  .xxx   of the running time          (chosen - 2,  e.g. 34)
 //   compFont        h:m:s  of the comparison / diff     (chosen - 2,  e.g. 34)
 //   compMillisFont  .xxx   of the comparison / diff     (chosen - 4,  e.g. 32)
+//   header          size   of the title bars and button text
 //
-// All four are resolved once per frame in RenderTimerOverlayStream and passed
+// All five are resolved once per frame in RenderTimerOverlayStream and passed
 // down to every drawing helper so the lookups happen only once.
 // ---------------------------------------------------------------------------
 struct SFontSet
@@ -110,6 +117,7 @@ struct SFontSet
     ImFont* mainMillis  = nullptr;  // running .xxx       (S-2)
     ImFont* comp        = nullptr;  // comparison h:m:s   (S-2)
     ImFont* compMillis  = nullptr;  // comparison .xxx    (S-4)
+    ImFont* header      = nullptr;  // title bar + buttons (StreamerHeaderFontSize)
 };
 
 // ---------------------------------------------------------------------------
@@ -256,10 +264,11 @@ static void SDrawTimeRowAlpha(ImDrawList* dl, ImVec2 pos, float width,
 
 // Convenience wrappers at full alpha for normal rendering
 static float SDrawHeaderBar(ImDrawList* dl, ImVec2 pos, float width,
-                             const char* label, ImVec4 accent)
+                             const char* label, ImVec4 accent, ImFont* headerFont = nullptr,
+                             float headerH = 0.0f)
 {
-    SDrawHeaderBarAlpha(dl, pos, width, label, accent, 1.0f);
-    return pos.y + SHEADER_H;
+    SDrawHeaderBarAlpha(dl, pos, width, label, accent, 1.0f, headerFont, headerH);
+    return pos.y + headerH;
 }
 
 static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
@@ -276,7 +285,7 @@ static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
 
     if (hasDiff)
     {
-        diffValid = FormatDiff(diffBuf, sizeof(diffBuf), diff, isSplit);
+        diffValid = FormatDiff(diffBuf, sizeof(diffBuf), diff, isSplit, StreamerShowRunningMillis);
         diffColor = (diff < 0.0)
             ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
             : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f);
@@ -317,7 +326,6 @@ static bool BeginSection(const char* id, ImVec2 pos, bool isAnchor)
     else
         ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
 
-    ImGui::SetNextWindowSize(ImVec2(SSW, SSEC_H));
     ImGui::SetNextWindowBgAlpha(0.0f);
 
     ImGuiWindowFlags flags =
@@ -374,6 +382,7 @@ void RenderTimerOverlayStream()
         fonts.mainMillis = name.empty() ? nullptr : GetStreamFont(name, S2);
         fonts.comp       = fonts.mainMillis;        // running millis == comp hms
         fonts.compMillis = name.empty() ? nullptr : GetStreamFont(name, S4);
+        fonts.header     = name.empty() ? nullptr : GetStreamFont(name, (float)StreamerHeaderFontSize);
 
         // Fallback chain: if a specific size isn't ready yet, use the nearest
         // available slot from GetStreamerFont() so the overlay is never blank.
@@ -381,7 +390,11 @@ void RenderTimerOverlayStream()
         if (!fonts.mainMillis) fonts.mainMillis = fonts.main;
         if (!fonts.comp)       fonts.comp       = fonts.mainMillis;
         if (!fonts.compMillis) fonts.compMillis = fonts.comp;
+        if (!fonts.header)     fonts.header     = ImGui::GetFont();
     }
+    float headerFontSize = fonts.header ? fonts.header->FontSize : ImGui::GetFontSize();
+    float dynamicHeaderH = headerFontSize + 6.0f; // 3px padding top and bottom
+    float dynamicSecH = dynamicHeaderH + STIME_ROW_H;
     float   dt      = ImGui::GetIO().DeltaTime;
 
     // -------------------------------------------------------------------------
@@ -433,7 +446,7 @@ void RenderTimerOverlayStream()
             char diffBuf[32] = {};
             s_Outgoing.diffMainBuf[0] = '\0';
             s_Outgoing.diffDecBuf[0]  = '\0';
-            if (s_Outgoing.hasDiff && FormatDiff(diffBuf, sizeof(diffBuf), diff, true))
+            if (s_Outgoing.hasDiff && FormatDiff(diffBuf, sizeof(diffBuf), diff, true,StreamerShowRunningMillis))
             {
                 const char* dot = strrchr(diffBuf, '.');
                 if (dot)
@@ -472,10 +485,10 @@ void RenderTimerOverlayStream()
         float ease  = t * t;
         float alpha = 1.0f - ease;
         // Slide upward by one full section height
-        float slideY = s_Outgoing.startY - ease * (SSEC_H + SGAP_H);
+        float slideY = s_Outgoing.startY - ease * (dynamicSecH + SGAP_H);
 
         ImGui::SetNextWindowPos(ImVec2(s_AnchorPos.x, slideY), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(SSW, SSEC_H));
+        ImGui::SetNextWindowSize(ImVec2(SSW, dynamicSecH));
         ImGui::SetNextWindowBgAlpha(0.0f);
         if (ImGui::Begin("##SW2Seg_Out", nullptr,
             ImGuiWindowFlags_NoDecoration       |
@@ -486,12 +499,11 @@ void RenderTimerOverlayStream()
             ImGuiWindowFlags_NoResize           |
             ImGuiWindowFlags_NoMove))
         {
-            ImGui::SetWindowFontScale(TimerFontScale);
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2      wp = ImGui::GetWindowPos();
 
-            SDrawHeaderBarAlpha(dl, wp, SSW, s_Outgoing.label, s_Outgoing.accent, alpha);
-            SDrawTimeRowAlpha(dl, ImVec2(wp.x, wp.y + SHEADER_H), SSW,
+            SDrawHeaderBarAlpha(dl, wp, SSW, s_Outgoing.label, s_Outgoing.accent, alpha, fonts.header, dynamicHeaderH);
+            SDrawTimeRowAlpha(dl, ImVec2(wp.x, wp.y + dynamicHeaderH), SSW,
                               s_Outgoing.timeBuf,
                               s_Outgoing.diffMainBuf, s_Outgoing.diffDecBuf, s_Outgoing.hasDiff,
                               s_Outgoing.timeColor, s_Outgoing.diffColor,
@@ -514,10 +526,10 @@ void RenderTimerOverlayStream()
     // keeps its position when the run starts -- no jump on first split.
     if (showIdle)
     {
+        ImGui::SetNextWindowSize(ImVec2(SSW, dynamicSecH));
         if (BeginSection("##SW2Seg_0", NextPos(), true))
         {
             s_AnchorPos = ImGui::GetWindowPos();
-            ImGui::SetWindowFontScale(TimerFontScale);
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2      wp = ImGui::GetWindowPos();
             const ImGuiStyle& st = ImGui::GetStyle();
@@ -525,10 +537,10 @@ void RenderTimerOverlayStream()
             const char* headerLabel = CurrentRoute.IsValid
                 ? CurrentRouteName.c_str()
                 : "NO ROUTE SET";
-            SDrawHeaderBarAlpha(dl, wp, SSW, headerLabel, SC_AccentIdle(), 1.0f);
+            SDrawHeaderBarAlpha(dl, wp, SSW, headerLabel, SC_AccentIdle(), 1.0f, fonts.header, dynamicHeaderH);
 
-            ImVec2 rowMin = ImVec2(wp.x, wp.y + SHEADER_H);
-            ImVec2 rowMax = ImVec2(wp.x + SSW, wp.y + SSEC_H);
+            ImVec2 rowMin = ImVec2(wp.x, wp.y + dynamicHeaderH);
+            ImVec2 rowMax = ImVec2(wp.x + SSW, wp.y + dynamicSecH);
             dl->AddRectFilled(rowMin, rowMax, SToU32(SC_Bg()),
                               st.WindowRounding, ImDrawCornerFlags_Bot);
 
@@ -537,12 +549,14 @@ void RenderTimerOverlayStream()
                             st.WindowRounding, ImDrawCornerFlags_All, st.WindowBorderSize);
 
             float btnW = SSW - SPAD_X * 2.0f;
+            if (fonts.header) ImGui::PushFont(fonts.header);
             float btnH = ImGui::GetFrameHeight();
             ImGui::SetCursorScreenPos(ImVec2(
                 wp.x + SPAD_X,
                 rowMin.y + (STIME_ROW_H - btnH) * 0.5f));
             if (ImGui::Button("Browse Routes", ImVec2(btnW, btnH)))
                 ShowRouteBrowser = !ShowRouteBrowser;
+            if (fonts.header) ImGui::PopFont();
         }
         ImGui::End();
         return;
@@ -556,26 +570,26 @@ void RenderTimerOverlayStream()
         snprintf(wid, sizeof(wid), "##SW2Seg_%d", sectionIdx);
         bool isAnchor = (sectionIdx == 0);
 
+        ImGui::SetNextWindowSize(ImVec2(SSW, dynamicSecH));
         if (BeginSection(wid, NextPos(), isAnchor))
         {
             if (isAnchor) s_AnchorPos = ImGui::GetWindowPos();
-            ImGui::SetWindowFontScale(TimerFontScale);
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2 wp = ImGui::GetWindowPos();
             float curY = wp.y;
-            curY = SDrawHeaderBar(dl, ImVec2(wp.x, curY), SSW, label, accent);
+            curY = SDrawHeaderBar(dl, ImVec2(wp.x, curY), SSW, label, accent, fonts.header, dynamicHeaderH);
             SDrawTimeRow(dl, ImVec2(wp.x, curY), SSW,
                          timeVal, showMillis, hasDiff, diff, isSplit, timeColor, fonts);
             // Border around the whole section, respecting Nexus style
             const ImGuiStyle& st = ImGui::GetStyle();
             if (st.WindowBorderSize > 0.0f)
-                dl->AddRect(wp, ImVec2(wp.x + SSW, wp.y + SSEC_H),
+                dl->AddRect(wp, ImVec2(wp.x + SSW, wp.y + dynamicSecH),
                             SToU32(st.Colors[ImGuiCol_Border]),
                             st.WindowRounding, ImDrawCornerFlags_All, st.WindowBorderSize);
         }
         ImGui::End();
 
-        nextY = s_AnchorPos.y + (sectionIdx + 1) * (SSEC_H + SGAP_H);
+        nextY = s_AnchorPos.y + (sectionIdx + 1) * (dynamicSecH + SGAP_H);
         sectionIdx++;
     };
 
@@ -669,10 +683,11 @@ void RenderTimerOverlayStream()
     // Styled as a section: "RUN FINISHED" header bar + two full-width buttons in the row.
     if (showPostRun)
     {
-        float btnH   = ImGui::GetFrameHeight();
+        if (fonts.header) ImGui::PushFont(fonts.header);
+        float btnH = ImGui::GetFrameHeight();
         float btnGap = ImGui::GetStyle().ItemSpacing.y;
         float rowH   = btnH * 2.0f + btnGap + SPAD_X * 2.0f;
-        float panelH = SHEADER_H + rowH;
+        float panelH = dynamicHeaderH + rowH;
 
         snprintf(wid, sizeof(wid), "##SW2Seg_%d", sectionIdx);
         ImGui::SetNextWindowPos(NextPos(), ImGuiCond_Always);
@@ -687,16 +702,15 @@ void RenderTimerOverlayStream()
             ImGuiWindowFlags_NoResize           |
             ImGuiWindowFlags_NoMove);
 
-        ImGui::SetWindowFontScale(TimerFontScale);
         ImDrawList*       dl = ImGui::GetWindowDrawList();
         ImVec2            wp = ImGui::GetWindowPos();
         const ImGuiStyle& st = ImGui::GetStyle();
 
         // Header bar
-        SDrawHeaderBarAlpha(dl, wp, SSW, "RUN FINISHED", SC_AccentIdle(), 1.0f);
+        SDrawHeaderBarAlpha(dl, wp, SSW, "RUN FINISHED", SC_AccentIdle(), 1.0f, fonts.header, dynamicHeaderH);
 
         // Row background
-        ImVec2 rowMin = ImVec2(wp.x, wp.y + SHEADER_H);
+        ImVec2 rowMin = ImVec2(wp.x, wp.y + dynamicHeaderH);
         ImVec2 rowMax = ImVec2(wp.x + SSW, wp.y + panelH);
         dl->AddRectFilled(rowMin, rowMax, SToU32(SC_Bg()),
                           st.WindowRounding, ImDrawCornerFlags_Bot);
@@ -736,6 +750,8 @@ void RenderTimerOverlayStream()
             FullReset();
             RunFinished = false;
         }
+        
+        if (fonts.header) ImGui::PopFont();
 
         ImGui::End();
     }

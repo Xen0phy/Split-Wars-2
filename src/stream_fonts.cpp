@@ -66,10 +66,11 @@ void InitStreamFonts()
     if (!APIDefs)      return;
 
     std::string fontsDir = GetAddonDir() + "\\fonts";
-
+    
     // Collect font files (up to STREAM_FONT_MAX_FILES)
     std::vector<fs::path> files;
     std::error_code ec;
+    fs::create_directories(fontsDir, ec);
     if (fs::exists(fontsDir, ec))
     {
         for (auto& entry : fs::directory_iterator(fontsDir, ec))

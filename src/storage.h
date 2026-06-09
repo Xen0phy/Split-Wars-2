@@ -112,11 +112,11 @@ struct Settings
     float HistoryWindowH         = 400.0f;
     float BrowserWindowW         = 400.0f;
     float BrowserWindowH         = 400.0f;
-    float TimerFontScale         = 1.0f;
     bool StreamerMode            = false;
     std::string StreamerFontName = "";   // stem of selected font file, empty = first available
     int         StreamerFontSize = 32;   // pixel size, 24-48 in 2px steps
     bool StreamerShowRunningMillis = false; // show milliseconds on live segment/total while timer is running
+    int         StreamerHeaderFontSize = 20; // pixel size, 20-48 in 2px steps
 };
 
 // ---------------------------------------------------------------------------

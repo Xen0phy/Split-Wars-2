@@ -152,11 +152,11 @@ float BrowserWindowH = 400.0f;
 // ---------------------------------------------------------------------------
 TimerMode TimerDisplayMode = TimerMode::Split;
 bool      CompactMode      = false;
-float TimerFontScale = 1.0f;
 bool StreamerMode = false;
 std::string StreamerFontName = "";
 int         StreamerFontSize = 32;
 bool        StreamerShowRunningMillis = false;
+int         StreamerHeaderFontSize = 20;
 
 // ---------------------------------------------------------------------------
 // History / best run data

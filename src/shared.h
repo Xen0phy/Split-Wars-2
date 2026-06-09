@@ -168,11 +168,11 @@ extern float BrowserWindowH;
 enum class TimerMode { Segment = 0, Split = 1, LiveSplit = 2 };
 extern TimerMode    TimerDisplayMode;
 extern bool         CompactMode;    // Single-line timer instead of the full split table
-extern float        TimerFontScale; // 1.0 = default, up to 4.0 for streaming
 extern bool         StreamerMode;
 extern std::string  StreamerFontName;
 extern int          StreamerFontSize;
 extern bool         StreamerShowRunningMillis;
+extern int          StreamerHeaderFontSize;
 
 // ---------------------------------------------------------------------------
 // History / best run

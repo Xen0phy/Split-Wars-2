@@ -77,16 +77,41 @@ void FormatTimeExport(char* buf, int bufSize, double elapsed)
 //       • 0–10 s ahead           → seconds + millis,  e.g. "-5.123"
 //       • Any amount behind      → full format,        e.g. "+1:02.345"
 // ---------------------------------------------------------------------------
-bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
+bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit, bool isShowMillis)
 {
     double abs = diff < 0.0 ? -diff : diff;
 
+    int minutes = (int)(abs / 60);
+    int seconds = (int)(abs) % 60;
+    int millis  = (int)(abs * 1000) % 1000;
+
+    if(!isShowMillis)
+    {
+        // Live comparison — hide when more than 60 s ahead to reduce visual clutter.
+        if (diff < -60.0)
+            return false;
+
+        // 10–60 s ahead: whole seconds only (millis are noise at this margin).
+        if (diff < -10.0)
+        {
+            int seconds = (int)(abs) % 60;
+            snprintf(buf, bufSize, "-%d", seconds);
+            return true;
+        }
+
+        // 0–10 s ahead: seconds + millis for fine-grained feedback.
+        if (diff < 0.0)
+        {
+            int seconds = (int)(abs) % 60;
+            int millis  = (int)(abs * 1000) % 1000;
+            snprintf(buf, bufSize, "-%d.%03d", seconds, millis);
+            return true;
+        }
+    }
+    
     if (isSplit)
     {
         // Completed split — always show with full precision, strip leading zeros.
-        int minutes = (int)(abs / 60);
-        int seconds = (int)(abs) % 60;
-        int millis  = (int)(abs * 1000) % 1000;
         if (diff < 0.0)
         {
             if (minutes > 0)
@@ -103,37 +128,23 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit)
         }
         return true;
     }
-
-    // Live comparison — hide when more than 60 s ahead to reduce visual clutter.
-    if (diff < -60.0)
-        return false;
-
-    // 10–60 s ahead: whole seconds only (millis are noise at this margin).
-    if (diff < -10.0)
-    {
-        int seconds = (int)(abs) % 60;
-        snprintf(buf, bufSize, "-%d", seconds);
+    else {
+        if (diff < 0.0)
+        {
+            if (minutes > 0)
+                snprintf(buf, bufSize, "-%d:%02d.%03d", minutes, seconds, millis);
+            else
+                snprintf(buf, bufSize, "-%d.%03d", seconds, millis);
+        }
+        else
+        {
+            if (minutes > 0)
+                snprintf(buf, bufSize, "+%d:%02d.%03d", minutes, seconds, millis);
+            else
+                snprintf(buf, bufSize, "+%d.%03d", seconds, millis);
+        }
         return true;
     }
-
-    // 0–10 s ahead: seconds + millis for fine-grained feedback.
-    if (diff < 0.0)
-    {
-        int seconds = (int)(abs) % 60;
-        int millis  = (int)(abs * 1000) % 1000;
-        snprintf(buf, bufSize, "-%d.%03d", seconds, millis);
-        return true;
-    }
-
-    // Behind by any amount: full format so the player knows exactly how much to recover.
-    int minutes = (int)(abs / 60);
-    int seconds = (int)(abs) % 60;
-    int millis  = (int)(abs * 1000) % 1000;
-    if (minutes > 0)
-        snprintf(buf, bufSize, "+%d:%02d.%03d", minutes, seconds, millis);
-    else
-        snprintf(buf, bufSize, "+%d.%03d", seconds, millis);
-    return true;
 }
 
 // ---------------------------------------------------------------------------
