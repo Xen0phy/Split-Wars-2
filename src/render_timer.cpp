@@ -26,6 +26,8 @@
 // After a run finishes, "Save as best" and "Reset Timer" buttons are shown.
 
 #include "render_shared.h"
+#include "shared.h"
+#include "stream_fonts.h"
 
 void RenderTimerOverlay()
 {
@@ -39,6 +41,8 @@ void RenderTimerOverlay()
         ImGuiWindowFlags_NoFocusOnAppearing|  // Don't steal keyboard focus on show
         ImGuiWindowFlags_NoNav               // Not keyboard-navigable
     );
+    ImFont* activeFont = StreamerMode ? GetStreamerFont() : nullptr;
+    if (activeFont) ImGui::PushFont(activeFont);
 
     // Snapshot all the state we'll need so we're not calling getters repeatedly.
     const auto& splits    = SpeedrunTimer.GetSplits();
@@ -58,7 +62,7 @@ void RenderTimerOverlay()
     // -------------------------------------------------------------------------
     if (CompactMode)
     {
-        FormatTime(buf, sizeof(buf), elapsed, !running); // showMillis = false while running, true when idle/finished
+        FormatTime(buf, sizeof(buf), elapsed, StreamerShowRunningMillis); // showMillis = false while running, true when idle/finished
         ImVec4 color = (running || finished)
             ? TimeColor(elapsed, hasBest ? BestRun.back().Timestamp : 0.0, running)
             : ImVec4(0.5f, 0.5f, 0.5f, 1.0f); // Grey when idle
@@ -131,7 +135,7 @@ void RenderTimerOverlay()
                     if (i < (int)BestRun.size() && std::abs(diff) > 0.0005)
                     {
                         // isSplit = true: always show full precision for completed splits
-                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true))
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true,StreamerShowRunningMillis))
                         {
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
@@ -201,7 +205,7 @@ void RenderTimerOverlay()
                     ImGui::TableSetColumnIndex(0);
                     if (hasDiff && std::abs(diff) > 0.0005)
                     {
-                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, finished))
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, finished,StreamerShowRunningMillis))
                         {
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
@@ -214,7 +218,7 @@ void RenderTimerOverlay()
 
                 // Time cell — no milliseconds shown while running
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                FormatTime(buf, sizeof(buf), segmentTime, !running);
+                FormatTime(buf, sizeof(buf), segmentTime, StreamerShowRunningMillis);
                 float textWidth = ImGui::CalcTextSize(buf).x;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(diffCurSeg, diffBestSeg, running), "%s", buf);
@@ -243,7 +247,7 @@ void RenderTimerOverlay()
                     double totalDiff = elapsed - bestTotal;
                     if (std::abs(totalDiff) > 0.0005)
                     {
-                        if (FormatDiff(diffBuf, sizeof(diffBuf), totalDiff, finished))
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), totalDiff, finished,StreamerShowRunningMillis))
                         {
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
@@ -257,7 +261,7 @@ void RenderTimerOverlay()
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 // Show milliseconds only when finished; whole seconds while running
                 double bestTotal = hasBest ? BestRun.back().Timestamp : 0.0;
-                FormatTime(buf, sizeof(buf), elapsed, !running);
+                FormatTime(buf, sizeof(buf), elapsed, StreamerShowRunningMillis);
                 float textWidth = ImGui::CalcTextSize(buf).x;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);
@@ -363,6 +367,6 @@ void RenderTimerOverlay()
             }
         }
     }
-
+    if (activeFont) ImGui::PopFont();
     ImGui::End();
 }

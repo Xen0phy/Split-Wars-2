@@ -11,3 +11,4 @@ src/PNG/
 *.gz
 *.tar
 *.tar.gz
+src/fonts_embedded.h

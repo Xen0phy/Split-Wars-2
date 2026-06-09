@@ -166,8 +166,13 @@ extern float BrowserWindowH;
 //               behaviour of the LiveSplit speedrun software.
 // ---------------------------------------------------------------------------
 enum class TimerMode { Segment = 0, Split = 1, LiveSplit = 2 };
-extern TimerMode TimerDisplayMode;
-extern bool CompactMode;    // Single-line timer instead of the full split table
+extern TimerMode    TimerDisplayMode;
+extern bool         CompactMode;    // Single-line timer instead of the full split table
+extern bool         StreamerMode;
+extern std::string  StreamerFontName;
+extern int          StreamerFontSize;
+extern bool         StreamerShowRunningMillis;
+extern int          StreamerHeaderFontSize;
 
 // ---------------------------------------------------------------------------
 // History / best run
@@ -287,5 +292,4 @@ extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle ca
 // Zone render timing — populated by RenderZones() for the selected debug checkpoint.
 // Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
 extern float ZoneRenderAvgMs;
-extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender
-
+extern bool StreamerMode;extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender

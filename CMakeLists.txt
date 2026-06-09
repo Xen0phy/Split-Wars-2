@@ -31,7 +31,9 @@ add_library(SplitWars2 SHARED
     src/render_debug.cpp
     src/render_history.cpp
     src/render_shared.cpp
+    src/render_timer_stream.cpp
     src/render_timer.cpp
+    src/stream_fonts.cpp
     src/worldrender.cpp
     src/storage.cpp
     include/imgui.cpp

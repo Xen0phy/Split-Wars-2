@@ -7,6 +7,7 @@
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
 #include "render_shared.h"
+#include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
 // AddonOptions
@@ -49,6 +50,69 @@ void AddonOptions()
     Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
     ImGui::Checkbox("Compact Mode",       &CompactMode);
     Tooltip("Reduces the timer to one line.");
+    ImGui::Checkbox("Streamer Mode", &StreamerMode);
+    Tooltip("Uses a larger font (FontBig) for better stream visibility. Overrides Timer Scale.");
+    if (ImGui::Checkbox("Show milliseconds while running##streamer", &StreamerShowRunningMillis))
+        SaveCurrentSettings();
+    Tooltip("When enabled, the live segment and total rows show milliseconds while the timer is running.\nDisabled by default: milliseconds only appear once the segment is stopped.");
+
+    // Streamer font picker
+    if(StreamerMode)
+    {
+        const auto& fontNames = GetStreamFontNames();
+        if (!fontNames.empty())
+        {
+            ImGui::Spacing();
+            ImGui::Text("Streamer Mode Font:");
+
+            const char* preview = StreamerFontName.empty() ? fontNames[0].c_str() : StreamerFontName.c_str();
+            if (ImGui::BeginCombo("Font##streamer", preview))
+            {
+                for (auto& name : fontNames)
+                {
+                    bool selected = (StreamerFontName == name);
+                    if (ImGui::Selectable(name.c_str(), selected))
+                    {
+                        StreamerFontName = name;
+                        SaveCurrentSettings();
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            Tooltip("Use your own font in Streamer Mode. Drop up to 5 .ttf/.otf files into\nthe Split Wars 2/fonts/ folder and restart the addon.");
+
+            int size = StreamerFontSize;
+            // Slider is intentionally restricted to the user-facing range (24-48 px).
+            // The font atlas bakes 20-48 px so that derived sizes used by the streamer
+            // timer (main-2, main-4) are always available even at the minimum size.
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::SliderInt("Size##streamer", &size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX))
+            {
+                size = ((size + 1) / 2) * 2;
+                size = std::clamp(size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX);
+                StreamerFontSize = size;
+                SaveCurrentSettings();
+            }
+            Tooltip("Pixel size of the main time digits (2px steps). Milliseconds and comparison times use smaller sizes automatically.");
+
+            int headerSize = StreamerHeaderFontSize;
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::SliderInt("Header/Button Text Size##streamer", &headerSize, 16,30))
+            {
+                headerSize = ((headerSize + 1) / 2) * 2;
+                headerSize = std::clamp(headerSize, 16, 30);
+                StreamerHeaderFontSize = headerSize;
+                SaveCurrentSettings();
+            }
+        }
+        else
+        {
+            ImGui::Spacing();
+            ImGui::TextDisabled("No fonts found in Split Wars 2/fonts/");
+            ImGui::TextDisabled("Drop .ttf or .otf files there and restart.");
+        }
+    }
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();

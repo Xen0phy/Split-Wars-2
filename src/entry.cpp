@@ -16,6 +16,7 @@
 #include "hotbar_icon.h"
 #include "imgui.h"
 #include "shared.h"
+#include "stream_fonts.h"
 #include "version.h"
 
 // The global addon descriptor filled in by GetAddonDef() and handed to Nexus.
@@ -114,7 +115,13 @@ static void ApplySettings(const Settings& s)
     HistoryWindowW = s.HistoryWindowW;
     HistoryWindowH = s.HistoryWindowH;
     BrowserWindowW = s.BrowserWindowW;
-    BrowserWindowH = s.BrowserWindowH;
+    BrowserWindowH    = s.BrowserWindowH;
+    StreamerMode      = s.StreamerMode;
+    StreamerFontName  = s.StreamerFontName;
+    StreamerFontSize  = s.StreamerFontSize;
+    StreamerShowRunningMillis = s.StreamerShowRunningMillis;
+    StreamerShowRunningMillis = s.StreamerShowRunningMillis;
+    StreamerHeaderFontSize    = s.StreamerHeaderFontSize;
 }
 
 // Snapshot the current global variables into a Settings struct ready for saving.
@@ -146,7 +153,13 @@ static Settings GatherSettings()
     s.HistoryWindowW = HistoryWindowW;
     s.HistoryWindowH = HistoryWindowH;
     s.BrowserWindowW = BrowserWindowW;
-    s.BrowserWindowH = BrowserWindowH;
+    s.BrowserWindowH    = BrowserWindowH;
+    s.StreamerMode      = StreamerMode;
+    s.StreamerFontName  = StreamerFontName;
+    s.StreamerFontSize  = StreamerFontSize;
+    s.StreamerShowRunningMillis = StreamerShowRunningMillis;
+    s.StreamerShowRunningMillis = StreamerShowRunningMillis;
+    s.StreamerHeaderFontSize    = StreamerHeaderFontSize; 
     return s;
 }
 
@@ -250,6 +263,7 @@ void AddonLoad(AddonAPI_t* aApi)
         ApplySettings(s);
 
     // Register the per-frame render callback and the Nexus options panel callback.
+    InitStreamFonts();
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
  
@@ -300,6 +314,7 @@ void AddonLoad(AddonAPI_t* aApi)
 void AddonUnload()
 {
     SaveSettings(AddonDir, GatherSettings());
+    ReleaseStreamFonts();
     
     // Deregister all keybinds.
     DeregisterKeybinds();

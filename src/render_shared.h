@@ -22,6 +22,7 @@
 // Render entry points — one per UI window, each implemented in its own .cpp
 // ---------------------------------------------------------------------------
 void RenderTimerOverlay();
+void RenderTimerOverlayStream();
 void RenderConfigWindow();
 void RenderHistoryWindow();
 void RenderRouteBrowserWindow();
@@ -42,7 +43,7 @@ void FormatTimeExport(char* buf, int bufSize, double elapsed);
 //   than 60 s ahead and reduces precision at large margins to reduce noise.
 // isSplit = true            → completed-split mode: always shown, full precision.
 // Returns false when the diff should be hidden entirely (live mode, far ahead).
-bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit = false);
+bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit = false, bool isShowMillis = false);
 
 // Returns the ImGui color for a split time cell:
 //   White — segment still in progress  (running = true)

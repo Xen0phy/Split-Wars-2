@@ -86,32 +86,37 @@ struct RouteFolder
 // ---------------------------------------------------------------------------
 struct Settings
 {
-    bool ShowTimer           = true;
-    bool ShowConfig          = true;
-    bool ShowZones           = true;
-    float ZoneFadeStart      = 50.0f;
-    float ZoneFadeEnd        = 150.0f;
-    bool ShowDebug           = false;
-    int TimerDisplayMode     = 1;     // Default: Split mode
-    bool CompactMode         = false;
-    bool ShowHistory         = false;
-    bool ShowGrandTotal      = false;
-    bool ShowRouteBrowser    = false;
-    int MaxHistoryRuns       = 10;
-    int DataSource           = 0; // 0 = Default, 1 = Mumble, 2 = RTAPI
-    float ColorStart[3]      = { 0.2f, 1.0f, 0.2f };
-    float ColorGoal[3]       = { 0.2f, 0.5f, 1.0f };
-    float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
-    float ColorNull[3]       = { 1.0f, 0.6f, 0.0f };
-    float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
-    float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
-    float ColorBestRow[3]    = { 0.2f, 0.3f, 0.2f };
-    float ConfigWindowW  = 800.0f;
-    float ConfigWindowH  = 400.0f;
-    float HistoryWindowW = 400.0f;
-    float HistoryWindowH = 400.0f;
-    float BrowserWindowW = 400.0f;
-    float BrowserWindowH = 400.0f;
+    bool ShowTimer               = true;
+    bool ShowConfig              = true;
+    bool ShowZones               = true;
+    float ZoneFadeStart          = 50.0f;
+    float ZoneFadeEnd            = 150.0f;
+    bool ShowDebug               = false;
+    int TimerDisplayMode         = 1;     // Default: Split mode
+    bool CompactMode             = false;
+    bool ShowHistory             = false;
+    bool ShowGrandTotal          = false;
+    bool ShowRouteBrowser        = false;
+    int MaxHistoryRuns           = 10;
+    int DataSource               = 0; // 0 = Default, 1 = Mumble, 2 = RTAPI
+    float ColorStart[3]          = { 0.2f, 1.0f, 0.2f };
+    float ColorGoal[3]           = { 0.2f, 0.5f, 1.0f };
+    float ColorCheckpoint[3]     = { 1.0f, 1.0f, 1.0f };
+    float ColorNull[3]           = { 1.0f, 0.6f, 0.0f };
+    float ColorAhead[3]          = { 0.2f, 1.0f, 0.2f };
+    float ColorBehind[3]         = { 1.0f, 0.3f, 0.3f };
+    float ColorBestRow[3]        = { 0.2f, 0.3f, 0.2f };
+    float ConfigWindowW          = 800.0f;
+    float ConfigWindowH          = 400.0f;
+    float HistoryWindowW         = 400.0f;
+    float HistoryWindowH         = 400.0f;
+    float BrowserWindowW         = 400.0f;
+    float BrowserWindowH         = 400.0f;
+    bool StreamerMode            = false;
+    std::string StreamerFontName = "";   // stem of selected font file, empty = first available
+    int         StreamerFontSize = 32;   // pixel size, 24-48 in 2px steps
+    bool StreamerShowRunningMillis = false; // show milliseconds on live segment/total while timer is running
+    int         StreamerHeaderFontSize = 20; // pixel size, 20-48 in 2px steps
 };
 
 // ---------------------------------------------------------------------------
