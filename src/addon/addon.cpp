@@ -10,6 +10,7 @@
 //   - RegisterKeybinds() / DeregisterKeybinds() wrappers
 
 #include "render_shared.h"
+#include "shared.h"
 #include "worldrender.h"
 
 // ---------------------------------------------------------------------------
@@ -624,7 +625,7 @@ void AddonRender()
                     if (pt.TriggerType == ETriggerType::Circle)
                     {
                         // Enter → reset (arms the start zone).
-                        if (inCircle && !prevWasInCircle && !SpeedrunTimer.IsRunning()) //xxx
+                        if (inCircle && !prevWasInCircle && SpeedrunTimer.IsRunning() && !cs.IsGoal) //xxx
                             FullReset();
 
                         // Exit → start timer.

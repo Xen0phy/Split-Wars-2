@@ -6,7 +6,9 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
+#include "imgui.h"
 #include "render_shared.h"
+#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -127,6 +129,8 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Streamer Mode", &StreamerMode);
             Tooltip("Uses a larger font for better stream visibility.");
+            
+            const auto& fontNames = GetStreamFontNames();
     
             ImGui::TableSetColumnIndex(1);
             if (streamerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
@@ -166,34 +170,51 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(1);
             {
                 int size = StreamerFontSize;
-                ImGui::SetNextItemWidth(200.0f);
-                if (ImGui::SliderInt("Size##streamer", &size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX))
+                if (fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                static const int fontSizes[] = { 24, 28, 32, 36, 40, 44, 48 };
+                char preview[8];
+                snprintf(preview, sizeof(preview), "%d", StreamerFontSize);
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::BeginCombo("Size##streamer", preview))
                 {
-                    size = ((size + 1) / 2) * 2;
-                    size = std::clamp(size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX);
-                    StreamerFontSize = size;
-                    SaveCurrentSettings();
+                    for (int s : fontSizes)
+                    {
+                        char label[8];
+                        snprintf(label, sizeof(label), "%d", s);
+                        if (ImGui::Selectable(label, StreamerFontSize == s))
+                        {
+                            StreamerFontSize = s;
+                            SaveCurrentSettings();
+                        }
+                        if (StreamerFontSize == s) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
                 }
-                Tooltip("Pixel size of the main time digits (2px steps).");
-            }
-    
-            // Row 3
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            // empty
-    
-            ImGui::TableSetColumnIndex(1);
-            {
-                int headerSize = StreamerHeaderFontSize;
-                ImGui::SetNextItemWidth(200.0f);
-                if (ImGui::SliderInt("Header Size##streamer", &headerSize, 16, 30))
+                Tooltip("Pixel size of the main time digits.");
+
+                ImGui::SameLine();
+
+                static const int headerSizes[] = { 16, 20, 24, 28, 32 };
+                char headerPreview[8];
+                snprintf(headerPreview, sizeof(headerPreview), "%d", StreamerHeaderFontSize);
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::BeginCombo("Header Size##streamer", headerPreview))
                 {
-                    headerSize = ((headerSize + 1) / 2) * 2;
-                    headerSize = std::clamp(headerSize, 16, 30);
-                    StreamerHeaderFontSize = headerSize;
-                    SaveCurrentSettings();
+                    for (int s : headerSizes)
+                    {
+                        char label[8];
+                        snprintf(label, sizeof(label), "%d", s);
+                        if (ImGui::Selectable(label, StreamerHeaderFontSize == s))
+                        {
+                            StreamerHeaderFontSize = s;
+                            SaveCurrentSettings();
+                        }
+                        if (StreamerHeaderFontSize == s) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
                 }
-                Tooltip("Pixel size of the section title bar labels and buttons (2px steps).");
+                Tooltip("Pixel size of the section title bar labels.");
+                if (fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
             }
     
             if (streamerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
@@ -217,11 +238,12 @@ void AddonOptions()
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // Crash checkbox only needs streamer enabled
-            if (streamerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (streamerDisabled || fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (fontNames.empty()) CrashMode = false;
             if (ImGui::Checkbox("Crash Mode##cm", &CrashMode))
                 SaveCurrentSettings();
             Tooltip("Enables the layered digit style with shadow, fill, base and gradient overlay.");
-            if (streamerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            if (streamerDisabled || fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
             
             ImGui::TableSetColumnIndex(1);
             if (crashDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
