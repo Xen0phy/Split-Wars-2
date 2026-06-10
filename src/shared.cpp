@@ -150,13 +150,23 @@ float BrowserWindowH = 400.0f;
 // ---------------------------------------------------------------------------
 // TimerMode / Timer display settings
 // ---------------------------------------------------------------------------
-TimerMode TimerDisplayMode = TimerMode::Split;
-bool      CompactMode      = false;
-bool StreamerMode = false;
-std::string StreamerFontName = "";
-int         StreamerFontSize = 32;
+TimerMode   TimerDisplayMode          = TimerMode::Split;
+bool        CompactMode               = false;
+bool        StreamerMode              = false;
+std::string StreamerFontName          = "";
+int         StreamerFontSize          = 32;
 bool        StreamerShowRunningMillis = false;
-int         StreamerHeaderFontSize = 20;
+int         StreamerHeaderFontSize    = 20;
+
+// ---------------------------------------------------------------------------
+// Crash Mode
+// ---------------------------------------------------------------------------
+bool        CrashMode             = false;
+float       CMDigitShadowColor[3]   = { 0.0f, 0.0f, 0.0f};
+float       CMDigitShadowOffset[2]  = { 0.0f, 1.0f };
+float       CMDigitFillColor[3]     = { 0.0f, 0.0f, 0.0f };
+float       CMDigitBaseColor[3]     = { 1.0f, 0.45f, 0.0f };
+float       CMDigitOverlay[3]       = { 0.9f, 0.0f, 0.0f};
 
 // ---------------------------------------------------------------------------
 // History / best run data
@@ -248,7 +258,7 @@ std::vector<SqCombatStartEvent> SqCombatStartEvents;
 // ---------------------------------------------------------------------------
 // Debug
 // ---------------------------------------------------------------------------
-float occludePixelRadius = 1000.0f; // Base pixel radius for the character occlusion circle
-float occludePixelClamp  = 300.0f;  // Maximum pixel radius the occlusion circle can reach
+float occludePixelRadius       = 1000.0f; // Base pixel radius for the character occlusion circle
+float occludePixelClamp        = 300.0f;  // Maximum pixel radius the occlusion circle can reach
 float ZoneRenderAvgMs          = 0.0f;
 int   ZoneRenderSelectedIndex  = -1;

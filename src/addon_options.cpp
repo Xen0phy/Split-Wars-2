@@ -6,7 +6,9 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
+#include "imgui.h"
 #include "render_shared.h"
+#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -26,96 +28,287 @@ void AddonOptions()
     ImGui::Separator();
     ImGui::Spacing();
 
-    //Timer related UI
-    ImGui::Text("Timer:");
-    ImGui::Checkbox("Show Timer",         &ShowTimer);
-    Tooltip("Toggles the speedrun timer overlay.");
-    ImGui::SameLine();
-    // Cycle button — label reflects the current mode so the player always
-    // knows what clicking it will do.
-    const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
-                               : (TimerDisplayMode == TimerMode::LiveSplit) ? "Mode: LiveSplit"
-                               :                                               "Mode: Split";
-    if (ImGui::Button(timerModeLabel))
-        TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3);
-    Tooltip("Controls how split times and differences are displayed.\n\n"
-            "Segment   - Each row shows the time for that segment only.\n"
-            "            Diffs compare against your best time for that segment.\n\n"
-            "Split     - Each row shows the elapsed time since the run started.\n"
-            "            Diffs show how far ahead or behind you are overall.\n\n"
-            "LiveSplit - Each row shows the time for that segment only.\n"
-            "            Diffs still show your overall lead or deficit,\n"
-            "            matching the behaviour of LiveSplit.");
-    ImGui::Checkbox("Show Grand Total",   &ShowGrandTotal);
-    Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
-    ImGui::Checkbox("Compact Mode",       &CompactMode);
-    Tooltip("Reduces the timer to one line.");
-    ImGui::Checkbox("Streamer Mode", &StreamerMode);
-    Tooltip("Uses a larger font (FontBig) for better stream visibility. Overrides Timer Scale.");
-    if (ImGui::Checkbox("Show milliseconds while running##streamer", &StreamerShowRunningMillis))
-        SaveCurrentSettings();
-    Tooltip("When enabled, the live segment and total rows show milliseconds while the timer is running.\nDisabled by default: milliseconds only appear once the segment is stopped.");
-
-    // Streamer font picker
-    if(StreamerMode)
+    // Timer related UI
+    if (ImGui::CollapsingHeader("Timer Settings"))
     {
-        const auto& fontNames = GetStreamFontNames();
-        if (!fontNames.empty())
+        bool timerDisabled = !ShowTimer;
+        if (timerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+    
+        if (ImGui::BeginTable("##timersettings", 2, ImGuiTableFlags_None))
         {
-            ImGui::Spacing();
-            ImGui::Text("Streamer Mode Font:");
-
-            const char* preview = StreamerFontName.empty() ? fontNames[0].c_str() : StreamerFontName.c_str();
-            if (ImGui::BeginCombo("Font##streamer", preview))
+            ImGui::TableSetupColumn("##left",  ImGuiTableColumnFlags_WidthFixed, 200);
+            ImGui::TableSetupColumn("##right", ImGuiTableColumnFlags_WidthFixed);
+    
+            // Row 1
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            if (timerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            ImGui::Checkbox("Show Timer", &ShowTimer);
+            Tooltip("Toggles the speedrun timer overlay.");
+            ImGui::SameLine();
+            const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
+                                       : (TimerDisplayMode == TimerMode::LiveSplit) ? "Mode: LiveSplit"
+                                       :                                               "Mode: Split";
+            if (timerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::Button(timerModeLabel))
+                TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3);
+            Tooltip("Controls how split times and differences are displayed.\n\n"
+                    "Segment   - Each row shows the time for that segment only.\n"
+                    "            Diffs compare against your best time for that segment.\n\n"
+                    "Split     - Each row shows the elapsed time since the run started.\n"
+                    "            Diffs show how far ahead or behind you are overall.\n\n"
+                    "LiveSplit - Each row shows the time for that segment only.\n"
+                    "            Diffs still show your overall lead or deficit,\n"
+                    "            matching the behaviour of LiveSplit.");
+    
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("Time Colors:");
+    
+            // Row 2
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Grand Total", &ShowGrandTotal);
+            Tooltip("Adds an additional timer to the split timer.\nThis will show the time including the load screens.");
+    
+            ImGui::TableSetColumnIndex(1);
+            ImGui::ColorEdit3("Ahead##tc",    ColorAhead,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+    
+            // Row 3
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Compact Mode", &CompactMode);
+            Tooltip("Reduces the timer to one line.");
+    
+            ImGui::TableSetColumnIndex(1);
+            ImGui::ColorEdit3("Behind##tc",   ColorBehind,  ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+    
+            // Row 4
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Milliseconds##streamer", &StreamerShowRunningMillis);
+            Tooltip("When enabled, the live segment and total rows show milliseconds while the timer is running.\nDisabled by default: milliseconds only appear once the segment is stopped.");
+    
+            ImGui::TableSetColumnIndex(1);
+            ImGui::ColorEdit3("Best Row##tc", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+    
+            // Row 5
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            // empty
+    
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Button("Reset Time Colors##tc"))
             {
-                for (auto& name : fontNames)
+                float defAhead[3]   = { 0.2f, 1.0f, 0.2f };
+                float defBehind[3]  = { 1.0f, 0.3f, 0.3f };
+                float defBestRow[3] = { 0.2f, 0.3f, 0.2f };
+                std::copy(defAhead,   defAhead   + 3, ColorAhead);
+                std::copy(defBehind,  defBehind  + 3, ColorBehind);
+                std::copy(defBestRow, defBestRow + 3, ColorBestRow);
+                SaveCurrentSettings();
+            }
+    
+            //ImGui::EndTable();
+        //}
+        
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Separator();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Separator();
+    
+        // --- Streamer section ---
+            bool streamerDisabled = !StreamerMode;
+        //if (ImGui::BeginTable("##streamersettings", 2, ImGuiTableFlags_None))
+        //{
+            //ImGui::TableSetupColumn("##sleft",  ImGuiTableColumnFlags_WidthFixed);
+            //ImGui::TableSetupColumn("##sright", ImGuiTableColumnFlags_WidthFixed);
+    
+            // Row 1
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Streamer Mode", &StreamerMode);
+            Tooltip("Uses a larger font for better stream visibility.");
+    
+            ImGui::TableSetColumnIndex(1);
+            if (streamerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            {
+                const auto& fontNames = GetStreamFontNames();
+                if (!fontNames.empty())
                 {
-                    bool selected = (StreamerFontName == name);
-                    if (ImGui::Selectable(name.c_str(), selected))
+                    const char* preview = StreamerFontName.empty() ? fontNames[0].c_str() : StreamerFontName.c_str();
+                    ImGui::SetNextItemWidth(200.0f);
+                    if (ImGui::BeginCombo("##streamerfont", preview))
                     {
-                        StreamerFontName = name;
-                        SaveCurrentSettings();
+                        for (auto& name : fontNames)
+                        {
+                            bool selected = (StreamerFontName == name);
+                            if (ImGui::Selectable(name.c_str(), selected))
+                            {
+                                StreamerFontName = name;
+                                SaveCurrentSettings();
+                            }
+                            if (selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
                     }
-                    if (selected) ImGui::SetItemDefaultFocus();
+                    Tooltip("Drop .ttf/.otf files into the Split Wars 2/fonts/ folder and restart.");
                 }
-                ImGui::EndCombo();
+                else
+                {
+                    ImGui::TextDisabled("No fonts found — drop .ttf/.otf into fonts/ and restart.");
+                }
             }
-            Tooltip("Use your own font in Streamer Mode. Drop up to 5 .ttf/.otf files into\nthe Split Wars 2/fonts/ folder and restart the addon.");
-
-            int size = StreamerFontSize;
-            // Slider is intentionally restricted to the user-facing range (24-48 px).
-            // The font atlas bakes 20-48 px so that derived sizes used by the streamer
-            // timer (main-2, main-4) are always available even at the minimum size.
-            ImGui::SetNextItemWidth(200.0f);
-            if (ImGui::SliderInt("Size##streamer", &size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX))
+    
+            // Row 2
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            // empty
+    
+            ImGui::TableSetColumnIndex(1);
             {
-                size = ((size + 1) / 2) * 2;
-                size = std::clamp(size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX);
-                StreamerFontSize = size;
+                int size = StreamerFontSize;
+                ImGui::SetNextItemWidth(200.0f);
+                if (ImGui::SliderInt("Size##streamer", &size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX))
+                {
+                    size = ((size + 1) / 2) * 2;
+                    size = std::clamp(size, (int)STREAM_FONT_SIZE_MIN, (int)STREAM_FONT_SIZE_MAX);
+                    StreamerFontSize = size;
+                    SaveCurrentSettings();
+                }
+                Tooltip("Pixel size of the main time digits (2px steps).");
+            }
+    
+            // Row 3
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            // empty
+    
+            ImGui::TableSetColumnIndex(1);
+            {
+                int headerSize = StreamerHeaderFontSize;
+                ImGui::SetNextItemWidth(200.0f);
+                if (ImGui::SliderInt("Header Size##streamer", &headerSize, 16, 30))
+                {
+                    headerSize = ((headerSize + 1) / 2) * 2;
+                    headerSize = std::clamp(headerSize, 16, 30);
+                    StreamerHeaderFontSize = headerSize;
+                    SaveCurrentSettings();
+                }
+                Tooltip("Pixel size of the section title bar labels and buttons (2px steps).");
+            }
+    
+            if (streamerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+            //ImGui::EndTable();
+        //}
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Separator();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Separator();
+    
+        // --- Crash Mode section ---
+            bool crashDisabled = !StreamerMode || !CrashMode;
+        //if (ImGui::BeginTable("##crashsettings", 2, ImGuiTableFlags_None))
+        //{
+            //ImGui::TableSetupColumn("##cleft",  ImGuiTableColumnFlags_WidthFixed);
+            //ImGui::TableSetupColumn("##cright", ImGuiTableColumnFlags_WidthFixed);
+    
+            // Row 1 — checkbox + shadow color
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            // Crash checkbox only needs streamer enabled
+            if (streamerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::Checkbox("Crash Mode##cm", &CrashMode))
+                SaveCurrentSettings();
+            Tooltip("Enables the layered digit style with shadow, fill, base and gradient overlay.");
+            if (streamerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            
+            ImGui::TableSetColumnIndex(1);
+            if (crashDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            ImGui::Text("Crash Mode Colors:");
+    
+            // Row 2 — offset box + fill/base/overlay colors
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            {
+                ImGui::Text("Shadow Offset");
+                ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+                float canvasSize = 80.0f;
+                ImGui::InvisibleButton("##shadowoffset", ImVec2(canvasSize, canvasSize));
+                if (ImGui::IsItemActive())
+                {
+                    ImVec2 mouse = ImGui::GetMousePos();
+                    CMDigitShadowOffset[0] = ImClamp((mouse.x - canvasPos.x) / canvasSize * 20.0f - 10.0f, -10.0f, 10.0f);
+                    CMDigitShadowOffset[1] = ImClamp((mouse.y - canvasPos.y) / canvasSize * 20.0f - 10.0f, -10.0f, 10.0f);
+                    SaveCurrentSettings();
+                }
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+                dl->AddRectFilled(canvasPos, ImVec2(canvasPos.x + canvasSize, canvasPos.y + canvasSize), IM_COL32(40, 40, 40, 255));
+                dl->AddRect(canvasPos,       ImVec2(canvasPos.x + canvasSize, canvasPos.y + canvasSize), IM_COL32(120, 120, 120, 255));
+                float cx = canvasPos.x + canvasSize * 0.5f;
+                float cy = canvasPos.y + canvasSize * 0.5f;
+                dl->AddLine(ImVec2(cx, canvasPos.y), ImVec2(cx, canvasPos.y + canvasSize), IM_COL32(80, 80, 80, 255));
+                dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
+                float nx = (CMDigitShadowOffset[0] + 10.0f) / 20.0f;
+                float ny = (CMDigitShadowOffset[1] + 10.0f) / 20.0f;
+                ImVec2 handle = ImVec2(canvasPos.x + nx * canvasSize, canvasPos.y + ny * canvasSize);
+                dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
+                dl->AddCircle(handle,       5.0f, IM_COL32(0,   0,   0,   255));
+                if (ImGui::Button("Reset Offset"))
+                {
+                    float defOffset[2]  = { 0.0f, 1.0f };
+                    std::copy(defOffset,  defOffset  + 2, CMDigitShadowOffset);
+                    SaveCurrentSettings();
+                }
+                ImGui::SameLine();
+                ImGui::Text("(%.1f, %.1f)", CMDigitShadowOffset[0], CMDigitShadowOffset[1]);
+            }
+            
+            bool hideCM;
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Checkbox("##hide_cm_1", &hideCM);
+            ImGui::SameLine();
+            ImGui::ColorEdit3("Shadow##cm",  CMDigitShadowColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+            ImGui::Checkbox("##hide_cm_2", &hideCM);
+            ImGui::SameLine();
+            ImGui::ColorEdit3("Fill##cm",    CMDigitFillColor,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+            ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+            ImGui::SameLine();
+            ImGui::ColorEdit3("Base##cm",    CMDigitBaseColor,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+            ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+            ImGui::SameLine();
+            ImGui::ColorEdit3("Overlay##cm", CMDigitOverlay,     ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Button("Reset Crash Mode Colors##cm"))
+            {
+                float defShadow[3]  = { 0.0f, 0.0f, 0.0f };
+                float defFill[3]    = { 0.0f, 0.0f, 0.0f };
+                float defBase[3]    = { 1.0f, 1.0f, 0.0f };
+                float defOverlay[3] = { 0.9f, 0.0f,  0.0f };
+                std::copy(defShadow,  defShadow  + 3, CMDigitShadowColor);
+                std::copy(defFill,    defFill    + 3, CMDigitFillColor);
+                std::copy(defBase,    defBase    + 3, CMDigitBaseColor);
+                std::copy(defOverlay, defOverlay + 3, CMDigitOverlay);
                 SaveCurrentSettings();
             }
-            Tooltip("Pixel size of the main time digits (2px steps). Milliseconds and comparison times use smaller sizes automatically.");
-
-            int headerSize = StreamerHeaderFontSize;
-            ImGui::SetNextItemWidth(200.0f);
-            if (ImGui::SliderInt("Header/Button Text Size##streamer", &headerSize, 16,30))
-            {
-                headerSize = ((headerSize + 1) / 2) * 2;
-                headerSize = std::clamp(headerSize, 16, 30);
-                StreamerHeaderFontSize = headerSize;
-                SaveCurrentSettings();
-            }
+    
+            if (crashDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+            ImGui::EndTable();
         }
-        else
-        {
-            ImGui::Spacing();
-            ImGui::TextDisabled("No fonts found in Split Wars 2/fonts/");
-            ImGui::TextDisabled("Drop .ttf or .otf files there and restart.");
-        }
+    
+        if (timerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
     }
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
 
     //Route related UI
     ImGui::Text("Windows:");
@@ -211,13 +404,6 @@ void AddonOptions()
     ImGui::ColorEdit3("Checkpoint",  ColorCheckpoint, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
     ImGui::SameLine();
     ImGui::ColorEdit3("Null",     ColorNull,    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::Text("Time Colors:");
-    ImGui::ColorEdit3("Ahead",    ColorAhead,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Behind",   ColorBehind,  ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Best Row", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::SameLine();
     if (ImGui::Button("Reset Colors"))
     {
         float defStart[3]      = { 0.2f, 1.0f, 0.2f };

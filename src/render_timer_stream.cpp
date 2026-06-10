@@ -31,11 +31,6 @@ static constexpr float ANIM_DURATION     = 0.4f; // seconds for slide-out
 // Colors
 // ---------------------------------------------------------------------------
 
-
-
-
-
-
 // Style-derived colors -- read at render time, follow Nexus theme automatically
 static ImVec4 SC_Bg()         { return ImGui::GetStyle().Colors[ImGuiCol_WindowBg];     }
 static ImVec4 SC_HeaderBg()   { return ImGui::GetStyle().Colors[ImGuiCol_TitleBg];      }
@@ -148,6 +143,75 @@ static void SplitTimeAtDot(const char* buf,
     }
 }
 
+// Draws text three times to produce a shadow + base + gradient overlay effect.
+//   Layer 1 (bottom): shadow colour, shifted by StreamerDigitShadowOffset
+//   Layer 2 (middle): base colour, rendered at (size - 4) so it sits visually smaller
+//   Layer 3 (top):    overlay colour with vertical alpha gradient via vertex recolouring
+static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
+                             ImVec2 pos, float rowTop, float rowHeight,
+                             const char* text, float alpha)
+{
+    if (!text || text[0] == '\0') return;
+
+    ImFont* f       = font ? font : ImGui::GetFont();
+    float baseSize  = size - 4.0f;
+    float basePosY  = pos.y + (size - baseSize); // baseline-align orange/red to black
+    float shadowPosY = basePosY + CMDigitShadowOffset[1]; // anchor shadow to same baseline, then offset
+
+    float shadowX = pos.x;
+    float baseX   = pos.x;
+
+    const char* p = text;
+    while (*p)
+    {
+        // Get the codepoint
+        unsigned int c = (unsigned char)*p;
+        char glyph[5] = { *p, '\0' };
+        p++;
+
+        // Measure advance at both sizes
+        float shadowAdv = f->CalcTextSizeA(size,     FLT_MAX, 0.0f, glyph, glyph + 1).x;
+        float baseAdv   = f->CalcTextSizeA(baseSize, FLT_MAX, 0.0f, glyph, glyph + 1).x;
+
+        // Layer 0: fill
+        dl->AddText(f, size, ImVec2(shadowX, basePosY),
+            IM_COL32((int)(CMDigitFillColor[0]*255), (int)(CMDigitFillColor[1]*255), (int)(CMDigitFillColor[2]*255), (int)(alpha*255)),
+            glyph, glyph + 1);
+        
+        // Layer 1: shadow
+        dl->AddText(f, size, ImVec2(shadowX + CMDigitShadowOffset[0], shadowPosY),
+            IM_COL32((int)(CMDigitShadowColor[0]*255), (int)(CMDigitShadowColor[1]*255), (int)(CMDigitShadowColor[2]*255), (int)(alpha*255)),
+            glyph, glyph + 1);
+        
+        // Layer 2: base
+        float centerOffset = (shadowAdv - baseAdv) * 0.5f;
+        dl->AddText(f, baseSize, ImVec2(baseX + centerOffset, basePosY),
+            IM_COL32((int)(CMDigitBaseColor[0]*255), (int)(CMDigitBaseColor[1]*255), (int)(CMDigitBaseColor[2]*255), (int)(alpha*255)),
+            glyph, glyph + 1);
+
+        // Layer 3: overlay gradient — color from StreamerDigitOverlay, alpha 0 top to 1 bottom
+        int vtxStart = dl->VtxBuffer.Size;
+        dl->AddText(f, baseSize, ImVec2(baseX + centerOffset, basePosY), IM_COL32_WHITE, glyph, glyph + 1);
+        int vtxEnd = dl->VtxBuffer.Size;
+        
+        float range = rowHeight > 0.0f ? rowHeight : 1.0f;
+        ImDrawVert* verts = dl->VtxBuffer.Data;
+        for (int i = vtxStart; i < vtxEnd; i++)
+        {
+            float t = ImClamp((verts[i].pos.y - rowTop) / range, 0.0f, 1.0f);
+            verts[i].col = IM_COL32(
+                (int)(CMDigitOverlay[0] * 255),
+                (int)(CMDigitOverlay[1] * 255),
+                (int)(CMDigitOverlay[2] * 255),
+                (int)(t * alpha * 255)
+            );
+        }
+
+        shadowX += shadowAdv;
+        baseX   += shadowAdv; // base X tracks shadow advances so overall width stays consistent
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Core drawing primitive used by both the live and the fade-out path.
 //
@@ -195,24 +259,29 @@ static void SDrawTimeRowAlpha(ImDrawList* dl, ImVec2 pos, float width,
 
         // Draw h:m:s
         float curX = pos.x + SPAD_X;
-        if (fMain)
-            dl->AddText(fMain, sizeMain, ImVec2(curX, timeY), tc, hms);
+        if (CrashMode)
+            SDrawStyledText(dl, fMain, sizeMain, ImVec2(curX, timeY), pos.y, STIME_ROW_H, hms, alpha);
         else
-            dl->AddText(ImVec2(curX, timeY), tc, hms);
+            if (fMain)
+                dl->AddText(fMain, sizeMain, ImVec2(curX, timeY), tc, hms);
+            else
+                dl->AddText(ImVec2(curX, timeY), tc, hms);
 
         // Draw .xxx aligned to bottom of h:m:s baseline
         if (ms[0] != '\0')
         {
-            // Compute width of the h:m:s part to advance X
             float hmsW = fMain
                 ? fMain->CalcTextSizeA(sizeMain, FLT_MAX, 0.0f, hms).x
                 : ImGui::GetFont()->CalcTextSizeA(sizeMain, FLT_MAX, 0.0f, hms).x;
-            // Baseline-align: bottom of millis == bottom of main
             float msY = timeY + (sizeMain - sizeMillis);
-            if (fMillis)
-                dl->AddText(fMillis, sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+            if (CrashMode)
+                SDrawStyledText(dl, fMillis ? fMillis : ImGui::GetFont(), sizeMillis,
+                                ImVec2(curX + hmsW, msY), pos.y, STIME_ROW_H, ms, alpha);
             else
-                dl->AddText(ImGui::GetFont(), sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+                if (fMillis)
+                    dl->AddText(fMillis, sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+                else
+                    dl->AddText(ImGui::GetFont(), sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
         }
     }
 

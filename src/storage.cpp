@@ -519,31 +519,37 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
         fs::create_directories(addonDir);
 
         json j = {
-            {"show_timer",             settings.ShowTimer},
-            {"show_config",            settings.ShowConfig},
-            {"show_zones",             settings.ShowZones},
-            {"zone_fade_start",        settings.ZoneFadeStart},
-            {"zone_fade_end",          settings.ZoneFadeEnd},
-            {"show_debug",             settings.ShowDebug},
-            {"timer_display_mode",     settings.TimerDisplayMode},
-            {"compact_mode",           settings.CompactMode},
-            {"show_history",           settings.ShowHistory},
-            {"show_grand_total",       settings.ShowGrandTotal},
-            {"show_route_browser",    settings.ShowRouteBrowser},
-            {"max_history_runs",      settings.MaxHistoryRuns},
-            {"data_source",           settings.DataSource},
-            {"color_start",      {settings.ColorStart[0],      settings.ColorStart[1],      settings.ColorStart[2]}},
-            {"color_goal",       {settings.ColorGoal[0],       settings.ColorGoal[1],       settings.ColorGoal[2]}},
-            {"color_checkpoint", {settings.ColorCheckpoint[0], settings.ColorCheckpoint[1], settings.ColorCheckpoint[2]}},
-            {"color_null",       {settings.ColorNull[0],       settings.ColorNull[1],       settings.ColorNull[2]}},
-            {"color_ahead",      {settings.ColorAhead[0],      settings.ColorAhead[1],      settings.ColorAhead[2]}},
-            {"color_behind",     {settings.ColorBehind[0],     settings.ColorBehind[1],     settings.ColorBehind[2]}},
-            {"color_best_row",   {settings.ColorBestRow[0],    settings.ColorBestRow[1],    settings.ColorBestRow[2]}},
-            {"streamer_mode",         settings.StreamerMode},
-            {"streamer_font_name",    settings.StreamerFontName},
-            {"streamer_font_size",    settings.StreamerFontSize},
-            {"streamer_show_running_millis", settings.StreamerShowRunningMillis},
-            {"streamer_header_font_size", settings.StreamerHeaderFontSize},
+            {"show_timer",                     settings.ShowTimer},
+            {"show_config",                    settings.ShowConfig},
+            {"show_zones",                     settings.ShowZones},
+            {"zone_fade_start",                settings.ZoneFadeStart},
+            {"zone_fade_end",                  settings.ZoneFadeEnd},
+            {"show_debug",                     settings.ShowDebug},
+            {"timer_display_mode",             settings.TimerDisplayMode},
+            {"compact_mode",                   settings.CompactMode},
+            {"show_history",                   settings.ShowHistory},
+            {"show_grand_total",               settings.ShowGrandTotal},
+            {"show_route_browser",             settings.ShowRouteBrowser},
+            {"max_history_runs",               settings.MaxHistoryRuns},
+            {"data_source",                    settings.DataSource},
+            {"color_start",               {settings.ColorStart[0],      settings.ColorStart[1],      settings.ColorStart[2]}},
+            {"color_goal",                {settings.ColorGoal[0],       settings.ColorGoal[1],       settings.ColorGoal[2]}},
+            {"color_checkpoint",          {settings.ColorCheckpoint[0], settings.ColorCheckpoint[1], settings.ColorCheckpoint[2]}},
+            {"color_null",                {settings.ColorNull[0],       settings.ColorNull[1],       settings.ColorNull[2]}},
+            {"color_ahead",               {settings.ColorAhead[0],      settings.ColorAhead[1],      settings.ColorAhead[2]}},
+            {"color_behind",              {settings.ColorBehind[0],     settings.ColorBehind[1],     settings.ColorBehind[2]}},
+            {"color_best_row",            {settings.ColorBestRow[0],    settings.ColorBestRow[1],    settings.ColorBestRow[2]}},
+            {"streamer_mode",                  settings.StreamerMode},
+            {"streamer_font_name",             settings.StreamerFontName},
+            {"streamer_font_size",             settings.StreamerFontSize},
+            {"streamer_show_running_millis",   settings.StreamerShowRunningMillis},
+            {"streamer_header_font_size",      settings.StreamerHeaderFontSize},
+            {"streamer_crash_mode",            settings.StreamerCrashMode},
+            {"streamer_cm_shadow",        {settings.StreamerDigitShadowColor[0], settings.StreamerDigitShadowColor[1], settings.StreamerDigitShadowColor[2]}},
+            {"streamer_cm_shadow_offset", {settings.StreamerDigitShadowOffset[0],settings.StreamerDigitShadowOffset[1]}},
+            {"streamer_cm_fill",          {settings.StreamerDigitFillColor[0],   settings.StreamerDigitFillColor[1],   settings.StreamerDigitFillColor[2]}},
+            {"streamer_cm_base",          {settings.StreamerDigitBaseColor[0],   settings.StreamerDigitBaseColor[1],   settings.StreamerDigitBaseColor[2]}},
+            {"streamer_cm_overlay",       {settings.StreamerDigitOverlay[0],     settings.StreamerDigitOverlay[1],     settings.StreamerDigitOverlay[2]}},
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -603,6 +609,17 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
         settings.StreamerFontSize = j.value("streamer_font_size", 32);
         settings.StreamerShowRunningMillis = j.value("streamer_show_running_millis", false);
         settings.StreamerHeaderFontSize = j.value("streamer_header_font_size", 20);
+        settings.StreamerCrashMode = j.value("streamer_crash_mode", false);
+        if (j.contains("streamer_cm_shadow") && j["streamer_cm_shadow"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.StreamerDigitShadowColor[i] = j["streamer_cm_shadow"][i].get<float>();
+        if (j.contains("streamer_cm_shadow_offset") && j["streamer_cm_shadow_offset"].size() == 2)
+            for (int i = 0; i < 2; i++) settings.StreamerDigitShadowOffset[i] = j["streamer_cm_shadow_offset"][i].get<float>();
+        if (j.contains("streamer_cm_fill") && j["streamer_cm_fill"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.StreamerDigitFillColor[i] = j["streamer_cm_fill"][i].get<float>();
+        if (j.contains("streamer_cm_base") && j["streamer_cm_base"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.StreamerDigitBaseColor[i] = j["streamer_cm_base"][i].get<float>();
+        if (j.contains("streamer_cm_overlay") && j["streamer_cm_overlay"].size() == 3)
+            for (int i = 0; i < 3; i++) settings.StreamerDigitOverlay[i] = j["streamer_cm_overlay"][i].get<float>();
         return true;
     }
     catch (...) { return false; }

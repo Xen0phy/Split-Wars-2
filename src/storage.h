@@ -117,6 +117,12 @@ struct Settings
     int         StreamerFontSize = 32;   // pixel size, 24-48 in 2px steps
     bool StreamerShowRunningMillis = false; // show milliseconds on live segment/total while timer is running
     int         StreamerHeaderFontSize = 20; // pixel size, 20-48 in 2px steps
+    bool        StreamerCrashMode = false;
+    float       StreamerDigitShadowColor[3] = { 0.0f, 0.0f, 0.0f };
+    float       StreamerDigitShadowOffset[2] = { 0.0f, 1.0f };
+    float       StreamerDigitFillColor[3] = { 0.0f, 0.0f, 0.0f };
+    float       StreamerDigitBaseColor[3] = { 1.0f, 1.0f, 0.0f };
+    float       StreamerDigitOverlay[3] = { 0.9f, 0.0f, 0.0f };
 };
 
 // ---------------------------------------------------------------------------

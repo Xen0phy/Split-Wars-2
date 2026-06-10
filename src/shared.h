@@ -175,6 +175,16 @@ extern bool         StreamerShowRunningMillis;
 extern int          StreamerHeaderFontSize;
 
 // ---------------------------------------------------------------------------
+// Crash Mode
+// ---------------------------------------------------------------------------
+extern bool        CrashMode;
+extern float       CMDigitShadowColor[3];
+extern float       CMDigitShadowOffset[2];
+extern float       CMDigitFillColor[3];
+extern float       CMDigitBaseColor[3];
+extern float       CMDigitOverlay[3];
+
+// ---------------------------------------------------------------------------
 // History / best run
 // ---------------------------------------------------------------------------
 extern std::vector<Split>         BestRun;      // Splits of the designated best run; drives the diff column
