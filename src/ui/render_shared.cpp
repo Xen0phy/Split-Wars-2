@@ -85,7 +85,7 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit, bool isShowMi
     int seconds = (int)(abs) % 60;
     int millis  = (int)(abs * 1000) % 1000;
 
-    if(!isShowMillis)
+    if(!isShowMillis && !isSplit)
     {
         // Live comparison — hide when more than 60 s ahead to reduce visual clutter.
         if (diff < -60.0)

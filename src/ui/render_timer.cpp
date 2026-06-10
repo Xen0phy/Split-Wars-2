@@ -218,7 +218,7 @@ void RenderTimerOverlay()
 
                 // Time cell — no milliseconds shown while running
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                FormatTime(buf, sizeof(buf), segmentTime, StreamerShowRunningMillis);
+                FormatTime(buf, sizeof(buf), segmentTime, !running);
                 float textWidth = ImGui::CalcTextSize(buf).x;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(diffCurSeg, diffBestSeg, running), "%s", buf);
@@ -261,7 +261,7 @@ void RenderTimerOverlay()
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 // Show milliseconds only when finished; whole seconds while running
                 double bestTotal = hasBest ? BestRun.back().Timestamp : 0.0;
-                FormatTime(buf, sizeof(buf), elapsed, StreamerShowRunningMillis);
+                FormatTime(buf, sizeof(buf), elapsed, !running);
                 float textWidth = ImGui::CalcTextSize(buf).x;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);

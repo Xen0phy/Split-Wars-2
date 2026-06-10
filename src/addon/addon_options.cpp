@@ -6,9 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
-#include "imgui.h"
 #include "render_shared.h"
-#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------

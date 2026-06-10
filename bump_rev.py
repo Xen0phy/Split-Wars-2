@@ -8,7 +8,7 @@ Run from project root.
 import re
 from pathlib import Path
 
-VERSION_FILE = Path("src/version.h")
+VERSION_FILE = Path("src/addon/version.h")
 
 text = VERSION_FILE.read_text(encoding="utf-8")
 

@@ -16,26 +16,26 @@ add_custom_target(bump_rev
 )
 
 add_library(SplitWars2 SHARED
-    src/entry.cpp
-    src/addon.cpp
-    src/addon_options.cpp
-    src/arcdps_events.cpp
-    src/shared.cpp
-    src/timer.cpp
-    src/route.cpp
-    src/render_browser.cpp
-    src/render_config.cpp
-    src/render_debug_arcdps_dump.cpp
-    src/render_debug_mumble_dump.cpp
-    src/render_debug_rtapi_dump.cpp
-    src/render_debug.cpp
-    src/render_history.cpp
-    src/render_shared.cpp
-    src/render_timer_stream.cpp
-    src/render_timer.cpp
-    src/stream_fonts.cpp
-    src/worldrender.cpp
-    src/storage.cpp
+    src/addon/addon_options.cpp
+    src/addon/addon.cpp
+    src/addon/entry.cpp
+    src/core/route.cpp
+    src/core/shared.cpp
+    src/core/storage.cpp
+    src/core/timer.cpp
+    src/integration/arcdps_events.cpp
+    src/integration/stream_fonts.cpp
+    src/overlay/worldrender.cpp
+    src/ui/render_browser.cpp
+    src/ui/render_config.cpp
+    src/ui/render_debug_arcdps_dump.cpp
+    src/ui/render_debug_mumble_dump.cpp
+    src/ui/render_debug_rtapi_dump.cpp
+    src/ui/render_debug.cpp
+    src/ui/render_history.cpp
+    src/ui/render_shared.cpp
+    src/ui/render_timer_stream.cpp
+    src/ui/render_timer.cpp
     include/imgui.cpp
     include/imgui_draw.cpp
     include/imgui_tables.cpp
@@ -44,7 +44,14 @@ add_library(SplitWars2 SHARED
 
 add_dependencies(SplitWars2 bump_rev)
 
-target_include_directories(SplitWars2 PRIVATE include)
+target_include_directories(SplitWars2 PRIVATE
+    include
+    src/core
+    src/ui
+    src/overlay
+    src/integration
+    src/addon
+)
 
 set_target_properties(SplitWars2 PROPERTIES
     OUTPUT_NAME "SplitWars2"
