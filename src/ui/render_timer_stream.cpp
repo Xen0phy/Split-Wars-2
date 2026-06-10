@@ -10,8 +10,7 @@
 // CMakeLists.txt).
 
 #include "render_shared.h"
-#include "shared.h"
-#include "stream_fonts.h"
+#include "../stream_fonts.h"
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -425,7 +424,7 @@ void RenderTimerOverlayStream()
     bool        hasBest   = !BestRun.empty();
     int         numSplits = (int)splits.size();
 
-    const Checkpoint* goalCp = GetGoal(CurrentRoute);
+    const CheckpointState* goalCp = GetGoal(CurrentRoute);
     bool goalIsAllCheckpoints = goalCp && goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
     bool goalIsCombatArena    = goalCp && goalCp->Point.TriggerType == ETriggerType::CombatArena;
     bool manualStop = finished && numSplits > 0 &&

@@ -178,7 +178,7 @@ void RenderHistoryWindow()
                             {
                                 // Suppress the AllCheckpoints synthetic Goal split,
                                 // same logic as the hover tooltip.
-                                const Checkpoint* goalCp = GetGoal(CurrentRoute);
+                                const CheckpointState* goalCp = GetGoal(CurrentRoute);
                                 bool goalIsAllCheckpoints = goalCp &&
                                     goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
                                 int splitsToShow = (int)run.Splits.size();
@@ -246,7 +246,7 @@ void RenderHistoryWindow()
 
                             // Suppress the synthetic "Goal" split that AllCheckpoints
                             // goals append — it's redundant with the Total line below.
-                            const Checkpoint* tooltipGoalCp = GetGoal(CurrentRoute);
+                            const CheckpointState* tooltipGoalCp = GetGoal(CurrentRoute);
                             bool tooltipGoalIsAllCheckpoints = tooltipGoalCp &&
                                 tooltipGoalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
                             int splitsToShow = (int)run.Splits.size();

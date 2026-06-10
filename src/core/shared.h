@@ -213,15 +213,14 @@ extern std::mutex        KeybindMutex;
 
 // ---------------------------------------------------------------------------
 // Per-checkpoint runtime trigger state
-// All vectors are kept in sync with CurrentRoute.Checkpoints by FullReset()
-// and by a size-check at the top of AddonRender() each frame.
 // ---------------------------------------------------------------------------
-extern CombatTriggerState              CombatStart;         // State machine for the start CombatArena point
-extern std::vector<CombatTriggerState> CombatCheckpoints;   // One state machine per intermediate checkpoint
-extern CombatTriggerState              CombatGoal;          // State machine for the goal CombatArena point
-extern std::vector<bool>               checkpointTriggered; // True once each checkpoint has fired this run
-extern bool                            WasInCircleStart;    // Was the player in the start circle last frame?
-extern std::vector<bool>               WasInCheckpoint;     // Was the player in each circle checkpoint last frame?
+// Mirrors CurrentRoute.Checkpoints 1-to-1: same indices, same order.
+// Rebuilt by FullReset() whenever the route changes.
+// Each entry holds the checkpoint's config (Point/Name/IsStart/IsGoal) plus
+// its runtime state (wasInCircle, triggered, combat).
+// Call cs.ResetRuntime() to zero only the runtime fields without touching config.
+// ---------------------------------------------------------------------------
+extern std::vector<CheckpointState> CheckpointStates;
 
 // ---------------------------------------------------------------------------
 // FullReset

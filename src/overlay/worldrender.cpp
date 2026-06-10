@@ -578,7 +578,7 @@ void RenderZones()
         // are purely decorative and have no triggered state.
         bool isNull = (p.TriggerType == ETriggerType::NullCircle ||
                        p.TriggerType == ETriggerType::NullPlane);
-        if (!isNull && idx >= 0 && idx < (int)checkpointTriggered.size() && checkpointTriggered[idx])
+        if (!isNull && idx >= 0 && idx < (int)CheckpointStates.size() && CheckpointStates[idx].triggered)
             return;
     
         // MapChange zones are screen-space — skip world-space distance culling.
@@ -653,23 +653,27 @@ void RenderZones()
         }
     };
 
-    int startIdx = -1, goalIdx = -1;
+    // Render all start checkpoints
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
     {
-        if (CurrentRoute.Checkpoints[i].IsStart) startIdx = i;
-        if (CurrentRoute.Checkpoints[i].IsGoal)  goalIdx  = i;
+        const CheckpointState& cp = CurrentRoute.Checkpoints[i];
+        if (!cp.IsStart) continue;
+        renderPoint(cp.Point, ColorStart[0], ColorStart[1], ColorStart[2], 0.0f, i);
     }
 
-    Checkpoint* start = GetStart(CurrentRoute);
-    Checkpoint* goal  = GetGoal(CurrentRoute);
+    // Render all goal checkpoints
+    for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
+    {
+        const CheckpointState& cp = CurrentRoute.Checkpoints[i];
+        if (!cp.IsGoal) continue;
+        renderPoint(cp.Point, ColorGoal[0], ColorGoal[1], ColorGoal[2], 80.0f, i);
+    }
 
-    if (start) renderPoint(start->Point, ColorStart[0],      ColorStart[1],      ColorStart[2],      0.0f,  startIdx);
-    if (goal)  renderPoint(goal->Point,  ColorGoal[0],       ColorGoal[1],       ColorGoal[2],       80.0f, goalIdx);
-
+    // Render intermediate checkpoints
     int dbgIdx = 0;
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
     {
-        const Checkpoint& cp = CurrentRoute.Checkpoints[i];
+        const CheckpointState& cp = CurrentRoute.Checkpoints[i];
         if (cp.IsStart || cp.IsGoal) continue;
         bool isNull = (cp.Point.TriggerType == ETriggerType::NullCircle ||
                        cp.Point.TriggerType == ETriggerType::NullPlane);

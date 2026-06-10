@@ -194,12 +194,7 @@ std::mutex        KeybindMutex;
 // ---------------------------------------------------------------------------
 // Per-checkpoint runtime trigger state
 // ---------------------------------------------------------------------------
-CombatTriggerState              CombatStart;
-std::vector<CombatTriggerState> CombatCheckpoints;
-CombatTriggerState              CombatGoal;
-std::vector<bool>               checkpointTriggered;
-bool                            WasInCircleStart = false;
-std::vector<bool>               WasInCheckpoint;
+std::vector<CheckpointState> CheckpointStates;
 
 // ---------------------------------------------------------------------------
 // FullReset
@@ -225,12 +220,20 @@ void FullReset()
     pendingGrandStop    = -1.0;
     RunFinished         = false;
     PendingStart        = false;
-    WasInCircleStart    = false;
-    CombatStart         = {};
-    CombatGoal          = {};
-    CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
-    checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
-    WasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+
+    // Rebuild CheckpointStates from the current route, zeroing all runtime fields.
+    // If the route hasn't changed this is equivalent to calling ResetRuntime() on
+    // every entry; if checkpoints were added/removed the vector is resized correctly.
+    CheckpointStates.resize(CurrentRoute.Checkpoints.size());
+    for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
+    {
+        const CheckpointState& src = CurrentRoute.Checkpoints[i];
+        CheckpointStates[i].Point   = src.Point;
+        CheckpointStates[i].IsStart = src.IsStart;
+        CheckpointStates[i].IsGoal  = src.IsGoal;
+        strncpy(CheckpointStates[i].Name, src.Name, sizeof(CheckpointStates[i].Name));
+        CheckpointStates[i].ResetRuntime();
+    }
 }
 
 // ---------------------------------------------------------------------------

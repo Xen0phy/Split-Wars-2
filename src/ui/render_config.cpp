@@ -292,12 +292,12 @@ void RenderConfigWindow()
         int removeIndex   = -1; // Set if Delete is chosen from context menu
         int dragReorderFrom = -1;
         int dragReorderTo   = -1;
-        static Checkpoint clipboard;
+        static CheckpointState clipboard;
         static bool       hasClipboard = false;
         for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
         {
             ImGui::TableNextRow();
-            Checkpoint& cp        = CurrentRoute.Checkpoints[i];
+            CheckpointState& cp        = CurrentRoute.Checkpoints[i];
             RoutePoint& point     = cp.Point;
             bool isMapChange      = point.TriggerType == ETriggerType::MapChange;
             bool isAllCheckpoints = point.TriggerType == ETriggerType::AllCheckpoints;
@@ -470,7 +470,7 @@ void RenderConfigWindow()
             //   BandDown   — degrees below centre where dot alpha fades to 0.
             // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(10);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && point.TriggerType != ETriggerType::Plane)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandCenter_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -507,14 +507,13 @@ void RenderConfigWindow()
             ImGui::TableSetColumnIndex(13);
             if (point.TriggerType == ETriggerType::CombatArena)
             {
-                if (i < (int)CombatCheckpoints.size() && CombatCheckpoints[i].finished)
+                if (i < (int)CheckpointStates.size() && CheckpointStates[i].combat.finished)
                 {
                     char rearmLabel[32]; snprintf(rearmLabel, sizeof(rearmLabel), "Re-arm##%d", i);
                     if (ImGui::Button(rearmLabel))
                     {
-                        CombatCheckpoints[i] = {};           // Reset the combat state machine
-                        if (i < (int)checkpointTriggered.size())
-                            checkpointTriggered[i] = false;  // Allow the split to fire again
+                        CheckpointStates[i].combat    = {};    // Reset the combat state machine
+                        CheckpointStates[i].triggered = false; // Allow the split to fire again
                     }
                 }
             }
@@ -647,7 +646,7 @@ void RenderConfigWindow()
         if (dragReorderFrom >= 0 && dragReorderTo >= 0 && dragReorderFrom != dragReorderTo)
         {
             auto& cps = CurrentRoute.Checkpoints;
-            Checkpoint moved = cps[dragReorderFrom];
+            CheckpointState moved = cps[dragReorderFrom];
             cps.erase(cps.begin() + dragReorderFrom);
             // Adjust target index if source was before it.
             int insertAt = (dragReorderFrom < dragReorderTo) ? dragReorderTo : dragReorderTo;
@@ -668,7 +667,7 @@ void RenderConfigWindow()
     // current position (if MumbleLink is available).
     if (ImGui::Button("Add Checkpoint"))
     {
-        Checkpoint cp;
+        CheckpointState cp;
         snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
         cp.Point.X     = GS.PlayerX;
         cp.Point.Y     = GS.PlayerY;
@@ -782,7 +781,7 @@ void RenderConfigWindow()
             {
                 if (ImGui::Button("Add as Checkpoint##calc"))
                 {
-                    Checkpoint cp;
+                    CheckpointState cp;
                     snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
                     cp.Point.X           = calcCX;
                     cp.Point.Y           = calcCY;

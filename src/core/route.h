@@ -1,8 +1,10 @@
 // route.h
 // Core data types and spatial query functions for the route system.
 //
-// A Route is an ordered list of Checkpoints.  Each Checkpoint wraps a
-// RoutePoint (the spatial trigger) plus a display name and start/goal flags.
+// A Route is an ordered list of CheckpointStates.  Each CheckpointState holds
+// both the spatial trigger config (RoutePoint, Name, IsStart, IsGoal) and all
+// per-run runtime state for that checkpoint.
+//
 // Exactly one checkpoint should be flagged IsStart; one or more may be
 // flagged IsGoal (multiple goals allow routes that diverge at a branch point).
 //
@@ -26,6 +28,9 @@
 // The underlying type is unsigned char so it serialises compactly to JSON.
 //
 //   Circle         — fires while the player is inside a sphere (Radius).
+//                    When IsStart is true, fires on LEAVING the sphere
+//                    (enter resets the run; exit starts the timer).
+//                    When IsStart is false, fires on ENTERING the sphere.
 //   Plane          — fires when the player's movement crosses a finite plane
 //                    (PlaneAngle + RadiusWidth).
 //   MapChange      — fires when the player leaves a specific map (MapID).
@@ -71,9 +76,7 @@ enum class ECombatState : unsigned char
 // ---------------------------------------------------------------------------
 // CombatTriggerState
 // ---------------------------------------------------------------------------
-// Per-checkpoint runtime state for CombatArena triggers.  One instance exists
-// for the start point (CombatStart), one for the goal (CombatGoal), and one
-// per intermediate checkpoint in the CombatCheckpoints vector.
+// Per-checkpoint runtime state for CombatArena triggers.
 //
 //   active     — true once the player has entered combat inside the zone.
 //   state      — current position in the Armed → GracePending state machine.
@@ -82,23 +85,24 @@ enum class ECombatState : unsigned char
 //                rather than when the grace period expired.
 //   graceStart — wall-clock time when the grace period began; compared against
 //                steady_clock::now() each frame to check for expiry.
+//   graceAccum — accumulated seconds of grace that have elapsed while the
+//                player was moving (Mumble path only). Grace only counts down
+//                while moving, so this is compared against GraceDuration rather
+//                than raw wall-clock elapsed.
 //   finished   — true once the segment has resolved and the split has fired;
 //                prevents the same zone from triggering a second split.
+//   taintedPending — set when RTAPI detects the player is fully dead mid-segment.
+//                    A __TAINTED__ split has been injected; we wait for IsAlive
+//                    to become true again before firing a clean combat end.
 // ---------------------------------------------------------------------------
 struct CombatTriggerState
 {
-    bool                                  active        = false;
-    ECombatState                          state         = ECombatState::Armed;
-    double                                dropTime      = 0.0;
+    bool                                  active         = false;
+    ECombatState                          state          = ECombatState::Armed;
+    double                                dropTime       = 0.0;
     std::chrono::steady_clock::time_point graceStart;
-    // Mumble only: accumulated seconds of grace that have elapsed while the
-    // player was moving. Grace only counts down while moving, so this is
-    // compared against GraceDuration rather than raw wall-clock elapsed.
-    double                                graceAccum    = 0.0;
-    bool                                  finished      = false;
-    // Set when RTAPI detects the player is fully dead mid-segment.
-    // A __TAINTED__ split has been injected; we wait for IsAlive to
-    // become true again before firing a clean combat end.
+    double                                graceAccum     = 0.0;
+    bool                                  finished       = false;
     bool                                  taintedPending = false;
 };
 
@@ -129,45 +133,81 @@ struct RoutePoint
     float           PlaneAngle          = 0.0f;
     int             HyperbolaC          = 12;
     int             DotDensity          = 200; // Display only: >0 renders as a dot sphere with this many dots
-    float           bandCenterInput     = 0.0f; 
-    float           bandUpInput         = 10.0f; 
-    float           bandDownInput       = 0.0f; 
+    float           bandCenterInput     = 0.0f;
+    float           bandUpInput         = 10.0f;
+    float           bandDownInput       = 0.0f;
 };
 
 // ---------------------------------------------------------------------------
-// Checkpoint
+// CheckpointState
 // ---------------------------------------------------------------------------
-// A named waypoint in the route.  Wraps a RoutePoint with a display name and
-// two flags that determine the checkpoint's role in the run:
+// A named waypoint in the route.  Holds both the persistent config (Point,
+// Name, IsStart, IsGoal) and all per-run runtime state for that checkpoint.
 //
+// CONFIG — set on route load; survive across FullReset():
+//   Point   — the spatial trigger definition.
+//   Name    — display name shown in the timer and history.
 //   IsStart — the timer starts (or resets + starts) when this point fires.
 //             Only one checkpoint per route should have this set.
 //   IsGoal  — the timer stops and the run is recorded when this point fires.
 //             Multiple checkpoints may have this set, allowing routes that
 //             diverge and finish at different endpoints.
 //
-// All other checkpoints (neither start nor goal) record intermediate splits.
+// RUNTIME — zeroed by ResetRuntime() on every FullReset():
+//   wasInCircle — true when the player was inside this checkpoint's sphere on
+//                 the previous frame.  Used by Circle (start: fires on exit;
+//                 non-start: fires on entry edge), CircleInteract, and
+//                 CombatArena to track enter/leave edges.
+//                 Always false for Plane, MapChange, AllCheckpoints.
+//   triggered   — true once this checkpoint has fired at least once this run.
+//                 Prevents a checkpoint from splitting twice in one run.
+//                 For CombatArena, set in sync with combat.finished.
+//   combat      — CombatArena state machine.  Ignored for all other types.
 // ---------------------------------------------------------------------------
-struct Checkpoint
+struct CheckpointState
 {
+    // ── Config (populated from route file; survives FullReset) ──────────────
     RoutePoint  Point;
-    char        Name[64] = {}; // Display name shown in the timer and history
+    char        Name[64] = {};
     bool        IsStart  = false;
     bool        IsGoal   = false;
+
+    // ── Runtime (zeroed by ResetRuntime on every FullReset) ─────────────────
+
+    // Enter/exit edge tracking for Circle, CircleInteract, CombatArena.
+    // "Was the player inside this zone on the previous frame?"
+    bool               wasInCircle = false;
+
+    // True once this checkpoint has fired at least once this run.
+    // For CombatArena, set in sync with combat.finished.
+    // Not used on IsStart checkpoints (start re-arms via its own path).
+    bool               triggered   = false;
+
+    // CombatArena state machine.  Ignored for all other trigger types.
+    CombatTriggerState combat      = {};
+
+    // Zeroes only the runtime fields, preserving config.
+    // Called by FullReset() on every run reset.
+    void ResetRuntime()
+    {
+        wasInCircle = false;
+        triggered   = false;
+        combat      = {};
+    }
 };
 
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
-// The full route: an ordered list of checkpoints and an IsValid flag.
+// The full route: an ordered list of CheckpointStates and an IsValid flag.
 // IsValid must be set to true (via "Activate Route" in the config window)
 // before AddonRender() will evaluate any triggers.  This prevents a partially
 // edited route from accidentally starting the timer mid-edit.
 // ---------------------------------------------------------------------------
 struct Route
 {
-    std::vector<Checkpoint> Checkpoints;
-    bool                    IsValid = false;
+    std::vector<CheckpointState> Checkpoints;
+    bool                         IsValid = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -176,14 +216,14 @@ struct Route
 // Linear scans to find the designated start or goal checkpoint by flag.
 // Returns nullptr if no checkpoint has the flag set (e.g. an incomplete route).
 // ---------------------------------------------------------------------------
-inline Checkpoint* GetStart(Route& route)
+inline CheckpointState* GetStart(Route& route)
 {
     for (auto& cp : route.Checkpoints)
         if (cp.IsStart) return &cp;
     return nullptr;
 }
 
-inline Checkpoint* GetGoal(Route& route)
+inline CheckpointState* GetGoal(Route& route)
 {
     for (auto& cp : route.Checkpoints)
         if (cp.IsGoal) return &cp;

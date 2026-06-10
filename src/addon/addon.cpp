@@ -116,7 +116,7 @@ static void OnCheckpointKey(const char* aIdentifier, bool aIsRelease)
     }
     else if (MumbleLink || GS.RTAPIAvailable)
     {
-        Checkpoint cp;
+        CheckpointState cp;
         snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
         cp.Point.X     = GS.PlayerX;
         cp.Point.Y     = GS.PlayerY;
@@ -240,6 +240,9 @@ void DeregisterKeybinds()
 //   MapChange      — the player was on the configured map and just left it
 //   CircleInteract — the player is inside the radius AND pressed Interact
 //   Circle (default) — the player is inside the radius
+//
+// NOTE: Does NOT handle the Circle-start "fires on exit" logic; that is
+// handled directly in the per-checkpoint loop using wasInCircle.
 // ---------------------------------------------------------------------------
 static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
                             unsigned int prevMapID, unsigned int currMapID,
@@ -510,8 +513,8 @@ void AddonRender()
     bool isLoading = GS.IsLoading;
 
     // Convenience pointers to the designated start and goal checkpoints.
-    Checkpoint* startCp = GetStart(CurrentRoute);
-    Checkpoint* goalCp  = GetGoal(CurrentRoute);
+    CheckpointState* startCp = GetStart(CurrentRoute);
+    CheckpointState* goalCp  = GetGoal(CurrentRoute);
 
     // -------------------------------------------------------------------------
     // Main logic — held under KeybindMutex so timer calls here and in keybind
@@ -567,394 +570,344 @@ void AddonRender()
 
         if (CurrentRoute.IsValid)
         {
-            // Keep the parallel trigger-state arrays in sync with the route length.
-            // These arrays track per-checkpoint state: was the player inside last
-            // frame, has the checkpoint already fired this run, and combat state.
-            if (WasInCheckpoint.size() != CurrentRoute.Checkpoints.size())
+            // Keep CheckpointStates in sync with the route.  Under normal operation
+            // FullReset() already did this, but if checkpoints were added or removed
+            // in the config editor mid-run we catch it here so we never go out of bounds.
+            if (CheckpointStates.size() != CurrentRoute.Checkpoints.size())
+                FullReset();
+
+            // ── Unified per-checkpoint trigger loop ──────────────────────────────
+            //
+            // Every checkpoint — start, goal, intermediate — is evaluated in one
+            // pass.  IsStart / IsGoal flags drive the timer start/stop actions;
+            // the trigger type drives the geometry check.
+            //
+            // Start checkpoint (Circle only) special case:
+            //   • Entering the circle → FullReset (arms the start).
+            //   • Leaving the circle  → start the timer.
+            //   All other trigger types on start fire immediately like a normal
+            //   checkpoint, but also reset and start the timer instead of splitting.
+            //
+            // Goal checkpoint: on trigger → stop timers, record run.
+            //
+            // Intermediate checkpoint: on trigger → record split (once per run).
+            // ─────────────────────────────────────────────────────────────────────
+            for (int i = 0; i < (int)CheckpointStates.size(); i++)
             {
-                WasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
-                checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
-                CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
-            }
+                CheckpointState& cs   = CheckpointStates[i];
+                const RoutePoint& pt  = cs.Point;
 
-            // --- Start trigger logic ---
-            if (startCp)
-            {
-                RoutePoint& startPt = startCp->Point;
-
-                // Circle start: reset when the player enters the zone, then
-                // start the timer when they leave it.  This lets the player
-                // stand in the start zone to reset and walk out to begin.
-                if (startPt.TriggerType == ETriggerType::Circle)
+                // Null types are decorative — skip all trigger logic.
+                if (pt.TriggerType == ETriggerType::NullCircle ||
+                    pt.TriggerType == ETriggerType::NullPlane)
                 {
-                    bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
-                    bool inStart = onCorrectMap && IsWithinRange(currPos, startPt);
-
-                    if (inStart && !WasInCircleStart && !SpeedrunTimer.IsRunning())
-                        FullReset();
-
-                    if (!inStart && WasInCircleStart &&
-                        !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
-                    {
-                        SpeedrunTimer.Start();
-                        GrandTimer.Start();
-                    }
-
-                    WasInCircleStart = inStart;
+                    cs.wasInCircle = false;
+                    continue;
                 }
-                // Plane start: start the timer the moment the player crosses the plane.
-                else if (startPt.TriggerType == ETriggerType::Plane)
-                {
-                    bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
-                    bool crossed = onCorrectMap && HasCrossedPlane(prevPos, currPos, startPt);
 
-                    if (crossed && !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
+                // Map filter — AllCheckpoints and MapChange don't need a specific map.
+                bool onCorrectMap = pt.TriggerType == ETriggerType::MapChange ||
+                                    pt.TriggerType == ETriggerType::AllCheckpoints ||
+                                    pt.MapID == 0 ||
+                                    currMapID == pt.MapID;
+                
+                bool inCircle = onCorrectMap &&
+                    (pt.TriggerType == ETriggerType::Circle         ||
+                     pt.TriggerType == ETriggerType::CircleInteract ||
+                     pt.TriggerType == ETriggerType::CombatArena)
+                    ? IsWithinRange(currPos, pt) : false;
+
+                // ── START checkpoint ──────────────────────────────────────────────
+                bool prevWasInCircle = cs.wasInCircle;
+                if (cs.IsStart)
+                {
+                    if (pt.TriggerType == ETriggerType::Circle)
                     {
-                        FullReset();
-                        SpeedrunTimer.Start();
-                        GrandTimer.Start();
+                        // Enter → reset (arms the start zone).
+                        if (inCircle && !prevWasInCircle && !SpeedrunTimer.IsRunning()) //xxx
+                            FullReset();
+
+                        // Exit → start timer.
+                        if (!inCircle && prevWasInCircle &&
+                            !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
+                        {
+                            SpeedrunTimer.Start();
+                            GrandTimer.Start();
+                        }
+
+                        cs.wasInCircle = inCircle;
                     }
-                }
-                // MapChange start: the trigger fires on the map-transition event, but the
-                // actual start is deferred (PendingStart flag) until the load screen clears
-                // so the timer begins at the moment gameplay resumes, not mid-load.
-                else if (startPt.TriggerType == ETriggerType::MapChange)
-                {
-                    bool justLeft = (prevMapID == startPt.MapID) && (currMapID != startPt.MapID);
-                    if (startPt.MapID != 0 && justLeft &&
-                        !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
+                    else if (pt.TriggerType == ETriggerType::Plane)
                     {
-                        PendingStart = true;
-                    }
-                }
-                // CircleInteract start: start when the player presses Interact inside the zone.
-                else if (startPt.TriggerType == ETriggerType::CircleInteract)
-                {
-                    bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
-                    bool inCircle = onCorrectMap && IsWithinRange(currPos, startPt);
-
-                    if (inCircle && InteractKeyPressed && !SpeedrunTimer.IsRunning())
-                    {
-                        FullReset();
-                        SpeedrunTimer.Start();
-                        GrandTimer.Start();
-                    }
-                }
-                // CombatArena start: start on a rising combat edge (not-in-combat → in-combat)
-                // while the player is inside the configured zone.
-                else if (startPt.TriggerType == ETriggerType::CombatArena)
-                {
-                    bool onCorrectMap = startPt.MapID == 0 || currMapID == startPt.MapID;
-                    bool inCircle = onCorrectMap && IsWithinRange(currPos, startPt);
-
-                    // Once a previous combat segment fully resolved, re-arm so the player
-                    // can start another run without a manual reset.
-                    if (CombatStart.finished && !SpeedrunTimer.IsRunning())
-                        CombatStart = {};
-
-                    // Detect whether start and goal are the exact same zone.
-                    // If so, the goal tracker needs to be armed at the same time as the
-                    // start tracker (since both share one physical combat area).
-                    bool sameArea = goalCp &&
-                        goalCp->Point.TriggerType == ETriggerType::CombatArena &&
-                        goalCp->Point.MapID  == startPt.MapID  &&
-                        goalCp->Point.X      == startPt.X      &&
-                        goalCp->Point.Y      == startPt.Y      &&
-                        goalCp->Point.Z      == startPt.Z      &&
-                        goalCp->Point.RadiusWidth == startPt.RadiusWidth;
-
-                    if (!SpeedrunTimer.IsRunning())
-                    {
-                        bool risingEdge = currInCombat && !prevInCombat;
-                        if (risingEdge && onCorrectMap && inCircle)
+                        bool crossed = onCorrectMap && HasCrossedPlane(prevPos, currPos, pt);
+                        if (crossed && !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
                         {
                             FullReset();
                             SpeedrunTimer.Start();
                             GrandTimer.Start();
-                            CombatStart.active = true;
-                            CombatStart.state  = ECombatState::Armed;
-
-                            // For single-arena runs, arm the goal tracker at the same time.
-                            if (sameArea)
-                            {
-                                CombatGoal.active = true;
-                                CombatGoal.state  = ECombatState::Armed;
-                            }
                         }
                     }
-                    else if (SpeedrunTimer.IsRunning() && CombatStart.active)
+                    else if (pt.TriggerType == ETriggerType::MapChange)
                     {
-                        // Separate start/goal zones: tick the start combat tracker
-                        // and record a "Combat End" split when the start-zone fight finishes.
-                        if (!sameArea)
+                        bool justLeft = (prevMapID == pt.MapID) && (currMapID != pt.MapID);
+                        if (pt.MapID != 0 && justLeft &&
+                            !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
                         {
-                            bool finished = TickCombat(CombatStart, startPt, onCorrectMap, inCircle);
-                            if (finished)
-                            {
-                                double t = CombatStart.dropTime > 0.0
-                                    ? CombatStart.dropTime
-                                    : SpeedrunTimer.GetElapsedSeconds();
-                                Split s;
-                                snprintf(s.Name, sizeof(s.Name), "%s Combat End", startCp->Name);
-                                s.Timestamp = t;
-                                SpeedrunTimer.AddSplitAt(s);
-                            }
+                            PendingStart = true;
                         }
                     }
-                }
-            }
-
-            // --- Checkpoint and goal logic (skipped during load screens) ---
-            if (!isLoading && SpeedrunTimer.IsRunning())
-            {
-                for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
-                {
-                    // The start and goal are handled by their own dedicated blocks above/below.
-                    if (CurrentRoute.Checkpoints[i].IsStart || CurrentRoute.Checkpoints[i].IsGoal)
-                        continue;
-
-                    const RoutePoint& cp = CurrentRoute.Checkpoints[i].Point;
-
-                    // Null types are decorative — never trigger.
-                    if (cp.TriggerType == ETriggerType::NullCircle ||
-                        cp.TriggerType == ETriggerType::NullPlane)
-                        continue;
-
-                    // MapChange checkpoints don't need to be on a specific map (the
-                    // trigger is the act of leaving), so we skip the map filter for them.
-                    bool onCorrectMap = cp.TriggerType == ETriggerType::MapChange ||
-                                        cp.MapID == 0 ||
-                                        currMapID == cp.MapID;
-
-                    bool triggered = false;
-                    if (onCorrectMap)
+                    else if (pt.TriggerType == ETriggerType::CircleInteract)
                     {
-                        if (cp.TriggerType == ETriggerType::CombatArena)
+                        if (inCircle && InteractKeyPressed && !SpeedrunTimer.IsRunning())
                         {
-                            // CombatArena checkpoints record a "Combat Start" split when
-                            // the player first enters combat in the zone, and a "Combat End"
-                            // split when the combat segment finishes.
-                            bool inCircle = IsWithinRange(currPos, cp);
-                            if (!CombatCheckpoints[i].finished)
+                            FullReset();
+                            SpeedrunTimer.Start();
+                            GrandTimer.Start();
+                        }
+                        cs.wasInCircle = inCircle;
+                    }
+                    else if (pt.TriggerType == ETriggerType::CombatArena)
+                    {
+                        // Once a previous combat segment fully resolved, re-arm so the
+                        // player can start another run without a manual reset.
+                        if (cs.combat.finished && !SpeedrunTimer.IsRunning())
+                            cs.combat = {};
+
+                        // Detect whether this start and the goal share the exact same zone
+                        // (single-arena run).  If so the goal's combat tracker must be armed
+                        // at the same time as the start's.
+                        CheckpointState* goalCs = GetGoal(CurrentRoute);
+                        bool sameArea = goalCs &&
+                            goalCs->Point.TriggerType == ETriggerType::CombatArena &&
+                            goalCs->Point.MapID       == pt.MapID  &&
+                            goalCs->Point.X           == pt.X      &&
+                            goalCs->Point.Y           == pt.Y      &&
+                            goalCs->Point.Z           == pt.Z      &&
+                            goalCs->Point.RadiusWidth == pt.RadiusWidth;
+
+                        if (!SpeedrunTimer.IsRunning())
+                        {
+                            bool risingEdge = currInCombat && !prevInCombat;
+                            if (risingEdge && onCorrectMap && inCircle)
                             {
-                                if (!CombatCheckpoints[i].active)
+                                FullReset();
+                                SpeedrunTimer.Start();
+                                GrandTimer.Start();
+                                // Re-fetch after FullReset (which re-syncs CheckpointStates).
+                                CheckpointStates[i].combat.active = true;
+                                CheckpointStates[i].combat.state  = ECombatState::Armed;
+
+                                if (sameArea && goalCs)
                                 {
-                                    bool risingEdge = currInCombat && !prevInCombat;
-                                    if (risingEdge && inCircle)
-                                    {
-                                        CombatCheckpoints[i] = { true, ECombatState::Armed };
-                                        char splitStartName[68];
-                                        snprintf(splitStartName, sizeof(splitStartName), "%s Combat Start", CurrentRoute.Checkpoints[i].Name);
-                                        SpeedrunTimer.AddSplit(splitStartName);
-                                    }
-                                }
-                                else
-                                {
-                                    triggered = TickCombat(CombatCheckpoints[i], cp, onCorrectMap, inCircle);
+                                    goalCs->combat.active = true;
+                                    goalCs->combat.state  = ECombatState::Armed;
+                                    // Inject "X Combat Start" for the goal so the taint scan
+                                    // in the goal block has a valid anchor to stop at.
+                                    char goalStartName[68];
+                                    snprintf(goalStartName, sizeof(goalStartName), "%s Combat Start", goalCs->Name);
+                                    SpeedrunTimer.AddSplit(goalStartName);
                                 }
                             }
                         }
-                        else
+                        else if (SpeedrunTimer.IsRunning() && cs.combat.active)
                         {
-                            triggered = PointTriggered(prevPos, currPos, prevMapID, currMapID, cp);
-                        }
-                    }
-
-                    // Record the split.
-                    // Circle triggers require the player to have been *outside* the zone
-                    // last frame (WasInCheckpoint[i] == false) to prevent the split from
-                    // firing again the moment the player re-enters an already-passed circle.
-                    if (triggered && !checkpointTriggered[i] &&
-                        (cp.TriggerType != ETriggerType::Circle || !WasInCheckpoint[i]))
-                    {
-                        if (cp.TriggerType == ETriggerType::CombatArena)
-                        {
-                            // Always record "X Combat End" for CombatArena checkpoints.
-                            // Back-date to dropTime when available (clean grace-period finish).
-                            // On the RTAPI revive path the player died while Armed, so
-                            // GracePending was never entered and dropTime is 0 — in that
-                            // case use the current elapsed time instead.
-                            Split s;
-                            snprintf(s.Name, sizeof(s.Name), "%s Combat End", CurrentRoute.Checkpoints[i].Name);
-                            s.Timestamp = CombatCheckpoints[i].dropTime > 0.0
-                                ? CombatCheckpoints[i].dropTime
-                                : SpeedrunTimer.GetElapsedSeconds();
-                            SpeedrunTimer.AddSplitAt(s);
-                        }
-                        else
-                        {
-                            SpeedrunTimer.AddSplit(CurrentRoute.Checkpoints[i].Name);
-                        }
-                        checkpointTriggered[i] = true;
-                    }
-
-                    // Track whether the player was inside a circle zone last frame.
-                    // Only circle types use this flag; other types reset it to false.
-                    WasInCheckpoint[i] = (cp.TriggerType == ETriggerType::Circle && onCorrectMap)
-                        ? IsWithinRange(currPos, cp)
-                        : false;
-                }
-
-                // --- Goal trigger ---
-                bool goalTriggered = false;
-                double goalTime    = 0.0;
-                if (goalCp)
-                {
-                    RoutePoint& goalPt = goalCp->Point;
-
-                    // AllCheckpoints goal: fires once every non-start/non-goal checkpoint
-                    // has been triggered at least once this run.
-                    // NOTE: AllCheckpoints fires immediately if there are no intermediate checkpoints.
-                    // This is intentional — "all zero checkpoints have been triggered" is vacuously true.
-                    // A route with only a start and an AllCheckpoints goal is simply a broken route.
-                    // Use a Circle or Plane goal instead if you want a two-point run.
-                    if (goalPt.TriggerType == ETriggerType::AllCheckpoints)
-                    {
-                        bool allDone = !CurrentRoute.Checkpoints.empty();
-                        for (int i = 0; i < (int)checkpointTriggered.size(); i++)
-                        {
-                            if (CurrentRoute.Checkpoints[i].IsStart || CurrentRoute.Checkpoints[i].IsGoal)
-                                continue;
-                            if (!checkpointTriggered[i]) { allDone = false; break; }
-                        }
-                        goalTriggered = allDone;
-                    }
-                    // CombatArena goal: tick the combat tracker and stop the run when
-                    // the goal combat segment finishes.
-                    else if (goalPt.TriggerType == ETriggerType::CombatArena)
-                    {
-                        bool onCorrectMap = goalPt.MapID == 0 || currMapID == goalPt.MapID;
-                        bool inCircle = onCorrectMap && IsWithinRange(currPos, goalPt);
-
-                        // Detect whether goal and start share the same zone (single-arena).
-                        bool sameArea = startCp &&
-                            startCp->Point.TriggerType == ETriggerType::CombatArena &&
-                            startCp->Point.MapID  == goalPt.MapID  &&
-                            startCp->Point.X      == goalPt.X      &&
-                            startCp->Point.Y      == goalPt.Y      &&
-                            startCp->Point.Z      == goalPt.Z      &&
-                            startCp->Point.RadiusWidth == goalPt.RadiusWidth;
-
-                        if (!CombatGoal.finished)
-                        {
-                            if (!CombatGoal.active)
+                            if (!sameArea)
                             {
-                                // Only arm independently if this is a different zone from start.
-                                // Same-zone goal trackers are armed alongside the start (see above).
-                                if (!sameArea)
+                                bool finished = TickCombat(cs.combat, pt, onCorrectMap, inCircle);
+                                if (finished)
                                 {
-                                    bool risingEdge = currInCombat && !prevInCombat;
-                                    if (risingEdge && onCorrectMap && inCircle)
-                                    {
-                                        CombatGoal.active = true;
-                                        CombatGoal.state  = ECombatState::Armed;
-                                        char splitStartName[68];
-                                        snprintf(splitStartName, sizeof(splitStartName), "%s Combat Start", goalCp->Name);
-                                        SpeedrunTimer.AddSplit(splitStartName);
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                bool combatFinished = TickCombat(CombatGoal, goalPt, onCorrectMap, inCircle);
-                                if (combatFinished)
-                                {
-                                    double t = CombatGoal.dropTime > 0.0
-                                        ? CombatGoal.dropTime
+                                    double t = cs.combat.dropTime > 0.0
+                                        ? cs.combat.dropTime
                                         : SpeedrunTimer.GetElapsedSeconds();
-
-                                    // Always inject the Combat End split so it appears in the timer.
                                     Split s;
+                                    snprintf(s.Name, sizeof(s.Name), "%s Combat End", cs.Name);
                                     s.Timestamp = t;
-                                    snprintf(s.Name, sizeof(s.Name), "%s Combat End", goalCp->Name);
                                     SpeedrunTimer.AddSplitAt(s);
-
-                                    // Check whether a __TAINTED__ split exists after the most recent
-                                    // Combat Start for this goal — covers both RTAPI and Mumble paths.
-                                    bool wasTainted = false;
-                                    char startName[68];
-                                    snprintf(startName, sizeof(startName), "%s Combat Start", goalCp->Name);
-                                    const auto& splits = SpeedrunTimer.GetSplits();
-                                    for (int si = (int)splits.size() - 1; si >= 0; si--)
-                                    {
-                                        if (strcmp(splits[si].Name, "__TAINTED__") == 0) { wasTainted = true; break; }
-                                        if (strcmp(splits[si].Name, startName)     == 0) break; // reached start, no tainted
-                                    }
-
-                                    if (!wasTainted)
-                                    {
-                                        goalTriggered = true;
-                                        goalTime      = t;
-                                    }
-                                    else
-                                    {
-                                        // Reset goal tracker so the user can re-arm.
-                                        CombatGoal = {};
-                                    }
                                 }
                             }
                         }
+
+                        cs.wasInCircle = inCircle;
                     }
-                    // All other goal types (Circle, Plane, MapChange, CircleInteract).
+
+                    // If this checkpoint is both start and goal (e.g. a Circle zone that
+                    // starts the timer on exit and also ends it), don't skip the goal
+                    // evaluation block below — fall through so the goal can fire.
+                    if (!cs.IsGoal)
+                        continue; // Start-only checkpoint handled — move to next.
+                }
+
+                // ── GOAL and INTERMEDIATE checkpoints ────────────────────────────
+                // Both are skipped during load screens.
+                if (isLoading || !SpeedrunTimer.IsRunning())
+                {
+                    // Still track wasInCircle even when not running so we don't get
+                    // a phantom entry edge on the frame the timer starts.
+                    if (pt.TriggerType == ETriggerType::Circle         ||
+                        pt.TriggerType == ETriggerType::CircleInteract ||
+                        pt.TriggerType == ETriggerType::CombatArena)
+                        cs.wasInCircle = inCircle;
+                    continue;
+                }
+
+                bool fired = false; // Set to true when this checkpoint triggers this frame.
+
+                if (pt.TriggerType == ETriggerType::CombatArena)
+                {
+                    // Arm on rising combat edge inside the zone.
+                    if (!cs.combat.finished)
+                    {
+                        if (!cs.combat.active)
+                        {
+                            bool risingEdge = currInCombat && !prevInCombat;
+                            if (risingEdge && inCircle)
+                            {
+                                cs.combat = { true, ECombatState::Armed };
+                                char splitStartName[68];
+                                snprintf(splitStartName, sizeof(splitStartName), "%s Combat Start", cs.Name);
+                                SpeedrunTimer.AddSplit(splitStartName);
+                            }
+                        }
+                        else
+                        {
+                            fired = TickCombat(cs.combat, pt, onCorrectMap, inCircle);
+                        }
+                    }
+                }
+                else if (pt.TriggerType == ETriggerType::AllCheckpoints)
+                {
+                    // AllCheckpoints: fires once every non-start/non-goal checkpoint
+                    // has triggered at least once.
+                    // NOTE: vacuously true (and fires immediately) if there are no
+                    // intermediate checkpoints — a route with only start + AllCheckpoints
+                    // goal is broken by design.
+                    bool allDone = !CurrentRoute.Checkpoints.empty();
+                    for (int j = 0; j < (int)CheckpointStates.size(); j++)
+                    {
+                        if (CheckpointStates[j].IsStart || CheckpointStates[j].IsGoal)
+                            continue;
+                        if (!CheckpointStates[j].triggered) { allDone = false; break; }
+                    }
+                    fired = allDone;
+                }
+                else
+                {
+                    // Circle (non-start): fires on the entering edge only.
+                    // All other types use PointTriggered directly.
+                    if (pt.TriggerType == ETriggerType::Circle)
+                        fired = onCorrectMap && inCircle && !prevWasInCircle;
+                    else
+                        fired = onCorrectMap &&
+                            PointTriggered(prevPos, currPos, prevMapID, currMapID, pt);
+                }
+
+                // Update wasInCircle for next frame.
+                if (pt.TriggerType == ETriggerType::Circle         ||
+                    pt.TriggerType == ETriggerType::CircleInteract ||
+                    pt.TriggerType == ETriggerType::CombatArena)
+                    cs.wasInCircle = inCircle;
+                else
+                    cs.wasInCircle = false;
+
+                if (!fired || cs.triggered)
+                    continue;
+
+                // ── GOAL ─────────────────────────────────────────────────────────
+                if (cs.IsGoal)
+                {
+                    // For CombatArena goals, check for a tainted run before accepting.
+                    if (pt.TriggerType == ETriggerType::CombatArena)
+                    {
+                        double t = cs.combat.dropTime > 0.0
+                            ? cs.combat.dropTime
+                            : SpeedrunTimer.GetElapsedSeconds();
+
+                        Split combatEnd;
+                        combatEnd.Timestamp = t;
+                        snprintf(combatEnd.Name, sizeof(combatEnd.Name), "%s Combat End", cs.Name);
+                        SpeedrunTimer.AddSplitAt(combatEnd);
+
+                        // Check for a tainted segment since the most recent Combat Start.
+                        bool wasTainted = false;
+                        char startName[68];
+                        snprintf(startName, sizeof(startName), "%s Combat Start", cs.Name);
+                        const auto& splits = SpeedrunTimer.GetSplits();
+                        for (int si = (int)splits.size() - 1; si >= 0; si--)
+                        {
+                            if (strcmp(splits[si].Name, "__TAINTED__") == 0) { wasTainted = true; break; }
+                            if (strcmp(splits[si].Name, startName)     == 0) break;
+                        }
+
+                        if (wasTainted)
+                        {
+                            cs.combat = {}; // Re-arm for next attempt.
+                            continue;
+                        }
+
+                        // Clean run — fall through to the shared stop logic below,
+                        // using the back-dated time.
+                        SpeedrunTimer.StopAt(t);
+                        GrandTimer.Stop();
+                    }
                     else
                     {
-                        bool goalOnCorrectMap = goalPt.MapID == 0 ||
-                            (goalPt.TriggerType == ETriggerType::MapChange
-                            ? true
-                            : currMapID == goalPt.MapID);
-                        goalTriggered = goalOnCorrectMap &&
-                            PointTriggered(prevPos, currPos, prevMapID, currMapID, goalPt);
-                    }
-
-                    // --- Run finished ---
-                    if (goalTriggered)
-                    {
-                        // For CombatArena goals we have a back-dated stop time; use it so
-                        // the final split time reflects when combat actually ended.
-                        if (goalPt.TriggerType == ETriggerType::CombatArena && goalTime > 0.0)
-                            SpeedrunTimer.StopAt(goalTime);
-                        else
-                            SpeedrunTimer.Stop();
+                        SpeedrunTimer.Stop();
                         GrandTimer.Stop();
-                        RunFinished = true;
+                    }
 
-                        HistoricalRun run;
-                        run.Date       = GetCurrentDateTimeString();
-                        run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
-                        // Use the pre-load-screen snapshot for grand total if available,
-                        // otherwise use the live GrandTimer value.
-                        run.GrandTotal = (pendingGrandStop >= 0.0)
-                            ? pendingGrandStop
-                            : GrandTimer.GetElapsedSeconds();
-                        DisplayedGrandTotal = run.GrandTotal;
-                        pendingGrandStop    = -1.0;
-                        run.Splits          = SpeedrunTimer.GetSplits();
+                    RunFinished = true;
 
-                        // Ensure the goal checkpoint itself appears as the final split entry
-                        // even if the goal trigger type doesn't naturally produce one.
-                        // CombatArena goals already injected a "X Combat End" split — skip.
-                        if (goalPt.TriggerType != ETriggerType::CombatArena)
+                    HistoricalRun run;
+                    run.Date       = GetCurrentDateTimeString();
+                    run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
+                    run.GrandTotal = (pendingGrandStop >= 0.0)
+                        ? pendingGrandStop
+                        : GrandTimer.GetElapsedSeconds();
+                    DisplayedGrandTotal = run.GrandTotal;
+                    pendingGrandStop    = -1.0;
+                    run.Splits          = SpeedrunTimer.GetSplits();
+
+                    // Ensure the goal checkpoint itself appears as the final split entry
+                    // for plain trigger types.  CombatArena already injected "X Combat End".
+                    if (pt.TriggerType != ETriggerType::CombatArena)
+                    {
+                        if (run.Splits.empty() || strcmp(run.Splits.back().Name, cs.Name) != 0)
                         {
-                            if (run.Splits.empty() || strcmp(run.Splits.back().Name, goalCp->Name) != 0)
-                            {
-                                Split goalSplit;
-                                strncpy(goalSplit.Name, goalCp->Name, sizeof(goalSplit.Name) - 1);
-                                goalSplit.Timestamp = run.TotalTime;
-                                run.Splits.push_back(goalSplit);
-                            }
-                        }
-
-                        HistoryRuns.insert(HistoryRuns.begin(), run);
-                        if (BestRunIndex >= 0)
-                            BestRunIndex++;
-                        TrimHistory();
-                        if (!CurrentHistoryPath.empty())
-                        {
-                            UpdateSegments(run, SegmentRecords);
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            Split goalSplit;
+                            strncpy(goalSplit.Name, cs.Name, sizeof(goalSplit.Name) - 1);
+                            goalSplit.Timestamp = run.TotalTime;
+                            run.Splits.push_back(goalSplit);
                         }
                     }
+
+                    HistoryRuns.insert(HistoryRuns.begin(), run);
+                    if (BestRunIndex >= 0) BestRunIndex++;
+                    TrimHistory();
+                    if (!CurrentHistoryPath.empty())
+                    {
+                        UpdateSegments(run, SegmentRecords);
+                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                    }
+
+                    cs.triggered = true;
+                    break; // Run is over — no need to evaluate further checkpoints.
                 }
+
+                // ── INTERMEDIATE checkpoint ───────────────────────────────────────
+                if (pt.TriggerType == ETriggerType::CombatArena)
+                {
+                    Split s;
+                    snprintf(s.Name, sizeof(s.Name), "%s Combat End", cs.Name);
+                    s.Timestamp = cs.combat.dropTime > 0.0
+                        ? cs.combat.dropTime
+                        : SpeedrunTimer.GetElapsedSeconds();
+                    SpeedrunTimer.AddSplitAt(s);
+                }
+                else
+                {
+                    SpeedrunTimer.AddSplit(cs.Name);
+                }
+                cs.triggered = true;
             }
 
             // MapChange start: deferred until the load screen has fully cleared so the
@@ -974,10 +927,9 @@ void AddonRender()
             }
 
             // Update grand total display value for this frame.
-            // Run in progress — keep the overlay ticking (frozen if a pending snapshot exists).
             if (SpeedrunTimer.IsRunning())
                 DisplayedGrandTotal = (pendingGrandStop >= 0.0) ? pendingGrandStop : GrandTimer.GetElapsedSeconds();
-        
+
         }
     } // KeybindMutex released here
 

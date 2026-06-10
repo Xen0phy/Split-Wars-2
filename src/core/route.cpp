@@ -78,8 +78,8 @@ bool HasCrossedPlane(const Vector3& prevPos, const Vector3& currPos, const Route
 
     // Step 3b — height gate: reject if player is outside the band above/below Y.
     float dy = currPos.Y - point.Y;
-    if (dy >  point.bandUpInput)   return false;
-    if (dy < -point.bandDownInput) return false;
+    if (dy >  point.bandUpInput + 0.1)   return false;
+    if (dy < -point.bandDownInput - 0.1) return false;
 
     // Step 4 — sign-change test: project both positions onto the normal.
     // A sign change means the player moved from one side of the plane to the other.

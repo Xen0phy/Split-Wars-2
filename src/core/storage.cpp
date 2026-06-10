@@ -232,7 +232,7 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
         route.Checkpoints.clear();
         for (const auto& cp : j)
         {
-            Checkpoint c;
+            CheckpointState c;
             std::string name = cp.value("name", "Unnamed");
             strncpy(c.Name, name.c_str(), sizeof(c.Name) - 1);
             c.IsStart = cp.value("is_start", false);

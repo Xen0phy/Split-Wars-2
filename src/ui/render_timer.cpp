@@ -77,7 +77,7 @@ void RenderTimerOverlay()
         // -------------------------------------------------------------------------
         // Hoisted here (were previously inside BeginTable) so they remain in
         // scope for the "Save as best" handler further down.
-        const Checkpoint* goalCp = GetGoal(CurrentRoute);
+        const CheckpointState* goalCp = GetGoal(CurrentRoute);
         bool goalIsAllCheckpoints = goalCp &&
             goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
         bool manualStop = finished && numSplits > 0 &&
