@@ -128,6 +128,8 @@ static void ApplySettings(const Settings& s)
     std::copy(s.StreamerDigitFillColor,    s.StreamerDigitFillColor + 3,    CMDigitFillColor);
     std::copy(s.StreamerDigitBaseColor,    s.StreamerDigitBaseColor + 3,    CMDigitBaseColor);
     std::copy(s.StreamerDigitOverlay,      s.StreamerDigitOverlay +3,      CMDigitOverlay);
+    ShowCMFill = s.ShowCMFill;
+    ShowCMShadow = s.ShowCMShadow;
 }
 
 // Snapshot the current global variables into a Settings struct ready for saving.
@@ -172,6 +174,8 @@ static Settings GatherSettings()
     std::copy(CMDigitFillColor,    CMDigitFillColor + 3,    s.StreamerDigitFillColor);
     std::copy(CMDigitBaseColor,    CMDigitBaseColor + 3,    s.StreamerDigitBaseColor);
     std::copy(CMDigitOverlay,      CMDigitOverlay + 3,      s.StreamerDigitOverlay);
+    s.ShowCMFill = ShowCMFill;
+    s.ShowCMShadow = ShowCMShadow;
     return s;
 }
 

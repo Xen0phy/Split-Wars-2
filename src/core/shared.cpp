@@ -10,9 +10,9 @@
 // ---------------------------------------------------------------------------
 // Nexus / GW2 interface pointers
 // ---------------------------------------------------------------------------
-AddonAPI_t*   APIDefs           = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
-Mumble::Data* MumbleLink        = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
-RTAPI::RealTimeData* RTAPIData  = nullptr;
+AddonAPI_t*   APIDefs             = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
+Mumble::Data* MumbleLink          = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
+RTAPI::RealTimeData* RTAPIData    = nullptr;
 ArcDPS::PluginInfo* ArcDPSExports = nullptr;
 
 // ---------------------------------------------------------------------------
@@ -157,6 +157,8 @@ std::string StreamerFontName          = "";
 int         StreamerFontSize          = 32;
 bool        StreamerShowRunningMillis = false;
 int         StreamerHeaderFontSize    = 20;
+bool        ShowCMFill                = true;
+bool        ShowCMShadow              = true;
 
 // ---------------------------------------------------------------------------
 // Crash Mode

@@ -6,9 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
-#include "imgui.h"
 #include "render_shared.h"
-#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -24,6 +22,39 @@ void AddonOptions()
     //Save Settings
     if (ImGui::Button("Save Settings"))
         SaveCurrentSettings();
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+    ImGui::SameLine();
+        
+    // Data source selector — lets the user choose between RTAPI and Mumble.
+    ImGui::Text("Data Source:");
+    const char* sourceLabel = (PreferredSource == EDataSource::RTAPI)   ? "RTAPI"
+                            : (PreferredSource == EDataSource::Mumble)  ? "Mumble"
+                            :                                              "Default";
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80.0f);
+    if (ImGui::BeginCombo("##datasource", sourceLabel))
+    {
+        if (ImGui::Selectable("Default", PreferredSource == EDataSource::Default))
+            PreferredSource = EDataSource::Default;
+        Tooltip("Use RTAPI if available, otherwise Mumble.");
+        if (ImGui::Selectable("Mumble",  PreferredSource == EDataSource::Mumble))
+            PreferredSource = EDataSource::Mumble;
+        Tooltip("Always use Mumble, even if RTAPI is available.");
+        if (ImGui::Selectable("RTAPI",   PreferredSource == EDataSource::RTAPI))
+            PreferredSource = EDataSource::RTAPI;
+        Tooltip("Always use RTAPI. Falls back to Mumble if RTAPI is unavailable.");
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(GS.RTAPIAvailable ? "(RTAPI connected)" : "(RTAPI not available)");
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+    ImGui::SameLine();
+
+    // Debug
+    ImGui::Checkbox("Show Debug Window", &ShowDebug);
+    Tooltip("Toggles debugging text which is not fully implemented");
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
@@ -89,42 +120,26 @@ void AddonOptions()
             Tooltip("When enabled, the live segment and total rows show milliseconds while the timer is running.\nDisabled by default: milliseconds only appear once the segment is stopped.");
     
             ImGui::TableSetColumnIndex(1);
-            ImGui::ColorEdit3("Best Row##tc", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    
-            // Row 5
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            // empty
-    
-            ImGui::TableSetColumnIndex(1);
             if (ImGui::Button("Reset Time Colors##tc"))
             {
                 float defAhead[3]   = { 0.2f, 1.0f, 0.2f };
                 float defBehind[3]  = { 1.0f, 0.3f, 0.3f };
-                float defBestRow[3] = { 0.2f, 0.3f, 0.2f };
                 std::copy(defAhead,   defAhead   + 3, ColorAhead);
                 std::copy(defBehind,  defBehind  + 3, ColorBehind);
-                std::copy(defBestRow, defBestRow + 3, ColorBestRow);
                 SaveCurrentSettings();
             }
-    
-            //ImGui::EndTable();
-        //}
-        
+            
+            // Row 5
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Separator();
             ImGui::TableSetColumnIndex(1);
             ImGui::Separator();
     
-        // --- Streamer section ---
+            // --- Streamer section ---
             bool streamerDisabled = !StreamerMode;
-        //if (ImGui::BeginTable("##streamersettings", 2, ImGuiTableFlags_None))
-        //{
-            //ImGui::TableSetupColumn("##sleft",  ImGuiTableColumnFlags_WidthFixed);
-            //ImGui::TableSetupColumn("##sright", ImGuiTableColumnFlags_WidthFixed);
     
-            // Row 1
+            // Row 6
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Streamer Mode", &StreamerMode);
@@ -135,7 +150,6 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(1);
             if (streamerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
             {
-                const auto& fontNames = GetStreamFontNames();
                 if (!fontNames.empty())
                 {
                     const char* preview = StreamerFontName.empty() ? fontNames[0].c_str() : StreamerFontName.c_str();
@@ -162,7 +176,7 @@ void AddonOptions()
                 }
             }
     
-            // Row 2
+            // Row 7
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // empty
@@ -218,23 +232,18 @@ void AddonOptions()
             }
     
             if (streamerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-    
-            //ImGui::EndTable();
-        //}
+
+            //Row 8
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Separator();
             ImGui::TableSetColumnIndex(1);
             ImGui::Separator();
     
-        // --- Crash Mode section ---
+            // --- Crash Mode section ---
             bool crashDisabled = !StreamerMode || !CrashMode;
-        //if (ImGui::BeginTable("##crashsettings", 2, ImGuiTableFlags_None))
-        //{
-            //ImGui::TableSetupColumn("##cleft",  ImGuiTableColumnFlags_WidthFixed);
-            //ImGui::TableSetupColumn("##cright", ImGuiTableColumnFlags_WidthFixed);
     
-            // Row 1 — checkbox + shadow color
+            // Row 9 — checkbox + shadow color
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // Crash checkbox only needs streamer enabled
@@ -249,7 +258,7 @@ void AddonOptions()
             if (crashDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
             ImGui::Text("Crash Mode Colors:");
     
-            // Row 2 — offset box + fill/base/overlay colors
+            // Row 10 — offset box + fill/base/overlay colors
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             {
@@ -286,16 +295,19 @@ void AddonOptions()
                 ImGui::Text("(%.1f, %.1f)", CMDigitShadowOffset[0], CMDigitShadowOffset[1]);
             }
             
-            bool hideCM;
             ImGui::TableSetColumnIndex(1);
-            ImGui::Checkbox("##hide_cm_1", &hideCM);
+            ImGui::Checkbox("##hide_cm_1", &ShowCMFill);
             ImGui::SameLine();
-            ImGui::ColorEdit3("Shadow##cm",  CMDigitShadowColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-            ImGui::Checkbox("##hide_cm_2", &hideCM);
-            ImGui::SameLine();
+            if (!ShowCMFill) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
             ImGui::ColorEdit3("Fill##cm",    CMDigitFillColor,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+            if (!ShowCMFill) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            ImGui::Checkbox("##hide_cm_2", &ShowCMShadow);
+            ImGui::SameLine();
+            if (!ShowCMShadow) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            ImGui::ColorEdit3("Shadow##cm",  CMDigitShadowColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+            if (!ShowCMShadow) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
             ImGui::SameLine();
             ImGui::ColorEdit3("Base##cm",    CMDigitBaseColor,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
@@ -331,174 +343,191 @@ void AddonOptions()
     }
 
     //Route related UI
-    ImGui::Text("Windows:");
-    ImGui::Checkbox("Show Route Config", &ShowConfig);
-    Tooltip("Toggles the route configuration window.");
-    ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
-    Tooltip("Toggles the route file browser.");
-    ImGui::Checkbox("Show History",       &ShowHistory);
-    Tooltip("Toggles the history window.");
-    ImGui::SameLine();
-    ImGui::Dummy(ImVec2(5.0f, ImGui::GetFrameHeight()));
-    ImGui::SameLine();
-    // Max History Runs — clamped to [1, 100].
-    ImGui::Text("Max");
-    Tooltip("Set an amount between 1 and 100.");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::DragInt("##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Window Settings"))
+    {
+        if (ImGui::BeginTable("##windowsettings", 2, ImGuiTableFlags_None))
+        {
+            ImGui::TableSetupColumn("##wleft",  ImGuiTableColumnFlags_WidthFixed, 200);
+            ImGui::TableSetupColumn("##wright", ImGuiTableColumnFlags_WidthFixed);
+
+            // Row 1 - Route Config
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Route Config", &ShowConfig);
+            Tooltip("Toggles the route configuration window.");
+            
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(65.0f);
+            if (!ShowConfig) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::InputFloat("W##cw", &ConfigWindowW, 0, 0, "%.0f"))
+            {
+                ConfigWindowW = std::clamp(ConfigWindowW, 200.0f, 3000.0f);
+                ImGui::SetWindowSize("Split Wars 2 - Route Config", ImVec2(ConfigWindowW, ConfigWindowH));
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(65.0f);
+            if (ImGui::InputFloat("H##ch", &ConfigWindowH, 0, 0, "%.0f"))
+            {
+                ConfigWindowH = std::clamp(ConfigWindowH, 150.0f, 3000.0f);
+                ImGui::SetWindowSize("Split Wars 2 - Route Config", ImVec2(ConfigWindowW, ConfigWindowH));
+            }
+            if (!ShowConfig) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+
+            // Row 2 - Route Browser
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
+            Tooltip("Toggles the route file browser.");
+            
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(65.0f);
+            if (!ShowRouteBrowser) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::InputFloat("W##bw", &BrowserWindowW, 0, 0, "%.0f"))
+            {
+                BrowserWindowW = std::clamp(BrowserWindowW, 200.0f, 3000.0f);
+                ImGui::SetWindowSize("Split Wars 2 - Route Browser", ImVec2(BrowserWindowW, BrowserWindowH));
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(65.0f);
+            if (ImGui::InputFloat("H##bh", &BrowserWindowH, 0, 0, "%.0f"))
+            {
+                BrowserWindowH = std::clamp(BrowserWindowH, 150.0f, 3000.0f);
+                ImGui::SetWindowSize("Split Wars 2 - Route Browser", ImVec2(BrowserWindowW, BrowserWindowH));
+            }
+            if (!ShowRouteBrowser) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            
+            // Row 3 - Route History
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show History",       &ShowHistory);
+            Tooltip("Toggles the history window.");
+            ImGui::SameLine();
+            if (!ShowHistory) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            ImGui::ColorEdit3("Best Row##tc", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(65.0f);
+            if (ImGui::InputFloat("W##hw", &HistoryWindowW, 0, 0, "%.0f"))
+            {
+                HistoryWindowW = std::clamp(HistoryWindowW, 200.0f, 3000.0f);
+                ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(65.0f);
+            if (ImGui::InputFloat("H##hh", &HistoryWindowH, 0, 0, "%.0f"))
+            {
+                HistoryWindowH = std::clamp(HistoryWindowH, 150.0f, 3000.0f);
+                ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
+            }
+            if (!ShowHistory) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+
+            // Row 4 - Max History, Best Row Color
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            // Max History Runs — clamped to [1, 100].
+            ImGui::Text("Max");
+            Tooltip("Set an amount between 1 and 100.");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(65.0f);
+            ImGui::DragInt("##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
+            if (!ShowHistory) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset Color"))
+            {
+                float defBestRow[3]    = { 0.2f, 0.3f, 0.2f };
+                std::copy(defBestRow,    defBestRow    + 3, ColorBestRow);
+            }
+            if (!ShowHistory) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("Tip: You can also resize any window by dragging its edges or bottom-right corner.");
+            
+            ImGui::EndTable();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    }
 
     //Checkpoint/Zone related UI
-    ImGui::Text("Checkpoints:");
-    ImGui::Checkbox("Show Checkpoints",   &ShowZones);
-    Tooltip("Toggles the visibility of checkpoints.");
-    ImGui::Text("Distance Fade:");
-    if (!ShowZones)
+    if (ImGui::CollapsingHeader("Checkpoint Settings"))
     {
-        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
-        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-    }
-    float prevStart = ZoneFadeStart;
-    float prevEnd   = ZoneFadeEnd;
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::DragFloat("##fadestart", &ZoneFadeStart, 1.0f, 0.0f, 0.0f, "%.0fm");
-    Tooltip("Distance at which zones start fading out (metres)");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::DragFloat("##fadeend", &ZoneFadeEnd, 1.0f, 0.0f, 0.0f, "%.0fm");
-    Tooltip("Distance at which zones are fully hidden (metres)");
-    if (!ShowZones)
-    {
-        ImGui::PopItemFlag();
-        ImGui::PopStyleVar();
-    }
-    // absolute bounds
-    ZoneFadeStart = std::clamp(ZoneFadeStart, 1.0f, 1000.0f);
-    ZoneFadeEnd   = std::clamp(ZoneFadeEnd,   1.0f, 1000.0f);
-    
-    // relationship
-    if (ZoneFadeStart != prevStart && ZoneFadeStart >= ZoneFadeEnd)
-        ZoneFadeEnd = ZoneFadeStart + 1.0f;
-    if (ZoneFadeEnd != prevEnd && ZoneFadeEnd <= ZoneFadeStart)
-        ZoneFadeStart = ZoneFadeEnd - 1.0f;
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    
-    // Data source selector — lets the user choose between RTAPI and Mumble.
-    ImGui::Text("Data Source:");
-    const char* sourceLabel = (PreferredSource == EDataSource::RTAPI)   ? "RTAPI"
-                            : (PreferredSource == EDataSource::Mumble)  ? "Mumble"
-                            :                                              "Default";
-    ImGui::SetNextItemWidth(80.0f);
-    if (ImGui::BeginCombo("##datasource", sourceLabel))
-    {
-        if (ImGui::Selectable("Default", PreferredSource == EDataSource::Default))
-            PreferredSource = EDataSource::Default;
-        Tooltip("Use RTAPI if available, otherwise Mumble.");
-        if (ImGui::Selectable("Mumble",  PreferredSource == EDataSource::Mumble))
-            PreferredSource = EDataSource::Mumble;
-        Tooltip("Always use Mumble, even if RTAPI is available.");
-        if (ImGui::Selectable("RTAPI",   PreferredSource == EDataSource::RTAPI))
-            PreferredSource = EDataSource::RTAPI;
-        Tooltip("Always use RTAPI. Falls back to Mumble if RTAPI is unavailable.");
-        ImGui::EndCombo();
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled(GS.RTAPIAvailable ? "(RTAPI connected)" : "(RTAPI not available)");
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
+        if (ImGui::BeginTable("##checkpointsettings", 2, ImGuiTableFlags_None))
+        {
+            ImGui::TableSetupColumn("##cpleft",  ImGuiTableColumnFlags_WidthFixed, 200);
+            ImGui::TableSetupColumn("##cpright", ImGuiTableColumnFlags_WidthFixed);
 
-    // Colors
-    ImGui::Text("Zone Colors:");
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::ColorEdit3("Start",       ColorStart,      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(200.0f);
-    ImGui::ColorEdit3("Goal",        ColorGoal,       ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Checkpoint",  ColorCheckpoint, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    ImGui::SameLine();
-    ImGui::ColorEdit3("Null",     ColorNull,    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-    if (ImGui::Button("Reset Colors"))
-    {
-        float defStart[3]      = { 0.2f, 1.0f, 0.2f };
-        float defGoal[3]       = { 0.2f, 0.5f, 1.0f };
-        float defCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
-        float defNull[3]       = { 1.0f, 0.6f, 0.0f };
-        float defAhead[3]      = { 0.2f, 1.0f, 0.2f };
-        float defBehind[3]     = { 1.0f, 0.3f, 0.3f };
-        float defBestRow[3]    = { 0.2f, 0.3f, 0.2f };
-        std::copy(defStart,      defStart      + 3, ColorStart);
-        std::copy(defGoal,       defGoal       + 3, ColorGoal);
-        std::copy(defCheckpoint, defCheckpoint + 3, ColorCheckpoint);
-        std::copy(defNull,       defNull       + 3, ColorNull);
-        std::copy(defAhead,      defAhead      + 3, ColorAhead);
-        std::copy(defBehind,     defBehind     + 3, ColorBehind);
-        std::copy(defBestRow,    defBestRow    + 3, ColorBestRow);
-    }
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
+            //Row 1
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Checkpoints",   &ShowZones);
+            Tooltip("Toggles the visibility of checkpoints.");
+            
+            ImGui::TableSetColumnIndex(1);
+            if (!ShowZones) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+            ImGui::ColorEdit3("Start",       ColorStart,      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            
+            // Row 2
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Distance Fade:");
+            
+            ImGui::TableSetColumnIndex(1);
+            ImGui::ColorEdit3("Goal",        ColorGoal,       ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            
+            // Row 3
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            float prevStart = ZoneFadeStart;
+            float prevEnd   = ZoneFadeEnd;
+            ImGui::SetNextItemWidth(80.0f);
+            ImGui::DragFloat("##fadestart", &ZoneFadeStart, 1.0f, 0.0f, 0.0f, "%.0fm");
+            Tooltip("Distance at which zones start fading out (metres)");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.0f);
+            ImGui::DragFloat("##fadeend", &ZoneFadeEnd, 1.0f, 0.0f, 0.0f, "%.0fm");
+            Tooltip("Distance at which zones are fully hidden (metres)");
+            // absolute bounds
+            ZoneFadeStart = std::clamp(ZoneFadeStart, 1.0f, 1000.0f);
+            ZoneFadeEnd   = std::clamp(ZoneFadeEnd,   1.0f, 1000.0f);
+            
+            // relationship
+            if (ZoneFadeStart != prevStart && ZoneFadeStart >= ZoneFadeEnd)
+                ZoneFadeEnd = ZoneFadeStart + 1.0f;
+            if (ZoneFadeEnd != prevEnd && ZoneFadeEnd <= ZoneFadeStart)
+                ZoneFadeStart = ZoneFadeEnd - 1.0f;
+                
+            ImGui::TableSetColumnIndex(1);
+            ImGui::ColorEdit3("Checkpoint",  ColorCheckpoint, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
 
-    // Window sizing
-    ImGui::Text("Window Sizes:");
-    ImGui::TextDisabled("Tip: You can also resize any window by dragging its edges or bottom-right corner.");
+            // Row 2
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            // empty
+            
+            ImGui::TableSetColumnIndex(1);
+            ImGui::ColorEdit3("Null",     ColorNull,    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            ImGui::SameLine();
+            if (ImGui::Button("Reset Colors"))
+            {
+                float defStart[3]      = { 0.2f, 1.0f, 0.2f };
+                float defGoal[3]       = { 0.2f, 0.5f, 1.0f };
+                float defCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
+                float defNull[3]       = { 1.0f, 0.6f, 0.0f };
+                std::copy(defStart,      defStart      + 3, ColorStart);
+                std::copy(defGoal,       defGoal       + 3, ColorGoal);
+                std::copy(defCheckpoint, defCheckpoint + 3, ColorCheckpoint);
+                std::copy(defNull,       defNull       + 3, ColorNull);
+            }
 
-    ImGui::Text("Config  ");  ImGui::SameLine();
-    ImGui::SetNextItemWidth(65.0f);
-    if (ImGui::InputFloat("W##cw", &ConfigWindowW, 0, 0, "%.0f"))
-    {
-        ConfigWindowW = std::clamp(ConfigWindowW, 200.0f, 3000.0f);
-        ImGui::SetWindowSize("Split Wars 2 - Route Config", ImVec2(ConfigWindowW, ConfigWindowH));
-    }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(65.0f);
-    if (ImGui::InputFloat("H##ch", &ConfigWindowH, 0, 0, "%.0f"))
-    {
-        ConfigWindowH = std::clamp(ConfigWindowH, 150.0f, 3000.0f);
-        ImGui::SetWindowSize("Split Wars 2 - Route Config", ImVec2(ConfigWindowW, ConfigWindowH));
-    }
+            if (!ShowZones) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
 
-    ImGui::Text("History ");  ImGui::SameLine();
-    ImGui::SetNextItemWidth(65.0f);
-    if (ImGui::InputFloat("W##hw", &HistoryWindowW, 0, 0, "%.0f"))
-    {
-        HistoryWindowW = std::clamp(HistoryWindowW, 200.0f, 3000.0f);
-        ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
+            ImGui::EndTable();
+        }
+        
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();    
     }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(65.0f);
-    if (ImGui::InputFloat("H##hh", &HistoryWindowH, 0, 0, "%.0f"))
-    {
-        HistoryWindowH = std::clamp(HistoryWindowH, 150.0f, 3000.0f);
-        ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
-    }
-
-    ImGui::Text("Browser ");  ImGui::SameLine();
-    ImGui::SetNextItemWidth(65.0f);
-    if (ImGui::InputFloat("W##bw", &BrowserWindowW, 0, 0, "%.0f"))
-    {
-        BrowserWindowW = std::clamp(BrowserWindowW, 200.0f, 3000.0f);
-        ImGui::SetWindowSize("Split Wars 2 - Route Browser", ImVec2(BrowserWindowW, BrowserWindowH));
-    }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(65.0f);
-    if (ImGui::InputFloat("H##bh", &BrowserWindowH, 0, 0, "%.0f"))
-    {
-        BrowserWindowH = std::clamp(BrowserWindowH, 150.0f, 3000.0f);
-        ImGui::SetWindowSize("Split Wars 2 - Route Browser", ImVec2(BrowserWindowW, BrowserWindowH));
-    }
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    // Debug
-    ImGui::Text("Debugging:");
-    ImGui::Checkbox("Show Debug Window", &ShowDebug);
-    Tooltip("Toggles debugging text which is not fully implemented");
 }

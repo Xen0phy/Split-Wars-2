@@ -143,9 +143,10 @@ static void SplitTimeAtDot(const char* buf,
 }
 
 // Draws text three times to produce a shadow + base + gradient overlay effect.
-//   Layer 1 (bottom): shadow colour, shifted by StreamerDigitShadowOffset
-//   Layer 2 (middle): base colour, rendered at (size - 4) so it sits visually smaller
-//   Layer 3 (top):    overlay colour with vertical alpha gradient via vertex recolouring
+//   Layer 0 (fill):   shadow color, offset adjustable
+//   Layer 1 (bottom): shadow color, shifted by StreamerDigitShadowOffset
+//   Layer 2 (middle): base color, rendered at (size - 4) so it sits visually smaller
+//   Layer 3 (top):    overlay color with vertical alpha gradient via vertex recoloring
 static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
                              ImVec2 pos, float rowTop, float rowHeight,
                              const char* text, float alpha)
@@ -173,14 +174,20 @@ static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
         float baseAdv   = f->CalcTextSizeA(baseSize, FLT_MAX, 0.0f, glyph, glyph + 1).x;
 
         // Layer 0: fill
-        dl->AddText(f, size, ImVec2(shadowX, basePosY),
-            IM_COL32((int)(CMDigitFillColor[0]*255), (int)(CMDigitFillColor[1]*255), (int)(CMDigitFillColor[2]*255), (int)(alpha*255)),
-            glyph, glyph + 1);
-        
+        if(ShowCMFill)
+        {
+            dl->AddText(f, size, ImVec2(shadowX, basePosY),
+                IM_COL32((int)(CMDigitFillColor[0]*255), (int)(CMDigitFillColor[1]*255), (int)(CMDigitFillColor[2]*255), (int)(alpha*255)),
+                glyph, glyph + 1);
+        }
+
         // Layer 1: shadow
-        dl->AddText(f, size, ImVec2(shadowX + CMDigitShadowOffset[0], shadowPosY),
-            IM_COL32((int)(CMDigitShadowColor[0]*255), (int)(CMDigitShadowColor[1]*255), (int)(CMDigitShadowColor[2]*255), (int)(alpha*255)),
-            glyph, glyph + 1);
+        if(ShowCMShadow)
+        {
+            dl->AddText(f, size, ImVec2(shadowX + CMDigitShadowOffset[0], shadowPosY),
+                IM_COL32((int)(CMDigitShadowColor[0]*255), (int)(CMDigitShadowColor[1]*255), (int)(CMDigitShadowColor[2]*255), (int)(alpha*255)),
+                glyph, glyph + 1);
+        }
         
         // Layer 2: base
         float centerOffset = (shadowAdv - baseAdv) * 0.5f;

@@ -173,6 +173,8 @@ extern std::string  StreamerFontName;
 extern int          StreamerFontSize;
 extern bool         StreamerShowRunningMillis;
 extern int          StreamerHeaderFontSize;
+extern bool         ShowCMFill;
+extern bool         ShowCMShadow;
 
 // ---------------------------------------------------------------------------
 // Crash Mode
