@@ -56,21 +56,18 @@ enum class ETriggerType : unsigned char
 // ---------------------------------------------------------------------------
 // ECombatState
 // ---------------------------------------------------------------------------
-// The internal state machine used by CombatTriggerState (below).
+// The internal state machine used by CombatTriggerState.
 //
 //   Armed        — player is currently in combat inside the trigger zone.
 //   GracePending — player dropped combat; waiting to see if it resumes before
-//                  the 2-second grace period expires.
-//   Finished     — the combat segment has fully resolved and the split fired.
-//                  (Stored separately in CombatTriggerState::finished rather
-//                  than as a third enum value so the active/finished flags
-//                  remain easy to check independently.)
+//                  the grace period expires.
+// Whether the segment has fully resolved is tracked by CombatTriggerState::finished,
+// not by a state value here, so Armed and GracePending are the only live states.
 // ---------------------------------------------------------------------------
 enum class ECombatState : unsigned char
 {
     Armed,
-    GracePending,
-    Finished
+    GracePending
 };
 
 // ---------------------------------------------------------------------------

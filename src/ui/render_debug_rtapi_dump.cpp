@@ -1,4 +1,4 @@
-// window_rtapi_dump.cpp
+// render_debug_rtapi_dump.cpp
 // Implements RenderRTAPIDump() — a live read-out of every field in the
 // RTAPI RealTimeData shared-memory block.
 //

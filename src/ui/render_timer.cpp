@@ -1,4 +1,4 @@
-// renderer_timer.cpp
+// render_timer.cpp
 // Implements the main "Speedrun Timer" overlay window — the split table the
 // player watches during a run.
 //

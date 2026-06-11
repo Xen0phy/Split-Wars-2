@@ -1,4 +1,4 @@
-// renderer_debug.cpp
+// render_debug.cpp
 // Implements the "Debug" window — a live inspection panel for route and
 // player state, intended for route authors and developers.
 //
@@ -56,7 +56,6 @@ static const char* CombatStateName(ECombatState s)
     {
         case ECombatState::Armed:        return "Armed";
         case ECombatState::GracePending: return "Grace Pending";
-        case ECombatState::Finished:     return "Finished";
         default:                         return "Unknown";
     }
 }

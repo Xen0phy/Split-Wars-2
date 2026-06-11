@@ -53,7 +53,7 @@ void UpdateGameState()
         (PreferredSource == EDataSource::Default ||
          PreferredSource == EDataSource::RTAPI);
 
-    static unsigned int lastUITick = 0;
+    static unsigned int lastUITick = UINT_MAX;
 
     if (useRTAPI)
     {
@@ -131,7 +131,7 @@ float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
 float ColorNull[3]       = { 1.0f, 0.6f, 0.0f };
 
 // ---------------------------------------------------------------------------
-// Zone colors
+// Time colors
 // ---------------------------------------------------------------------------
 float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
 float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
@@ -159,12 +159,13 @@ bool        StreamerShowRunningMillis = false;
 int         StreamerHeaderFontSize    = 20;
 bool        ShowCMFill                = true;
 bool        ShowCMShadow              = true;
+float       StreamerAnchor[2]         = { 10.0f, 10.0f };
 
 // ---------------------------------------------------------------------------
 // Crash Mode
 // ---------------------------------------------------------------------------
 bool        CrashMode             = false;
-float       CMDigitShadowColor[3]   = { 0.0f, 0.0f, 0.0f};
+float       CMDigitShadowColor[3]   = { 0.0f, 0.0f, 0.0f };
 float       CMDigitShadowOffset[2]  = { 0.0f, 1.0f };
 float       CMDigitFillColor[3]     = { 0.0f, 0.0f, 0.0f };
 float       CMDigitBaseColor[3]     = { 1.0f, 0.45f, 0.0f };

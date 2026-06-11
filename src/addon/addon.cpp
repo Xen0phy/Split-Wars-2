@@ -625,7 +625,7 @@ void AddonRender()
                     if (pt.TriggerType == ETriggerType::Circle)
                     {
                         // Enter → reset (arms the start zone).
-                        if (inCircle && !prevWasInCircle && SpeedrunTimer.IsRunning() && !cs.IsGoal) //xxx
+                        if (inCircle && !prevWasInCircle && SpeedrunTimer.IsRunning() && !cs.IsGoal)
                             FullReset();
 
                         // Exit → start timer.
@@ -700,6 +700,12 @@ void AddonRender()
 
                                 if (sameArea && goalCs)
                                 {
+                                    // NOTE: goalCs points into CurrentRoute, not CheckpointStates, so these
+                                    // writes don't affect the live trigger state. In the same-area case,
+                                    // CheckpointStates[i] is both start and goal — its combat struct is
+                                    // already armed above and will be ticked when the loop falls through
+                                    // to the goal block below. The goalCs writes are intentionally left
+                                    // here only to arm the "Combat Start" split injection below.
                                     goalCs->combat.active = true;
                                     goalCs->combat.state  = ECombatState::Armed;
                                     // Inject "X Combat Start" for the goal so the taint scan

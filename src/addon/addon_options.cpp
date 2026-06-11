@@ -7,6 +7,7 @@
 // SaveCurrentSettings() when the user clicks "Save Settings".
 
 #include "render_shared.h"
+#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -137,8 +138,6 @@ void AddonOptions()
             ImGui::Separator();
     
             // --- Streamer section ---
-            bool streamerDisabled = !StreamerMode;
-    
             // Row 6
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
@@ -148,7 +147,7 @@ void AddonOptions()
             const auto& fontNames = GetStreamFontNames();
     
             ImGui::TableSetColumnIndex(1);
-            if (streamerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (!StreamerMode) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
             {
                 if (!fontNames.empty())
                 {
@@ -231,7 +230,7 @@ void AddonOptions()
                 if (fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
             }
     
-            if (streamerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            if (!StreamerMode) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
 
             //Row 8
             ImGui::TableNextRow();
@@ -241,18 +240,18 @@ void AddonOptions()
             ImGui::Separator();
     
             // --- Crash Mode section ---
-            bool crashDisabled = !StreamerMode || !CrashMode;
+            bool crashDisabled = !StreamerMode || !CrashMode  || fontNames.empty();
     
             // Row 9 — checkbox + shadow color
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // Crash checkbox only needs streamer enabled
-            if (streamerDisabled || fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-            if (fontNames.empty()) CrashMode = false;
+            if (!StreamerMode || fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (fontNames.empty() || !StreamerMode) CrashMode = false;
             if (ImGui::Checkbox("Crash Mode##cm", &CrashMode))
                 SaveCurrentSettings();
             Tooltip("Enables the layered digit style with shadow, fill, base and gradient overlay.");
-            if (streamerDisabled || fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            if (!StreamerMode || fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
             
             ImGui::TableSetColumnIndex(1);
             if (crashDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
@@ -283,8 +282,11 @@ void AddonOptions()
                 float nx = (CMDigitShadowOffset[0] + 10.0f) / 20.0f;
                 float ny = (CMDigitShadowOffset[1] + 10.0f) / 20.0f;
                 ImVec2 handle = ImVec2(canvasPos.x + nx * canvasSize, canvasPos.y + ny * canvasSize);
-                dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
-                dl->AddCircle(handle,       5.0f, IM_COL32(0,   0,   0,   255));
+                if (CrashMode)
+                    dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
+                else
+                    dl->AddCircleFilled(handle, 5.0f, IM_COL32(128, 128, 128, 128));
+                dl->AddCircle(handle, 5.0f, IM_COL32(0, 0, 0, 255));
                 if (ImGui::Button("Reset Offset"))
                 {
                     float defOffset[2]  = { 0.0f, 1.0f };

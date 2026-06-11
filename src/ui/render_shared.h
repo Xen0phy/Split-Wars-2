@@ -1,4 +1,4 @@
-// renderer_shared.h
+// render_shared.h
 // Central header included by every renderer_*.cpp file.
 //
 // Pulls in all ImGui headers, the shared game-state header, and the storage

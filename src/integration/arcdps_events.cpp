@@ -90,6 +90,9 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
                 break;
             }
         }
+        // Only clear the flag if it's the local player leaving combat
+        if (isLocal)
+            InCombat = false;
         return;
     }
 

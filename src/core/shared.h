@@ -133,7 +133,7 @@ extern bool ShowRouteBrowser; // Route file browser window
 extern float ColorStart[3];       // default: { 0.2f, 1.0f, 0.2f }
 extern float ColorGoal[3];        // default: { 0.2f, 0.5f, 1.0f }
 extern float ColorCheckpoint[3];  // default: { 1.0f, 1.0f, 1.0f }
-extern float ColorNull[3];        // deafult: { 1.0f, 0.6f, 0.0f }
+extern float ColorNull[3];        // default: { 1.0f, 0.6f, 0.0f }
 
 // ---------------------------------------------------------------------------
 // Time colors
@@ -175,6 +175,7 @@ extern bool         StreamerShowRunningMillis;
 extern int          StreamerHeaderFontSize;
 extern bool         ShowCMFill;
 extern bool         ShowCMShadow;
+extern float        StreamerAnchor[2];
 
 // ---------------------------------------------------------------------------
 // Crash Mode
@@ -303,4 +304,5 @@ extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle ca
 // Zone render timing — populated by RenderZones() for the selected debug checkpoint.
 // Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
 extern float ZoneRenderAvgMs;
-extern bool StreamerMode;extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender
+extern bool  StreamerMode;
+extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender

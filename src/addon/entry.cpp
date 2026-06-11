@@ -120,7 +120,6 @@ static void ApplySettings(const Settings& s)
     StreamerFontName  = s.StreamerFontName;
     StreamerFontSize  = s.StreamerFontSize;
     StreamerShowRunningMillis = s.StreamerShowRunningMillis;
-    StreamerShowRunningMillis = s.StreamerShowRunningMillis;
     StreamerHeaderFontSize    = s.StreamerHeaderFontSize;
     CrashMode = s.StreamerCrashMode;
     std::copy(s.StreamerDigitShadowColor,  s.StreamerDigitShadowColor + 3,  CMDigitShadowColor);
@@ -130,6 +129,7 @@ static void ApplySettings(const Settings& s)
     std::copy(s.StreamerDigitOverlay,      s.StreamerDigitOverlay +3,      CMDigitOverlay);
     ShowCMFill = s.ShowCMFill;
     ShowCMShadow = s.ShowCMShadow;
+    std::copy(s.StreamerAnchor, s.StreamerAnchor + 2, StreamerAnchor);
 }
 
 // Snapshot the current global variables into a Settings struct ready for saving.
@@ -176,6 +176,7 @@ static Settings GatherSettings()
     std::copy(CMDigitOverlay,      CMDigitOverlay + 3,      s.StreamerDigitOverlay);
     s.ShowCMFill = ShowCMFill;
     s.ShowCMShadow = ShowCMShadow;
+    std::copy(StreamerAnchor, StreamerAnchor + 2, s.StreamerAnchor);
     return s;
 }
 

@@ -8,7 +8,7 @@
 // which is essential for accurate split times.
 
 #include "timer.h"
-#include "algorithm"
+#include <algorithm>
 #include <cstring>
 
 // ---------------------------------------------------------------------------

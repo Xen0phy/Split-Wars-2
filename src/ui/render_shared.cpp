@@ -1,4 +1,4 @@
-// renderer_shared.cpp
+// render_shared.cpp
 // Implements the utility functions shared across all renderer_*.cpp files:
 //   • FormatTime    — formats a seconds value into a HH:MM:SS[.mmm] string
 //   • FormatDiff    — formats a signed time delta with context-aware precision

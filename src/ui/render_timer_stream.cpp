@@ -1,4 +1,4 @@
-// render_timer_stream_seg.cpp
+// render_timer_stream.cpp
 // Segmented-window variant of the streamer timer overlay.
 //
 // Each split section is its own ImGui window pinned below a single draggable
@@ -10,6 +10,7 @@
 // CMakeLists.txt).
 
 #include "render_shared.h"
+#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@ static ImU32 SToU32Alpha(ImVec4 c, float a)
 // ---------------------------------------------------------------------------
 // Anchor position
 // ---------------------------------------------------------------------------
-static ImVec2 s_AnchorPos     = { 10.0f, 10.0f };
+static ImVec2 s_AnchorPos     = { StreamerAnchor[0], StreamerAnchor[1] };
 
 // ---------------------------------------------------------------------------
 // Outgoing split animation state
@@ -605,6 +606,8 @@ void RenderTimerOverlayStream()
         if (BeginSection("##SW2Seg_0", NextPos(), true))
         {
             s_AnchorPos = ImGui::GetWindowPos();
+            StreamerAnchor[0] = s_AnchorPos.x;
+            StreamerAnchor[1] = s_AnchorPos.y;
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2      wp = ImGui::GetWindowPos();
             const ImGuiStyle& st = ImGui::GetStyle();
@@ -649,6 +652,8 @@ void RenderTimerOverlayStream()
         if (BeginSection(wid, NextPos(), isAnchor))
         {
             if (isAnchor) s_AnchorPos = ImGui::GetWindowPos();
+            StreamerAnchor[0] = s_AnchorPos.x;
+            StreamerAnchor[1] = s_AnchorPos.y;
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2 wp = ImGui::GetWindowPos();
             float curY = wp.y;

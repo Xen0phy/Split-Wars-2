@@ -1,4 +1,4 @@
-// renderer_config.cpp
+// render_config.cpp
 // Implements the "Speedrun Config" window — the main route editor UI.
 //
 // From this window the player can:
@@ -16,6 +16,19 @@
 #include <cmath>
 
 namespace fs = std::filesystem;
+
+static const struct { ETriggerType type; const char* label; } TriggerTypeOrder[] =
+{
+    { ETriggerType::Circle,         "Circle"          },
+    { ETriggerType::Plane,          "Plane"           },
+    { ETriggerType::MapChange,      "Map Change"      },
+    { ETriggerType::CircleInteract, "Interact"        },
+    { ETriggerType::CombatArena,    "Combat (Native)" },
+    { ETriggerType::NullCircle,     "Null (Circle)"   },
+    { ETriggerType::NullPlane,      "Null (Plane)"    },
+    { ETriggerType::AllCheckpoints, "All Checkpoints" },
+};
+static const int TriggerTypeCount = (int)std::size(TriggerTypeOrder);
 
 void RenderConfigWindow()
 {
@@ -374,11 +387,15 @@ void RenderConfigWindow()
             ImGui::TableSetColumnIndex(3);
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints", "Null (Circle)", "Null (Plane)" };
-            int currentType = (int)point.TriggerType;
-            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 8))
+            int currentIndex = 0;
+            for (int t = 0; t < TriggerTypeCount; t++)
+                if (TriggerTypeOrder[t].type == point.TriggerType) { currentIndex = t; break; }
+            const char* labels[TriggerTypeCount];
+            for (int t = 0; t < TriggerTypeCount; t++)
+                labels[t] = TriggerTypeOrder[t].label;
+            if (ImGui::Combo(comboLabel, &currentIndex, labels, TriggerTypeCount))
             {
-                point.TriggerType = (ETriggerType)currentType;
+                point.TriggerType = TriggerTypeOrder[currentIndex].type;
                 if (point.TriggerType == ETriggerType::AllCheckpoints)
                     cp.IsGoal = true;
                 // Changing trigger type can invalidate CombatCheckpoints state

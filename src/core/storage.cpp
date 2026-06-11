@@ -552,6 +552,7 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
             {"streamer_cm_overlay",       {settings.StreamerDigitOverlay[0],     settings.StreamerDigitOverlay[1],     settings.StreamerDigitOverlay[2]}},
             {"show_cm_fill",                   settings.ShowCMFill},
             {"show_cm_shadow",                 settings.ShowCMShadow},
+            {"streamer_anchor",           {settings.StreamerAnchor[0], settings.StreamerAnchor[1]}},
         };
 
         std::string filepath = addonDir + "\\settings.json";
@@ -624,6 +625,8 @@ bool LoadSettings(const std::string& addonDir, Settings& settings)
             for (int i = 0; i < 3; i++) settings.StreamerDigitOverlay[i] = j["streamer_cm_overlay"][i].get<float>();
         settings.ShowCMFill = j.value("show_cm_fill", true);
         settings.ShowCMShadow = j.value("show_cm_shadow", true);
+        if (j.contains("streamer_anchor") && j["streamer_anchor"].size() == 2)
+            for (int i = 0; i < 2; i++) settings.StreamerAnchor[i] = j["streamer_anchor"][i].get<float>();
         return true;
     }
     catch (...) { return false; }

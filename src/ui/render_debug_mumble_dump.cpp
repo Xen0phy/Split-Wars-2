@@ -1,4 +1,4 @@
-// renderer_debug_dump.cpp
+// render_debug_dump.cpp
 // Implements RenderMumbleDump() — a live read-out of every field in the
 // MumbleLink shared-memory block.
 //

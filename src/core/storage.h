@@ -125,6 +125,7 @@ struct Settings
     float       StreamerDigitOverlay[3]      = { 0.9f, 0.0f, 0.0f };
     bool        ShowCMFill                   = true;
     bool        ShowCMShadow                 = true;
+    float       StreamerAnchor[2]            = { 10.0f, 10.0f};
 };
 
 // ---------------------------------------------------------------------------
