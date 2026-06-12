@@ -98,7 +98,7 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
 
     if (data->ev->IsStatechange == ArcDPS::CBTS_REWARD)
     {
-        ChangeDeadEvent ev = {};
+        RewardEvent ev = {};
         ev.ArcTime   = data->ev->Time;
         ev.LocalTime = GetTickCount64();
         ev.AgentID   = data->ev->DestinationAgent;

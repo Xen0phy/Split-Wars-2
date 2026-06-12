@@ -8,9 +8,11 @@
 //   - Dispatching to the individual UI renderer windows
 //   - All keybind callback functions
 //   - RegisterKeybinds() / DeregisterKeybinds() wrappers
+//   - Migration notice popup (shown once after settings format change)
 
 #include "render_shared.h"
 #include "shared.h"
+#include "version.h"
 #include "worldrender.h"
 
 // ---------------------------------------------------------------------------
@@ -276,6 +278,45 @@ void AddonRender()
     if (!MumbleLink && !GS.RTAPIAvailable) return;
     UpdateGameState(); // populate GS from whichever source is active
 
+    if (ShowSettingsMigrationNotice)
+    {
+        ImGui::SetNextWindowFocus();
+        ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_Always); // 0 height = auto-fit
+        ImGui::SetNextWindowPos(
+            ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f,
+                   ImGui::GetIO().DisplaySize.y * 0.5f),
+            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    
+        if (ImGui::Begin("##migration", nullptr,
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoMove       |
+            ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Spacing();
+            ImGui::TextWrapped("Installation / Update Notice");
+            ImGui::Spacing();
+            char verBuf[32];
+            snprintf(verBuf, sizeof(verBuf), "v%d.%d.%d.%d", Maj, Min, Bld, Rev);
+            ImGui::TextWrapped("%s", verBuf);
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            ImGui::TextWrapped("%s", VersionNotice);
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+    
+            float btnW = ImGui::GetContentRegionAvail().x;
+            if (ImGui::Button("Got it", ImVec2(btnW, 0)))
+            {
+                ShowSettingsMigrationNotice = false;
+                SaveCurrentSettings();
+            }
+            ImGui::Spacing();
+        }
+        ImGui::End();
+    }
+
     // --- Per-frame state (persists between calls via static locals) ---
     static bool         wasLoading       = false;
     static Vector3      prevPos          = {0, 0, 0};
@@ -536,7 +577,7 @@ void AddonRender()
                     goalCp->Point.MapID != 0 &&
                     currMapID == goalCp->Point.MapID)
                 {
-                    pendingGrandStop = GrandTimer.GetElapsedSeconds();
+                    PendingGrandStop = GrandTimer.GetElapsedSeconds();
                 }
 
                 if (ShowDebug)
@@ -556,8 +597,8 @@ void AddonRender()
 
                 // If we didn't actually leave the goal map (e.g. a mid-run load
                 // screen on the same map), discard the snapshot.
-                if (pendingGrandStop >= 0.0 && goalCp && currMapID == goalCp->Point.MapID)
-                    pendingGrandStop = -1.0;
+                if (PendingGrandStop >= 0.0 && goalCp && currMapID == goalCp->Point.MapID)
+                    PendingGrandStop = -1.0;
 
                 if (ShowDebug)
                 {
@@ -614,9 +655,9 @@ void AddonRender()
                 
                 bool inCircle = onCorrectMap &&
                     (pt.TriggerType == ETriggerType::Circle         ||
-                     pt.TriggerType == ETriggerType::CircleInteract ||
-                     pt.TriggerType == ETriggerType::CombatArena)
-                    ? IsWithinRange(currPos, pt) : false;
+                    pt.TriggerType == ETriggerType::CircleInteract ||
+                    pt.TriggerType == ETriggerType::CombatArena) &&
+                    IsWithinRange(currPos, pt);
 
                 // ── START checkpoint ──────────────────────────────────────────────
                 bool prevWasInCircle = cs.wasInCircle;
@@ -867,11 +908,11 @@ void AddonRender()
                     HistoricalRun run;
                     run.Date       = GetCurrentDateTimeString();
                     run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
-                    run.GrandTotal = (pendingGrandStop >= 0.0)
-                        ? pendingGrandStop
+                    run.GrandTotal = (PendingGrandStop >= 0.0)
+                        ? PendingGrandStop
                         : GrandTimer.GetElapsedSeconds();
                     DisplayedGrandTotal = run.GrandTotal;
-                    pendingGrandStop    = -1.0;
+                    PendingGrandStop    = -1.0;
                     run.Splits          = SpeedrunTimer.GetSplits();
 
                     // Ensure the goal checkpoint itself appears as the final split entry
@@ -926,6 +967,7 @@ void AddonRender()
             // one frame behind the start. MapChange start+goal on the same point is also safe:
             // by the time PendingStart fires, prevMapID has already moved on, so the MapChange
             // condition (prevMapID == point.MapID) is false and the goal does not trigger.
+            // Note for Claude: FullReset() also resets PendingStart
             if (PendingStart && !isLoading)
             {
                 FullReset();
@@ -935,7 +977,7 @@ void AddonRender()
 
             // Update grand total display value for this frame.
             if (SpeedrunTimer.IsRunning())
-                DisplayedGrandTotal = (pendingGrandStop >= 0.0) ? pendingGrandStop : GrandTimer.GetElapsedSeconds();
+                DisplayedGrandTotal = (PendingGrandStop >= 0.0) ? PendingGrandStop : GrandTimer.GetElapsedSeconds();
 
         }
     } // KeybindMutex released here
@@ -962,7 +1004,8 @@ void AddonRender()
     {
         prevMapID = currMapID;
     }
-    else if (isCharSelect) {
+    else if (isCharSelect)
+    {
         prevMapID = 0;
     }
     prevInCombat       = currInCombat;

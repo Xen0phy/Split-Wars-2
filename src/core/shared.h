@@ -3,7 +3,8 @@
 // All variables are defined (allocated) in shared.cpp — the extern declarations
 // here just make them visible to the rest of the codebase.
 //
-// Adding a new global: define it in shared.h (extern) + shared.cpp (definition).
+// Adding a new setting: add it to settings_table.h.
+// Adding a new non-setting global: extern here + definition in shared.cpp.
 
 #pragma once
 
@@ -18,22 +19,21 @@
 #include <atomic>
 #include <mutex>
 
-// ---------------------------------------------------------------------------
-// Nexus / GW2 interface pointers
-// ---------------------------------------------------------------------------
-extern AddonAPI_t*    APIDefs;    // Nexus API; set in AddonLoad()
-extern Mumble::Data*  MumbleLink; // Mumble shared-memory block; used as fallback data source and for IsMapOpen
-extern RTAPI::RealTimeData* RTAPIData;      // Null when RTAPI is not loaded or has been hot-unloaded
-extern ArcDPS::PluginInfo* ArcDPSExports; // nullptr; set if this addon ever registers with ArcDPS
 
 // ---------------------------------------------------------------------------
-// Addon lifecycle helpers (implemented in addon.cpp and entry.cpp)
+// TimerMode / Timer display settings
 // ---------------------------------------------------------------------------
-void RegisterKeybinds();      // Registers all keybinds with Nexus (addon.cpp)
-void DeregisterKeybinds();    // Deregisters all keybinds from Nexus (addon.cpp)
-void SaveCurrentSettings();   // Persists current globals to disk (entry.cpp)
-void AddonRender();           // Per-frame render callback registered with Nexus
-void AddonOptions();          // Nexus options panel callback
+// Controls what each row in the split table shows and how diffs are computed.
+//
+//   Segment   — each row shows the time for that segment only;
+//               diffs compare against the best time for that segment.
+//   Split     — each row shows cumulative time from run start;
+//               diffs show the overall lead or deficit.
+//   LiveSplit — each row shows segment time (like Segment), but diffs show
+//               the overall lead or deficit (like Split) — matching the
+//               behaviour of the LiveSplit speedrun software.
+// ---------------------------------------------------------------------------
+enum class TimerMode { Segment = 0, Split = 1, LiveSplit = 2 };
 
 // ---------------------------------------------------------------------------
 // Data source
@@ -54,7 +54,35 @@ enum class EDataSource : unsigned char
     Mumble  = 1,
     RTAPI   = 2
 };
-extern EDataSource          PreferredSource; // Persisted to settings.json
+
+#define SETTING(S, Key, Type, Default)              extern Type Key;
+#define SETTING_ARRAY(S, Key, Size, Defaults)       extern float Key[Size];
+#define SETTING_ENUM(S, Key, EnumType, ST, Default) extern EnumType Key;
+#define SETTING_STRING(S, Key, Default)             extern std::string Key;
+#include "settings_table.h"
+#undef SETTING
+#undef SETTING_ARRAY
+#undef SETTING_ENUM
+#undef SETTING_STRING
+
+extern bool ShowSettingsMigrationNotice;
+
+// ---------------------------------------------------------------------------
+// Nexus / GW2 interface pointers
+// ---------------------------------------------------------------------------
+extern AddonAPI_t*    APIDefs;    // Nexus API; set in AddonLoad()
+extern Mumble::Data*  MumbleLink; // Mumble shared-memory block; used as fallback data source and for IsMapOpen
+extern RTAPI::RealTimeData* RTAPIData;      // Null when RTAPI is not loaded or has been hot-unloaded
+extern ArcDPS::PluginInfo* ArcDPSExports; // nullptr; set if this addon ever registers with ArcDPS
+
+// ---------------------------------------------------------------------------
+// Addon lifecycle helpers (implemented in addon.cpp and entry.cpp)
+// ---------------------------------------------------------------------------
+void RegisterKeybinds();      // Registers all keybinds with Nexus (addon.cpp)
+void DeregisterKeybinds();    // Deregisters all keybinds from Nexus (addon.cpp)
+void SaveCurrentSettings();   // Persists current globals to disk (entry.cpp)
+void AddonRender();           // Per-frame render callback registered with Nexus
+void AddonOptions();          // Nexus options panel callback
 
 // ---------------------------------------------------------------------------
 // GameState
@@ -112,87 +140,10 @@ extern std::string CurrentHistoryPath;   // Full path to the paired .history fil
 extern std::string AddonDir;             // Addon base directory (settings, routes, history all live here)
 
 // ---------------------------------------------------------------------------
-// UI visibility flags
-// ---------------------------------------------------------------------------
-extern bool ShowZones;        // Checkpoint zone overlays rendered in the game world
-extern float ZoneFadeStart;   // Distance at which zones start fading (metres)
-extern float ZoneFadeEnd;     // Distance at which zones are fully gone (metres)
-extern bool ShowTimer;        // Main speedrun timer overlay
-extern bool ShowConfig;       // Route editor / config window
-extern bool ShowDebug;        // Debug info window
-extern bool ShowHistory;      // Run history window
-extern bool ShowGrandTotal;   // Extra Grand Total row in the timer table
-extern bool ShowRouteBrowser; // Route file browser window
-
-// ---------------------------------------------------------------------------
-// Zone colors
-// ---------------------------------------------------------------------------
-// RGB components for the start, goal, and intermediate checkpoint zone overlays.
-// Defaults match the original hard-coded values.
-// ---------------------------------------------------------------------------
-extern float ColorStart[3];       // default: { 0.2f, 1.0f, 0.2f }
-extern float ColorGoal[3];        // default: { 0.2f, 0.5f, 1.0f }
-extern float ColorCheckpoint[3];  // default: { 1.0f, 1.0f, 1.0f }
-extern float ColorNull[3];        // default: { 1.0f, 0.6f, 0.0f }
-
-// ---------------------------------------------------------------------------
-// Time colors
-// ---------------------------------------------------------------------------
-extern float ColorAhead[3];
-extern float ColorBehind[3];
-extern float ColorBestRow[3]; // slightly different from ColorAhead since it's a background
-
-// ---------------------------------------------------------------------------
-// Window sizes
-// ---------------------------------------------------------------------------
-extern float ConfigWindowW;
-extern float ConfigWindowH;
-extern float HistoryWindowW;
-extern float HistoryWindowH;
-extern float BrowserWindowW;
-extern float BrowserWindowH;
-
-// ---------------------------------------------------------------------------
-// TimerMode / Timer display settings
-// ---------------------------------------------------------------------------
-// Controls what each row in the split table shows and how diffs are computed.
-//
-//   Segment   — each row shows the time for that segment only;
-//               diffs compare against the best time for that segment.
-//   Split     — each row shows cumulative time from run start;
-//               diffs show the overall lead or deficit.
-//   LiveSplit — each row shows segment time (like Segment), but diffs show
-//               the overall lead or deficit (like Split) — matching the
-//               behaviour of the LiveSplit speedrun software.
-// ---------------------------------------------------------------------------
-enum class TimerMode { Segment = 0, Split = 1, LiveSplit = 2 };
-extern TimerMode    TimerDisplayMode;
-extern bool         CompactMode;    // Single-line timer instead of the full split table
-extern bool         StreamerMode;
-extern std::string  StreamerFontName;
-extern int          StreamerFontSize;
-extern bool         StreamerShowRunningMillis;
-extern int          StreamerHeaderFontSize;
-extern bool         ShowCMFill;
-extern bool         ShowCMShadow;
-extern float        StreamerAnchor[2];
-
-// ---------------------------------------------------------------------------
-// Crash Mode
-// ---------------------------------------------------------------------------
-extern bool        CrashMode;
-extern float       CMDigitShadowColor[3];
-extern float       CMDigitShadowOffset[2];
-extern float       CMDigitFillColor[3];
-extern float       CMDigitBaseColor[3];
-extern float       CMDigitOverlay[3];
-
-// ---------------------------------------------------------------------------
 // History / best run
 // ---------------------------------------------------------------------------
 extern std::vector<Split>         BestRun;      // Splits of the designated best run; drives the diff column
 extern std::vector<HistoricalRun> HistoryRuns;  // All recorded runs, newest first
-extern int                        MaxHistoryRuns; // Cap on how many runs are kept in the history list
 extern int                        BestRunIndex; // Index of the best run in HistoryRuns; -1 = none set
 extern std::vector<SegmentRecord> SegmentRecords; // Best times per named Start/End pair
 
@@ -202,7 +153,7 @@ extern std::vector<SegmentRecord> SegmentRecords; // Best times per named Start/
 extern bool   RunFinished;         // Set when a goal trigger fires; cleared by post-run UI actions
 extern double DisplayedGrandTotal; // Grand total shown in the overlay; frozen at goal for MapChange runs
 extern bool   PendingStart;        // Queued MapChange start; fires once the load screen clears
-extern double pendingGrandStop;    // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
+extern double PendingGrandStop;    // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
 
 // ---------------------------------------------------------------------------
 // Thread-safety
@@ -256,23 +207,19 @@ struct KillingBlowEvent {
     ArcDPS::EIsFriendFoe IFF;
     bool                 IsLocal;
 };
-extern std::vector<KillingBlowEvent> KillingBlows;
 
-struct ChangeDeadEvent {
+struct RewardEvent {
     uint64_t ArcTime;
     uint64_t LocalTime;
     uint64_t AgentID;
     char     Name[64];
     bool     IsLocal;
 };
-extern std::vector<ChangeDeadEvent> RewardEvents;
 
 struct TargetInfo {
     uintptr_t ID;
     char      Name[64];
 };
-extern bool             HasTarget;
-extern TargetInfo       LastTarget;
 
 struct SquadCombatEntry {
     uintptr_t AgentID;
@@ -285,24 +232,28 @@ struct SquadCombatEntry {
     bool      IsLocal;       // true = LOCAL_RAW, false = SQUAD_RAW
 };
 
-extern bool                             InCombat;
-extern std::vector<SquadCombatEntry>    CombatEntries;
-extern std::mutex                       CombatEntriesMutex;
-
 struct SqCombatStartEvent {
     uint64_t ArcTime;
     uint64_t LocalTime;
     bool     IsLocal;
 };
+
+extern std::vector<KillingBlowEvent>   KillingBlows;
+extern std::vector<RewardEvent>        RewardEvents;
+extern bool                            HasTarget;
+extern TargetInfo                      LastTarget;
+extern bool                            InCombat;
+extern std::vector<SquadCombatEntry>   CombatEntries;
+extern std::mutex                      CombatEntriesMutex;
 extern std::vector<SqCombatStartEvent> SqCombatStartEvents;
 
 // ---------------------------------------------------------------------------
 // Debug
 // ---------------------------------------------------------------------------
+extern bool ShowDebug; // Shows the Debug window
 extern float occludePixelRadius; // Base pixel radius for the character occlusion circle
 extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle can reach
 // Zone render timing — populated by RenderZones() for the selected debug checkpoint.
 // Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
 extern float ZoneRenderAvgMs;
-extern bool  StreamerMode;
-extern int   ZoneRenderSelectedIndex; // set by renderer_debug, read by worldrender
+extern int   ZoneRenderSelectedIndex; // set by render_debug, read by worldrender

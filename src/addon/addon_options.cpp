@@ -4,7 +4,7 @@
 // This is a Nexus UI callback — it draws into a panel that Nexus owns,
 // not a standalone window. All widgets write directly into the global
 // variables declared in shared.h. Settings are persisted to disk via
-// SaveCurrentSettings() when the user clicks "Save Settings".
+// Settings are persisted to settings.ini via SaveCurrentSettings().
 
 #include "render_shared.h"
 #include "shared.h"
@@ -20,7 +20,9 @@
 void AddonOptions()
 {
     
-    //Save Settings
+    // ---------------------------------------------------------------------------
+    // Save Settings
+    // ---------------------------------------------------------------------------
     if (ImGui::Button("Save Settings"))
         SaveCurrentSettings();
     ImGui::SameLine();
@@ -48,19 +50,27 @@ void AddonOptions()
         ImGui::EndCombo();
     }
     ImGui::SameLine();
+
+    // ---------------------------------------------------------------------------
+    // Data Source
+    // ---------------------------------------------------------------------------
     ImGui::TextDisabled(GS.RTAPIAvailable ? "(RTAPI connected)" : "(RTAPI not available)");
     ImGui::SameLine();
     ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
     ImGui::SameLine();
 
+    // ---------------------------------------------------------------------------
     // Debug
+    // ---------------------------------------------------------------------------
     ImGui::Checkbox("Show Debug Window", &ShowDebug);
-    Tooltip("Toggles debugging text which is not fully implemented");
+    Tooltip("Shows the debug information window.");
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    // Timer related UI
+    // ---------------------------------------------------------------------------
+    // Timer Settings
+    // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Timer Settings"))
     {
         bool timerDisabled = !ShowTimer;
@@ -117,7 +127,7 @@ void AddonOptions()
             // Row 4
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::Checkbox("Show Milliseconds##streamer", &StreamerShowRunningMillis);
+            ImGui::Checkbox("Show Milliseconds##streamer", &ShowRunningMillis);
             Tooltip("When enabled, the live segment and total rows show milliseconds while the timer is running.\nDisabled by default: milliseconds only appear once the segment is stopped.");
     
             ImGui::TableSetColumnIndex(1);
@@ -182,7 +192,6 @@ void AddonOptions()
     
             ImGui::TableSetColumnIndex(1);
             {
-                int size = StreamerFontSize;
                 if (fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
                 static const int fontSizes[] = { 24, 28, 32, 36, 40, 44, 48 };
                 char preview[8];
@@ -344,7 +353,9 @@ void AddonOptions()
         ImGui::Spacing();
     }
 
-    //Route related UI
+    // ---------------------------------------------------------------------------
+    // Window Settings
+    // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Window Settings"))
     {
         if (ImGui::BeginTable("##windowsettings", 2, ImGuiTableFlags_None))
@@ -452,7 +463,9 @@ void AddonOptions()
         ImGui::Spacing();
     }
 
-    //Checkpoint/Zone related UI
+    // ---------------------------------------------------------------------------
+    // Checkpoint Settings
+    // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Checkpoint Settings"))
     {
         if (ImGui::BeginTable("##checkpointsettings", 2, ImGuiTableFlags_None))
@@ -503,7 +516,7 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(1);
             ImGui::ColorEdit3("Checkpoint",  ColorCheckpoint, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
 
-            // Row 2
+            // Row 4
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // empty

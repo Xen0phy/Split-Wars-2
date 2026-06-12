@@ -3,7 +3,7 @@
 // folder tree used by the browser window.
 //
 // File layout under the addon directory (e.g. "…/addons/Split Wars 2/"):
-//   settings.json          — UI preferences (window visibility, timer mode, etc.)
+//   settings.ini           — UI preferences (window visibility, timer mode, etc.)
 //   MyRoute.json           — a saved route (array of checkpoint objects)
 //   MyRoute.history        — run history for that route (paired by name)
 //   SubFolder/OtherRoute.json
@@ -109,7 +109,7 @@ static void DeserializePoint(const json& j, RoutePoint& p)
     p.TriggerType      = (ETriggerType)j.value("trigger_type", 0);
     p.PlaneAngle       = j.value("plane_angle", 0.0f);  // Default: facing north
     p.HyperbolaC       = j.value("hyperbola_c", 12);
-    p.DotDensity       = j.value("dot_density", 0);
+    p.DotDensity       = j.value("dot_density", 200);
     p.bandCenterInput  = j.value("dot_center", 0.0f);
     p.bandUpInput      = j.value("dot_up", 10.0f);
     p.bandDownInput    = j.value("dot_down", 0.0f);
@@ -315,6 +315,17 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
     catch (...) { return false; }
 }
 
+// ===========================================================================
+// Segments  —  RecalcSegments / UpdateSegments
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// RecalcSegments
+// ---------------------------------------------------------------------------
+// Rebuilds all segment records from scratch by replaying every run through
+// UpdateSegments. Call on route load to ensure records are consistent with
+// the full history, e.g. after a run is deleted or the route changes.
+// ---------------------------------------------------------------------------
 void RecalcSegments(const std::vector<HistoricalRun>& runs,
     std::vector<SegmentRecord>& segments)
 {
@@ -323,6 +334,14 @@ void RecalcSegments(const std::vector<HistoricalRun>& runs,
         UpdateSegments(run, segments);
 }
 
+// ---------------------------------------------------------------------------
+// UpdateSegments
+// ---------------------------------------------------------------------------
+// Scans a single run for Start/End split pairs and updates segment records
+// if a new best time is found. A tainted split between Start and End
+// invalidates that segment for the run.
+// Call immediately after a run finishes, before SaveHistory.
+// ---------------------------------------------------------------------------
 void UpdateSegments(const HistoricalRun& run,
     std::vector<SegmentRecord>& segments)
 {
@@ -510,55 +529,44 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
 // ---------------------------------------------------------------------------
 // SaveSettings
 // ---------------------------------------------------------------------------
-// Writes all user preferences to settings.json in the addon directory.
+// Writes all user preferences to settings.ini in the addon directory.
+// Section headers and keys are derived automatically from settings_table.h.
 // ---------------------------------------------------------------------------
-bool SaveSettings(const std::string& addonDir, const Settings& settings)
+bool SaveSettings(const std::string& addonDir)
 {
     try
     {
         fs::create_directories(addonDir);
+        std::string filepath = addonDir + "\\settings.ini";
+        std::ofstream f(filepath);
+        if (!f.is_open()) return false;
 
-        json j = {
-            {"show_timer",                     settings.ShowTimer},
-            {"show_config",                    settings.ShowConfig},
-            {"show_zones",                     settings.ShowZones},
-            {"zone_fade_start",                settings.ZoneFadeStart},
-            {"zone_fade_end",                  settings.ZoneFadeEnd},
-            {"show_debug",                     settings.ShowDebug},
-            {"timer_display_mode",             settings.TimerDisplayMode},
-            {"compact_mode",                   settings.CompactMode},
-            {"show_history",                   settings.ShowHistory},
-            {"show_grand_total",               settings.ShowGrandTotal},
-            {"show_route_browser",             settings.ShowRouteBrowser},
-            {"max_history_runs",               settings.MaxHistoryRuns},
-            {"data_source",                    settings.DataSource},
-            {"color_start",               {settings.ColorStart[0],      settings.ColorStart[1],      settings.ColorStart[2]}},
-            {"color_goal",                {settings.ColorGoal[0],       settings.ColorGoal[1],       settings.ColorGoal[2]}},
-            {"color_checkpoint",          {settings.ColorCheckpoint[0], settings.ColorCheckpoint[1], settings.ColorCheckpoint[2]}},
-            {"color_null",                {settings.ColorNull[0],       settings.ColorNull[1],       settings.ColorNull[2]}},
-            {"color_ahead",               {settings.ColorAhead[0],      settings.ColorAhead[1],      settings.ColorAhead[2]}},
-            {"color_behind",              {settings.ColorBehind[0],     settings.ColorBehind[1],     settings.ColorBehind[2]}},
-            {"color_best_row",            {settings.ColorBestRow[0],    settings.ColorBestRow[1],    settings.ColorBestRow[2]}},
-            {"streamer_mode",                  settings.StreamerMode},
-            {"streamer_font_name",             settings.StreamerFontName},
-            {"streamer_font_size",             settings.StreamerFontSize},
-            {"streamer_show_running_millis",   settings.StreamerShowRunningMillis},
-            {"streamer_header_font_size",      settings.StreamerHeaderFontSize},
-            {"streamer_crash_mode",            settings.StreamerCrashMode},
-            {"streamer_cm_shadow",        {settings.StreamerDigitShadowColor[0], settings.StreamerDigitShadowColor[1], settings.StreamerDigitShadowColor[2]}},
-            {"streamer_cm_shadow_offset", {settings.StreamerDigitShadowOffset[0],settings.StreamerDigitShadowOffset[1]}},
-            {"streamer_cm_fill",          {settings.StreamerDigitFillColor[0],   settings.StreamerDigitFillColor[1],   settings.StreamerDigitFillColor[2]}},
-            {"streamer_cm_base",          {settings.StreamerDigitBaseColor[0],   settings.StreamerDigitBaseColor[1],   settings.StreamerDigitBaseColor[2]}},
-            {"streamer_cm_overlay",       {settings.StreamerDigitOverlay[0],     settings.StreamerDigitOverlay[1],     settings.StreamerDigitOverlay[2]}},
-            {"show_cm_fill",                   settings.ShowCMFill},
-            {"show_cm_shadow",                 settings.ShowCMShadow},
-            {"streamer_anchor",           {settings.StreamerAnchor[0], settings.StreamerAnchor[1]}},
+        auto wx = [&](const char* k, auto v)         { f << k << "=" << v << "\n"; };
+        auto wa = [&](const char* k, const float* v, int n)
+        {
+            f << k << "=";
+            for (int i = 0; i < n; i++) { if (i) f << ","; f << v[i]; }
+            f << "\n";
         };
 
-        std::string filepath = addonDir + "\\settings.json";
-        std::ofstream file(filepath);
-        if (!file.is_open()) return false;
-        file << j.dump(4);
+        const char* lastSection = nullptr;
+        #define SETTING(S, Key, Type, Default) \
+            if (!lastSection || strcmp(lastSection, #S) != 0) { f << "\n[" #S "]\n"; lastSection = #S; } \
+            wx(#Key, Key);
+        #define SETTING_ARRAY(S, Key, Size, Defaults) \
+            if (!lastSection || strcmp(lastSection, #S) != 0) { f << "\n[" #S "]\n"; lastSection = #S; } \
+            wa(#Key, Key, Size);
+        #define SETTING_ENUM(S, Key, EnumType, ST, Default) \
+            if (!lastSection || strcmp(lastSection, #S) != 0) { f << "\n[" #S "]\n"; lastSection = #S; } \
+            wx(#Key, (ST)Key);
+        #define SETTING_STRING(S, Key, Default) \
+            if (!lastSection || strcmp(lastSection, #S) != 0) { f << "\n[" #S "]\n"; lastSection = #S; } \
+            wx(#Key, Key);
+        #include "settings_table.h"
+        #undef SETTING
+        #undef SETTING_ARRAY
+        #undef SETTING_ENUM
+        #undef SETTING_STRING
         return true;
     }
     catch (...) { return false; }
@@ -567,66 +575,50 @@ bool SaveSettings(const std::string& addonDir, const Settings& settings)
 // ---------------------------------------------------------------------------
 // LoadSettings
 // ---------------------------------------------------------------------------
-// Reads settings.json and fills the Settings struct.
-// Every field uses j.value() with a sensible default so a settings file that
-// pre-dates a newly added option still loads cleanly.
+// Reads settings.ini and writes directly into the global variables.
+// Unknown keys and section headers are silently ignored, so settings files
+// written by older versions load cleanly even if new fields were added since.
 // ---------------------------------------------------------------------------
-bool LoadSettings(const std::string& addonDir, Settings& settings)
+template<typename T> T parse(const std::string& v);
+template<> bool  parse<bool> (const std::string& v) { return v == "1"; }
+template<> int   parse<int>  (const std::string& v) { return std::stoi(v); }
+template<> float parse<float>(const std::string& v) { return std::stof(v); }
+
+bool LoadSettings(const std::string& addonDir)
 {
     try
     {
-        std::string filepath = addonDir + "\\settings.json";
-        std::ifstream file(filepath);
-        if (!file.is_open()) return false;
+        std::string filepath = addonDir + "\\settings.ini";
+        std::ifstream f(filepath);
+        if (!f.is_open()) return false;
 
-        json j = json::parse(file);
-        settings.ShowTimer        = j.value("show_timer",         true);
-        settings.ShowConfig       = j.value("show_config",        true);
-        settings.ShowZones        = j.value("show_zones",         true);
-        settings.ZoneFadeStart    = j.value("zone_fade_start",    50.0f);
-        settings.ZoneFadeEnd      = j.value("zone_fade_end",      150.0f);
-        settings.ShowDebug        = j.value("show_debug",         false);
-        settings.TimerDisplayMode = j.value("timer_display_mode", 1);
-        settings.CompactMode      = j.value("compact_mode",       false);
-        settings.ShowHistory      = j.value("show_history",       false);
-        settings.ShowGrandTotal   = j.value("show_grand_total",   false);
-        settings.ShowRouteBrowser = j.value("show_route_browser", false);
-        settings.MaxHistoryRuns   = j.value("max_history_runs",   10);
-        settings.DataSource       = j.value("data_source",        0);
-        if (j.contains("color_start") && j["color_start"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorStart[i] = j["color_start"][i].get<float>();
-        if (j.contains("color_goal") && j["color_goal"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorGoal[i] = j["color_goal"][i].get<float>();
-        if (j.contains("color_checkpoint") && j["color_checkpoint"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorCheckpoint[i] = j["color_checkpoint"][i].get<float>();
-        if (j.contains("color_null") && j["color_null"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorNull[i] = j["color_null"][i].get<float>();
-        if (j.contains("color_ahead") && j["color_ahead"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorAhead[i] = j["color_ahead"][i].get<float>();
-        if (j.contains("color_behind") && j["color_behind"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorBehind[i] = j["color_behind"][i].get<float>();
-        if (j.contains("color_best_row") && j["color_best_row"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.ColorBestRow[i] = j["color_best_row"][i].get<float>();
-        settings.StreamerMode   = j.value("streamer_mode",    false);
-        settings.StreamerFontName = j.value("streamer_font_name", std::string(""));
-        settings.StreamerFontSize = j.value("streamer_font_size", 32);
-        settings.StreamerShowRunningMillis = j.value("streamer_show_running_millis", false);
-        settings.StreamerHeaderFontSize = j.value("streamer_header_font_size", 20);
-        settings.StreamerCrashMode = j.value("streamer_crash_mode", false);
-        if (j.contains("streamer_cm_shadow") && j["streamer_cm_shadow"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.StreamerDigitShadowColor[i] = j["streamer_cm_shadow"][i].get<float>();
-        if (j.contains("streamer_cm_shadow_offset") && j["streamer_cm_shadow_offset"].size() == 2)
-            for (int i = 0; i < 2; i++) settings.StreamerDigitShadowOffset[i] = j["streamer_cm_shadow_offset"][i].get<float>();
-        if (j.contains("streamer_cm_fill") && j["streamer_cm_fill"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.StreamerDigitFillColor[i] = j["streamer_cm_fill"][i].get<float>();
-        if (j.contains("streamer_cm_base") && j["streamer_cm_base"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.StreamerDigitBaseColor[i] = j["streamer_cm_base"][i].get<float>();
-        if (j.contains("streamer_cm_overlay") && j["streamer_cm_overlay"].size() == 3)
-            for (int i = 0; i < 3; i++) settings.StreamerDigitOverlay[i] = j["streamer_cm_overlay"][i].get<float>();
-        settings.ShowCMFill = j.value("show_cm_fill", true);
-        settings.ShowCMShadow = j.value("show_cm_shadow", true);
-        if (j.contains("streamer_anchor") && j["streamer_anchor"].size() == 2)
-            for (int i = 0; i < 2; i++) settings.StreamerAnchor[i] = j["streamer_anchor"][i].get<float>();
+        std::string line;
+        while (std::getline(f, line))
+        {
+            size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            std::string key = line.substr(0, eq);
+            std::string val = line.substr(eq + 1);
+
+            auto ra = [&](float* arr, int n)
+            {
+                std::stringstream ss(val);
+                std::string tok;
+                for (int i = 0; i < n && std::getline(ss, tok, ','); i++)
+                    arr[i] = std::stof(tok);
+            };
+
+            if (false) {}
+            #define SETTING(S, Key, Type, Default)              else if (key == #Key) Key = parse<Type>(val);
+            #define SETTING_ARRAY(S, Key, Size, Defaults)       else if (key == #Key) ra(Key, Size);
+            #define SETTING_ENUM(S, Key, EnumType, ST, Default) else if (key == #Key) Key = (EnumType)std::stoi(val);
+            #define SETTING_STRING(S, Key, Default)             else if (key == #Key) Key = val;
+            #include "settings_table.h"
+            #undef SETTING
+            #undef SETTING_ARRAY
+            #undef SETTING_ENUM
+            #undef SETTING_STRING
+        }
         return true;
     }
     catch (...) { return false; }
@@ -653,14 +645,12 @@ static std::string HistoryPathFromJsonPath(const std::string& jsonPath)
 // BuildFolderNode  (file-private recursive helper)
 // ---------------------------------------------------------------------------
 // Recursively scans a directory and returns a RouteFolder node containing:
-//   SubFolders — one child RouteFolder per sub-directory (recursive)
-//   Routes     — one RouteFile per .json file (excluding settings.json)
+//   SubFolders — one child RouteFolder per sub-directory (recursive),
+//                excluding the "fonts" folder which contains streamer fonts
+//   Routes     — one RouteFile per .json file
 //
 // Entries are sorted: directories first (alphabetical), then files
 // (alphabetical) — matching the convention most file browsers use.
-//
-// settings.json is excluded because it lives in the root addon directory and
-// is not a route file; including it would show it as a selectable route.
 // ---------------------------------------------------------------------------
 static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
 {
@@ -692,11 +682,11 @@ static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
         {
             if (entry.is_directory())
             {
+                if (entry.path().filename() == "fonts") continue; // Ignore the fonts folder
                 node.SubFolders.push_back(BuildFolderNode(entry.path(), rootDir));
             }
             else if (entry.is_regular_file() &&
-                     entry.path().extension() == ".json" &&
-                     entry.path().filename() != "settings.json") // Exclude the settings file
+                     entry.path().extension() == ".json")
             {
                 RouteFile rf;
                 rf.Name        = entry.path().stem().string(); // Display name = filename without extension

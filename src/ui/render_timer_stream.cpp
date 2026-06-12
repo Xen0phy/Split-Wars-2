@@ -5,9 +5,9 @@
 // anchor. When a split exceeds MAX_VISIBLE_SPLITS, it is evicted from the
 // stack and plays a slide-up + fade-out animation before disappearing.
 //
-// Call RenderTimerOverlayStream() to use this variant (same function name
-// as render_timer_stream.cpp so the two files are drop-in swappable via
-// CMakeLists.txt).
+// Call RenderTimerOverlayStream() instead of RenderTimerOverlay() to use
+// this variant. Both expose the same entry point so they are drop-in
+// swappable via the CMakeLists.txt source list.
 
 #include "render_shared.h"
 #include "shared.h"
@@ -48,7 +48,8 @@ static ImU32 SToU32Alpha(ImVec4 c, float a)
 // ---------------------------------------------------------------------------
 // Anchor position
 // ---------------------------------------------------------------------------
-static ImVec2 s_AnchorPos     = { StreamerAnchor[0], StreamerAnchor[1] };
+static ImVec2 s_AnchorPos = { 10.0f, 10.0f };
+static bool   s_AnchorInitialised = false;
 
 // ---------------------------------------------------------------------------
 // Outgoing split animation state
@@ -109,9 +110,9 @@ static void SDrawHeaderBarAlpha(ImDrawList* dl, ImVec2 pos, float width,
 struct SFontSet
 {
     ImFont* main        = nullptr;  // running h:m:s      (S)
-    ImFont* mainMillis  = nullptr;  // running .xxx       (S-2)
-    ImFont* comp        = nullptr;  // comparison h:m:s   (S-2)
-    ImFont* compMillis  = nullptr;  // comparison .xxx    (S-4)
+    ImFont* mainMillis  = nullptr;  // running .xxx       (S-4)
+    ImFont* comp        = nullptr;  // comparison h:m:s   (S-4)
+    ImFont* compMillis  = nullptr;  // comparison .xxx    (S-8)
     ImFont* header      = nullptr;  // title bar + buttons (StreamerHeaderFontSize)
 };
 
@@ -143,11 +144,11 @@ static void SplitTimeAtDot(const char* buf,
     }
 }
 
-// Draws text three times to produce a shadow + base + gradient overlay effect.
-//   Layer 0 (fill):   shadow color, offset adjustable
-//   Layer 1 (bottom): shadow color, shifted by StreamerDigitShadowOffset
-//   Layer 2 (middle): base color, rendered at (size - 4) so it sits visually smaller
-//   Layer 3 (top):    overlay color with vertical alpha gradient via vertex recoloring
+// Draws text in four layers to produce the Crash Mode digit style:
+//   Layer 0 (fill):    solid fill color at full size
+//   Layer 1 (shadow):  shadow color shifted by CMDigitShadowOffset
+//   Layer 2 (base):    base color at (size - 4) centred within the full glyph
+//   Layer 3 (overlay): gradient from top (transparent) to bottom (opaque overlay color)
 static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
                              ImVec2 pos, float rowTop, float rowHeight,
                              const char* text, float alpha)
@@ -361,7 +362,7 @@ static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
 
     if (hasDiff)
     {
-        diffValid = FormatDiff(diffBuf, sizeof(diffBuf), diff, isSplit, StreamerShowRunningMillis);
+        diffValid = FormatDiff(diffBuf, sizeof(diffBuf), diff, isSplit, ShowRunningMillis);
         diffColor = (diff < 0.0)
             ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
             : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f);
@@ -423,7 +424,12 @@ static bool BeginSection(const char* id, ImVec2 pos, bool isAnchor)
 void RenderTimerOverlayStream()
 {
     if (!ShowTimer) return;
-
+    if (!s_AnchorInitialised)
+    {
+        s_AnchorPos          = ImVec2(StreamerAnchor[0], StreamerAnchor[1]);
+        s_AnchorInitialised  = true;
+    }
+    
     const auto& splits    = SpeedrunTimer.GetSplits();
     double      elapsed   = SpeedrunTimer.GetElapsedSeconds();
     double      grand     = DisplayedGrandTotal;
@@ -445,7 +451,7 @@ void RenderTimerOverlayStream()
     bool showIdle       = !running && !finished;
 
     // Build the four-font set for this frame.
-    // mainFont (S) is the user's chosen size; others derive from it in -2 steps.
+    // mainFont (S) is the user's chosen size; others derive from it in -4 steps.
     // GetStreamFont() returns nullptr if the atlas hasn't delivered yet -- all
     // drawing helpers fall back gracefully to ImGui's current font in that case.
     SFontSet fonts;
@@ -522,7 +528,7 @@ void RenderTimerOverlayStream()
             char diffBuf[32] = {};
             s_Outgoing.diffMainBuf[0] = '\0';
             s_Outgoing.diffDecBuf[0]  = '\0';
-            if (s_Outgoing.hasDiff && FormatDiff(diffBuf, sizeof(diffBuf), diff, true,StreamerShowRunningMillis))
+            if (s_Outgoing.hasDiff && FormatDiff(diffBuf, sizeof(diffBuf), diff, true,ShowRunningMillis))
             {
                 const char* dot = strrchr(diffBuf, '.');
                 if (dot)
@@ -732,7 +738,7 @@ void RenderTimerOverlayStream()
             : SC_AccentIdle();
 
         RenderSec(segLabel, accent,
-                  segmentTime, !running || StreamerShowRunningMillis,
+                  segmentTime, !running || ShowRunningMillis,
                   hasDiff && std::abs(diff) > 0.0005, diff, finished,
                   TimeColor(diffCurSeg, diffBestSeg, running));
     }
@@ -750,7 +756,7 @@ void RenderTimerOverlayStream()
             : SC_AccentIdle();
 
         RenderSec("TOTAL", accent,
-                  elapsed, !running || StreamerShowRunningMillis,
+                  elapsed, !running || ShowRunningMillis,
                   hasBest && std::abs(totalDiff) > 0.0005, totalDiff, finished,
                   TimeColor(elapsed, bestTotal, running));
     }
@@ -812,7 +818,7 @@ void RenderTimerOverlayStream()
             if (finished && !manualStop && !goalIsAllCheckpoints &&
                 (!goalCp || goalCp->Point.TriggerType != ETriggerType::CombatArena))
             {
-                decltype(BestRun)::value_type goalEntry{};
+                Split goalEntry{};  
                 goalEntry.Timestamp = elapsed;
                 const char* goalName = (goalCp && goalCp->Name[0] != '\0') ? goalCp->Name : "Goal";
                 std::strncpy(goalEntry.Name, goalName, sizeof(goalEntry.Name) - 1);

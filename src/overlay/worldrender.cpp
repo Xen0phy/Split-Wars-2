@@ -12,10 +12,10 @@
 //                 parameters control vertical extent and the alpha fade.
 //
 // Band parameters per RoutePoint:
-//   bandCenterInpt — for Circle: centre latitude in degrees (-90 south … +90 north)
-//                    for Plane:  vertical centre offset in metres above point.Y
-//   bandUpInput    — extent upward   from centre (fade boundary; degrees / metres)
-//   bandDownInput  — extent downward from centre (fade boundary; degrees / metres)
+//   bandCenterInput — for Circle: centre latitude in degrees (-90 south … +90 north)
+//                     for Plane:  vertical centre offset in metres above point.Y
+//   bandUpInput     — extent upward   from centre (fade boundary; degrees / metres)
+//   bandDownInput   — extent downward from centre (fade boundary; degrees / metres)
 //
 // Color convention (set by RenderZones, all user-adjustable in options):
 //   ColorStart      — start checkpoint
@@ -383,7 +383,7 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
     float halfWidth = point.RadiusWidth * 0.5f;
 
     // Reuse band fields as world-space height values (metres, not degrees)
-    float bandCenter = point.bandCenterInput; // vertical centre above point.Y
+    float bandCenter = 0.0f;                  // bandCenterInput not used for Plane — use Y directly instead
     float bandUp     = point.bandUpInput;     // height above centre → fade to 0
     float bandDown   = point.bandDownInput;   // depth below centre → fade to 0
 
@@ -536,7 +536,7 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
 //   • Checkpoints with MapID != 0 are only drawn on their configured map.
 //   • Unplaced checkpoints (all-zero position) are skipped.
 //
-// Draw order: start (green) → goal (blue) → all intermediate (white).
+// Draw order: start → goal → intermediates.
 // The start and goal are handled separately so they are always drawn first
 // and can't be skipped by the intermediate checkpoint loop.
 // ---------------------------------------------------------------------------
@@ -570,7 +570,7 @@ void RenderZones()
     static std::deque<std::pair<float,float>> s_timingSamples; // {ms, timestamp}
     static int s_lastTimedIndex = -1;
     
-    auto renderPoint = [&](const RoutePoint& p, float r, float g, float b, float dbgOffset, int idx)
+    auto renderPoint = [&](const RoutePoint& p, float r, float g, float b, int idx)
     {
         if (!shouldRender(p)) return;
 
@@ -658,7 +658,7 @@ void RenderZones()
     {
         const CheckpointState& cp = CurrentRoute.Checkpoints[i];
         if (!cp.IsStart) continue;
-        renderPoint(cp.Point, ColorStart[0], ColorStart[1], ColorStart[2], 0.0f, i);
+        renderPoint(cp.Point, ColorStart[0], ColorStart[1], ColorStart[2], i);
     }
 
     // Render all goal checkpoints
@@ -666,11 +666,10 @@ void RenderZones()
     {
         const CheckpointState& cp = CurrentRoute.Checkpoints[i];
         if (!cp.IsGoal) continue;
-        renderPoint(cp.Point, ColorGoal[0], ColorGoal[1], ColorGoal[2], 80.0f, i);
+        renderPoint(cp.Point, ColorGoal[0], ColorGoal[1], ColorGoal[2], i);
     }
 
     // Render intermediate checkpoints
-    int dbgIdx = 0;
     for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
     {
         const CheckpointState& cp = CurrentRoute.Checkpoints[i];
@@ -680,7 +679,6 @@ void RenderZones()
         float r = isNull ? ColorNull[0] : ColorCheckpoint[0];
         float g = isNull ? ColorNull[1] : ColorCheckpoint[1];
         float b = isNull ? ColorNull[2] : ColorCheckpoint[2];
-        renderPoint(cp.Point, r, g, b, 160.0f + dbgIdx * 80.0f, i);
-        dbgIdx++;
+        renderPoint(cp.Point, r, g, b, i);
     }
 }

@@ -147,8 +147,8 @@ void RenderHistoryWindow()
                         FormatTime(buf, sizeof(buf), run.TotalTime);
                         ImGui::TextColored(
                             isFastest
-                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                                : ImVec4(1.0f, 1.0f, 1.0f, 1.0f),
+                                ? ImVec4(ColorAhead[0], ColorAhead[1], ColorAhead[2], 1.0f)
+                                : ImGui::GetStyle().Colors[ImGuiCol_Text],
                             "%s", buf);
 
                         // -----------------------------------------------------------------
@@ -232,6 +232,7 @@ void RenderHistoryWindow()
                     // The time shown per split follows the global TimerDisplayMode:
                     //   Split mode   → cumulative time from run start
                     //   Segment mode → time for this segment only (delta from previous split)
+                    // LiveSplit mode falls back to Segment display in the tooltip.
                     // The final "Goal" split added by the AllCheckpoints goal type is
                     // hidden because it carries no meaningful time of its own.
                     // -----------------------------------------------------------------
@@ -387,7 +388,7 @@ void RenderHistoryWindow()
 
                         ImGui::TableSetColumnIndex(1);
                         FormatTime(buf, sizeof(buf), seg.bestTime);
-                        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%s", buf);
+                        ImGui::TextColored(ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f), "%s", buf);
 
                         ImGui::TableSetColumnIndex(2);
                         ImGui::Text("%s", seg.bestDate.c_str());

@@ -310,15 +310,13 @@ void RenderDebugWindow()
                     ImGui::Spacing();
 
                     // Per-checkpoint runtime trigger state.
-                    int i = s_SelectedCheckpoint;
-
                     if (cp.IsStart)
                     {
                         ImGui::Text("Trigger State:");
                         if (point.TriggerType == ETriggerType::CombatArena &&
-                            i < (int)CheckpointStates.size())
+                            s_SelectedCheckpoint < (int)CheckpointStates.size())
                         {
-                            const CombatTriggerState& cs = CheckpointStates[i].combat;
+                            const CombatTriggerState& cs = CheckpointStates[s_SelectedCheckpoint].combat;
                             ImGui::Text("  Active:   %s", cs.active   ? "Yes" : "No");
                             ImGui::Text("  Finished: %s", cs.finished ? "Yes" : "No");
                             if (cs.active)
@@ -329,7 +327,7 @@ void RenderDebugWindow()
                         else if (point.TriggerType == ETriggerType::Circle ||
                                  point.TriggerType == ETriggerType::CircleInteract)
                         {
-                            bool wasIn = i < (int)CheckpointStates.size() && CheckpointStates[i].wasInCircle;
+                            bool wasIn = s_SelectedCheckpoint < (int)CheckpointStates.size() && CheckpointStates[s_SelectedCheckpoint].wasInCircle;
                             ImGui::Text("  In Circle Last Frame: %s", wasIn ? "Yes" : "No");
                         }
                     }
@@ -337,9 +335,9 @@ void RenderDebugWindow()
                     {
                         ImGui::Text("Trigger State:");
                         if (point.TriggerType == ETriggerType::CombatArena &&
-                            i < (int)CheckpointStates.size())
+                            s_SelectedCheckpoint < (int)CheckpointStates.size())
                         {
-                            const CombatTriggerState& cs = CheckpointStates[i].combat;
+                            const CombatTriggerState& cs = CheckpointStates[s_SelectedCheckpoint].combat;
                             ImGui::Text("  Active:   %s", cs.active   ? "Yes" : "No");
                             ImGui::Text("  Finished: %s", cs.finished ? "Yes" : "No");
                             if (cs.active)
@@ -367,7 +365,7 @@ void RenderDebugWindow()
                     {
                         // Intermediate checkpoint.
                         ImGui::Text("Trigger State:");
-                        bool triggered = i < (int)CheckpointStates.size() && CheckpointStates[i].triggered;
+                        bool triggered = s_SelectedCheckpoint < (int)CheckpointStates.size() && CheckpointStates[s_SelectedCheckpoint].triggered;
                         ImGui::TextColored(
                             triggered ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                                     : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
@@ -376,14 +374,14 @@ void RenderDebugWindow()
                         if (point.TriggerType == ETriggerType::Circle ||
                             point.TriggerType == ETriggerType::CircleInteract)
                         {
-                            bool wasIn = i < (int)CheckpointStates.size() && CheckpointStates[i].wasInCircle;
+                            bool wasIn = s_SelectedCheckpoint < (int)CheckpointStates.size() && CheckpointStates[s_SelectedCheckpoint].wasInCircle;
                             ImGui::Text("  In Circle Last Frame: %s", wasIn ? "Yes" : "No");
                         }
 
                         if (point.TriggerType == ETriggerType::CombatArena &&
-                            i < (int)CheckpointStates.size())
+                            s_SelectedCheckpoint < (int)CheckpointStates.size())
                         {
-                            const CombatTriggerState& cs = CheckpointStates[i].combat;
+                            const CombatTriggerState& cs = CheckpointStates[s_SelectedCheckpoint].combat;
                             ImGui::Text("  Active:   %s", cs.active   ? "Yes" : "No");
                             ImGui::Text("  Finished: %s", cs.finished ? "Yes" : "No");
                             if (cs.active)

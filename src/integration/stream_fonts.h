@@ -1,4 +1,3 @@
-#pragma once
 // stream_fonts.h
 // Manages the streamer-mode font atlas.
 //
@@ -16,6 +15,8 @@
 //   GetStreamFont(name, size)       // returns ImFont* or nullptr if not ready
 //   GetStreamFontNames()            // sorted list of discovered font name stems
 //   ReleaseStreamFonts();           // call from AddonUnload
+
+#pragma once
 
 #include "imgui.h"
 #include <string>

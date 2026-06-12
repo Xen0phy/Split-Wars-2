@@ -2,10 +2,10 @@
 // Streamer-mode font manager.
 //
 // Scans <AddonDir>/fonts/ on startup, registers every .ttf/.otf file at
-// every size from 20px (STREAM_FONT_ATLAS_MIN) to 48px in 2px steps with
+// every size from 16px (STREAM_FONT_ATLAS_MIN) to 48px in 4px steps with
 // Nexus, and caches the resulting ImFont* pointers as Nexus delivers them
-// via callbacks.  The atlas starts at 20px so that derived sizes used by
-// the streamer timer (main − 2, main − 4) are always available even at the
+// via callbacks.  The atlas starts at 26px so that derived sizes used by
+// the streamer timer (main − 4, main − 8) are always available even at the
 // minimum user-selectable font size of 24px.
 //
 // Font identifiers registered with Nexus follow the pattern:
@@ -99,8 +99,8 @@ void InitStreamFonts()
     std::sort(files.begin(), files.end());
 
     // Register every file x size combination.
-    // The atlas covers STREAM_FONT_ATLAS_MIN (20px) through STREAM_FONT_SIZE_MAX (48px)
-    // so that derived sizes (main - 2, main - 4) are baked even when the user
+    // The atlas covers STREAM_FONT_ATLAS_MIN (16px) through STREAM_FONT_SIZE_MAX (48px)
+    // so that derived sizes (main - 4, main - 8) are baked even when the user
     // selects the minimum user-facing size of 24px.
     int numSizes = (int)((STREAM_FONT_SIZE_MAX - STREAM_FONT_ATLAS_MIN) / STREAM_FONT_SIZE_STEP) + 1;
     s_Slots.reserve(files.size() * numSizes);

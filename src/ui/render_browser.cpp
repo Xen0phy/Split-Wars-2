@@ -277,12 +277,9 @@ void RenderRouteBrowserWindow()
     }
 
     // Propagate the drag-and-drop refresh request.
-    if (dndRefresh)
-        needsRefresh = true;
-
     // Schedule a refresh when the user selects a route so the browser
     // reflects any external changes next time the tree is rendered.
-    if (selected)
+    if (dndRefresh || selected)
         needsRefresh = true;
 
     ImGui::End();

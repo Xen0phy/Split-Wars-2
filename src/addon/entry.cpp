@@ -2,13 +2,12 @@
 // Addon lifecycle entry point — the first and last code Nexus calls.
 //
 // Responsibilities:
-//   - GetAddonDef(): exports the addon descriptor to Nexus
-//   - AddonLoad(): one-time setup (ImGui context, data sources, settings,
-//                  callbacks, hotbar icon, keybinds)
-//   - AddonUnload(): teardown (save settings, deregister everything, clear state)
-//   - ApplySettings() / GatherSettings(): translate between the flat Settings
-//                  struct on disk and the global variables used at runtime
-//   - SaveCurrentSettings(): public wrapper called by addon_options.cpp
+//   - GetAddonDef():          exports the addon descriptor to Nexus
+//   - AddonLoad():            one-time setup (ImGui context, data sources, settings,
+//                             callbacks, hotbar icon, keybinds)
+//   - AddonUnload():          teardown (save settings, deregister everything, clear state)
+//   - SaveCurrentSettings():  public wrapper called by addon_options.cpp
+//   - LoadSettings():         reads settings.ini into globals on startup
 //   - AddonQuickAccessMenu(): right-click context menu on the hotbar icon
 //   - RTAPI hot-load/unload event handlers
 
@@ -81,115 +80,14 @@ void OnAddonUnloaded(void* aEventArgs)
 }
 
 // ---------------------------------------------------------------------------
-// Settings helpers
-// These two functions translate between the flat Settings struct (which is
-// what gets serialised to disk) and the individual global booleans / enums
-// used throughout the rest of the code.
-// ---------------------------------------------------------------------------
-
-// Push a loaded Settings object into the global variables.
-static void ApplySettings(const Settings& s)
-{
-    ShowTimer        = s.ShowTimer;
-    ShowConfig       = s.ShowConfig;
-    ShowZones        = s.ShowZones;
-    ZoneFadeEnd      = s.ZoneFadeEnd;
-    ZoneFadeStart    = s.ZoneFadeStart;
-    ShowDebug        = s.ShowDebug;
-    TimerDisplayMode = (TimerMode)s.TimerDisplayMode;
-    CompactMode      = s.CompactMode;
-    ShowHistory      = s.ShowHistory;
-    ShowGrandTotal   = s.ShowGrandTotal;
-    ShowRouteBrowser = s.ShowRouteBrowser;
-    MaxHistoryRuns   = s.MaxHistoryRuns;
-    PreferredSource  = (EDataSource)s.DataSource;
-    std::copy(s.ColorStart,      s.ColorStart      + 3, ColorStart);
-    std::copy(s.ColorGoal,       s.ColorGoal       + 3, ColorGoal);
-    std::copy(s.ColorCheckpoint, s.ColorCheckpoint + 3, ColorCheckpoint);
-    std::copy(s.ColorNull,       s.ColorNull       + 3, ColorNull);
-    std::copy(s.ColorAhead,      s.ColorAhead      + 3, ColorAhead);
-    std::copy(s.ColorBehind,     s.ColorBehind     + 3, ColorBehind);
-    std::copy(s.ColorBestRow,    s.ColorBestRow    + 3, ColorBestRow);
-    ConfigWindowW  = s.ConfigWindowW;
-    ConfigWindowH  = s.ConfigWindowH;
-    HistoryWindowW = s.HistoryWindowW;
-    HistoryWindowH = s.HistoryWindowH;
-    BrowserWindowW = s.BrowserWindowW;
-    BrowserWindowH    = s.BrowserWindowH;
-    StreamerMode      = s.StreamerMode;
-    StreamerFontName  = s.StreamerFontName;
-    StreamerFontSize  = s.StreamerFontSize;
-    StreamerShowRunningMillis = s.StreamerShowRunningMillis;
-    StreamerHeaderFontSize    = s.StreamerHeaderFontSize;
-    CrashMode = s.StreamerCrashMode;
-    std::copy(s.StreamerDigitShadowColor,  s.StreamerDigitShadowColor + 3,  CMDigitShadowColor);
-    std::copy(s.StreamerDigitShadowOffset, s.StreamerDigitShadowOffset + 2, CMDigitShadowOffset);
-    std::copy(s.StreamerDigitFillColor,    s.StreamerDigitFillColor + 3,    CMDigitFillColor);
-    std::copy(s.StreamerDigitBaseColor,    s.StreamerDigitBaseColor + 3,    CMDigitBaseColor);
-    std::copy(s.StreamerDigitOverlay,      s.StreamerDigitOverlay +3,      CMDigitOverlay);
-    ShowCMFill = s.ShowCMFill;
-    ShowCMShadow = s.ShowCMShadow;
-    std::copy(s.StreamerAnchor, s.StreamerAnchor + 2, StreamerAnchor);
-}
-
-// Snapshot the current global variables into a Settings struct ready for saving.
-static Settings GatherSettings()
-{
-    Settings s;
-    s.ShowTimer        = ShowTimer;
-    s.ShowConfig       = ShowConfig;
-    s.ShowZones        = ShowZones;
-    s.ZoneFadeStart    = ZoneFadeStart;
-    s.ZoneFadeEnd      = ZoneFadeEnd;
-    s.ShowDebug        = ShowDebug;
-    s.TimerDisplayMode = (int)TimerDisplayMode;
-    s.CompactMode      = CompactMode;
-    s.ShowHistory      = ShowHistory;
-    s.ShowGrandTotal   = ShowGrandTotal;
-    s.ShowRouteBrowser = ShowRouteBrowser;
-    s.MaxHistoryRuns   = MaxHistoryRuns;
-    s.DataSource       = (int)PreferredSource;
-    std::copy(ColorStart,      ColorStart      + 3, s.ColorStart);
-    std::copy(ColorGoal,       ColorGoal       + 3, s.ColorGoal);
-    std::copy(ColorCheckpoint, ColorCheckpoint + 3, s.ColorCheckpoint);
-    std::copy(ColorNull,       ColorNull       + 3, s.ColorNull);
-    std::copy(ColorAhead,      ColorAhead      + 3, s.ColorAhead);
-    std::copy(ColorBehind,     ColorBehind     + 3, s.ColorBehind);
-    std::copy(ColorBestRow,    ColorBestRow    + 3, s.ColorBestRow);
-    s.ConfigWindowW  = ConfigWindowW;
-    s.ConfigWindowH  = ConfigWindowH;
-    s.HistoryWindowW = HistoryWindowW;
-    s.HistoryWindowH = HistoryWindowH;
-    s.BrowserWindowW = BrowserWindowW;
-    s.BrowserWindowH    = BrowserWindowH;
-    s.StreamerMode      = StreamerMode;
-    s.StreamerFontName  = StreamerFontName;
-    s.StreamerFontSize  = StreamerFontSize;
-    s.StreamerShowRunningMillis = StreamerShowRunningMillis;
-    s.StreamerShowRunningMillis = StreamerShowRunningMillis;
-    s.StreamerHeaderFontSize    = StreamerHeaderFontSize;
-    s.StreamerCrashMode = CrashMode;
-    std::copy(CMDigitShadowColor,  CMDigitShadowColor + 3,  s.StreamerDigitShadowColor);
-    std::copy(CMDigitShadowOffset, CMDigitShadowOffset + 2, s.StreamerDigitShadowOffset);
-    std::copy(CMDigitFillColor,    CMDigitFillColor + 3,    s.StreamerDigitFillColor);
-    std::copy(CMDigitBaseColor,    CMDigitBaseColor + 3,    s.StreamerDigitBaseColor);
-    std::copy(CMDigitOverlay,      CMDigitOverlay + 3,      s.StreamerDigitOverlay);
-    s.ShowCMFill = ShowCMFill;
-    s.ShowCMShadow = ShowCMShadow;
-    std::copy(StreamerAnchor, StreamerAnchor + 2, s.StreamerAnchor);
-    return s;
-}
-
-// ---------------------------------------------------------------------------
 // SaveCurrentSettings
 // ---------------------------------------------------------------------------
-// Public wrapper called by addon_options.cpp to persist the current globals
-// to disk without exposing GatherSettings() or the Settings struct outside
-// this file.
+// Public wrapper called from addon_options.cpp and the UI reset buttons
+// to persist the current globals to disk.
 // ---------------------------------------------------------------------------
 void SaveCurrentSettings()
 {
-    SaveSettings(AddonDir, GatherSettings());
+    SaveSettings(AddonDir);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,9 +173,16 @@ void AddonLoad(AddonAPI_t* aApi)
 
     // Apply persisted settings if a settings file is found; otherwise the
     // compiled-in defaults from shared.h remain active.
-    Settings s;
-    if (LoadSettings(AddonDir, s))
-        ApplySettings(s);
+    if (!LoadSettings(AddonDir))
+        ShowSettingsMigrationNotice = true;
+    
+    int currentVersion = Maj * 1000000 + Min * 10000 + Bld * 100 + Rev;
+    if (LastKnownVersion != currentVersion)
+    {
+        ShowSettingsMigrationNotice = true;
+        LastKnownVersion = currentVersion;
+        SaveCurrentSettings();
+    }
 
     // Register the per-frame render callback and the Nexus options panel callback.
     InitStreamFonts();
@@ -330,7 +235,7 @@ void AddonLoad(AddonAPI_t* aApi)
 // ---------------------------------------------------------------------------
 void AddonUnload()
 {
-    SaveSettings(AddonDir, GatherSettings());
+    SaveSettings(AddonDir);
     ReleaseStreamFonts();
     
     // Deregister all keybinds.
@@ -349,15 +254,4 @@ void AddonUnload()
     APIDefs->Events_Unsubscribe("EV_ADDON_UNLOADED",          OnAddonUnloaded);
 
     APIDefs->Log(LOGL_INFO, "Split Wars 2", "Split Wars 2 unloaded.");
-
-    // Clear route state so a subsequent reload starts clean.
-    CurrentRoute         = Route{};
-    CurrentRouteName     = "";
-    CurrentRouteFilepath = "";
-    CurrentHistoryPath   = "";
-    HistoryRuns.clear();
-    SegmentRecords.clear();
-    BestRun.clear();
-    BestRunIndex = -1;
-    FullReset();
 }

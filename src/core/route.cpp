@@ -28,7 +28,7 @@ float DistanceTo(const Vector3& playerPos, const RoutePoint& point)
 // IsWithinRange
 // ---------------------------------------------------------------------------
 // Returns true when the player is inside the point's sphere of influence
-// (3D distance <= Radius).  Used by Circle and CircleInteract trigger types.
+// (3D distance <= RadiusWidth). Used by Circle and CircleInteract trigger types.
 // ---------------------------------------------------------------------------
 bool IsWithinRange(const Vector3& playerPos, const RoutePoint& point)
 {
@@ -44,7 +44,8 @@ bool IsWithinRange(const Vector3& playerPos, const RoutePoint& point)
 // The plane is described by three values stored on the point:
 //   X, Z        — the centre of the plane in world space (Y is ignored)
 //   PlaneAngle  — the compass heading the plane faces, in degrees.
-//                 0° = north (+Z), 90° = east (+X), matching GW2 convention.
+//                 0° = east (+X axis), 90° = north (+Z axis).
+//                 Captured automatically by the config window capture button.
 //   RadiusWidth — the total width of the active segment of the plane.
 //                 Only crossings within ±RadiusWidth/2 of the centre fire.
 //
@@ -76,7 +77,10 @@ bool HasCrossedPlane(const Vector3& prevPos, const Vector3& currPos, const Route
     float alongPlane = dx * px + dz * pz;
     if (std::abs(alongPlane) > point.RadiusWidth * 0.5f) return false;
 
-    // Step 3b — height gate: reject if player is outside the band above/below Y.
+    // Step 3b — height gate: reject if player is outside the vertical band.
+    // Band is centred on point.Y; bandUpInput extends upward, bandDownInput downward.
+    // The 0.1m tolerance prevents floating-point edge cases from missing a crossing
+    // exactly at the band boundary.
     float dy = currPos.Y - point.Y;
     if (dy >  point.bandUpInput + 0.1)   return false;
     if (dy < -point.bandDownInput - 0.1) return false;

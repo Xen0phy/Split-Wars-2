@@ -278,7 +278,7 @@ void RenderConfigWindow()
                 case 2:  Tooltip("Set your checkpoint as Goal point.\nMultiple possble.\nWill end the timer."); break;
                 case 3:  Tooltip("Trigger types that create a checkpoint:\n"
                                        "  * Sphere:          Fires when you enter it. If Start, fires when you leave.\n"
-                                       "  * Plane:           Fires when you walk through it. Infinite height.\n"
+                                       "  * Plane:           Fires when you walk through it. Height defined by Up/Down band.\n"
                                        "  * Interact:        Fires when you interact while in sphere. Check warning when set.\n"
                                        "  * Combat(Native):  Fires twice.\n"
                                        "                     Combat start while in sphere.\n"
@@ -291,9 +291,9 @@ void RenderConfigWindow()
                 case 7:  Tooltip("Enter Z Coordinate here.\nEither you know or you press the capture button."); break;
                 case 8:  Tooltip("Sphere radiues or plane width."); break;
                 case 9:  Tooltip("The amount of dots you want on your sphere or plane.\nBigger numbers need more render time."); break;
-                case 10: Tooltip("A center line for Up and Down.\n Sphere uses longitude degrees, plane uses meter."); break;
-                case 11: Tooltip("How far up you want the dots to extend from center."); break;
-                case 12: Tooltip("How far down you want the dots to extend from center."); break;
+                case 10: Tooltip("Latitude centre of the dot band in degrees.\n-90 = south pole, 0 = equator, 90 = north pole.\nNot used for Plane triggers.");
+                case 11: Tooltip("How far up the dots extend from centre.\nSphere: degrees. Plane: metres.");
+                case 12: Tooltip("How far down the dots extend from centre.\nSphere: degrees. Plane: metres.");
                 case 13: Tooltip("Defines plane angle. Use capture button or adjust manually.\n"
                                        "Shows a Re-Arm button for combat trigger.\n"
                                        "Adjust MapChange indicators hyperbole strength."); break;

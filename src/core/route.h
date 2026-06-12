@@ -117,7 +117,8 @@ struct CombatTriggerState
 //                 Default 10.0 m.
 //   TriggerType — which geometry / game event activates this point.
 //   PlaneAngle  — compass heading the plane faces, in degrees.
-//                 0° = north (+Z axis), 90° = east (+X axis).
+//                 Captured automatically by the config window; 0° = east (+X axis),
+//                 90° = north (+Z axis). Edit manually with caution.
 // ---------------------------------------------------------------------------
 struct RoutePoint
 {
@@ -128,11 +129,17 @@ struct RoutePoint
     float           RadiusWidth         = 10.0f;
     ETriggerType    TriggerType         = ETriggerType::Circle;
     float           PlaneAngle          = 0.0f;
-    int             HyperbolaC          = 12;
-    int             DotDensity          = 200; // Display only: >0 renders as a dot sphere with this many dots
-    float           bandCenterInput     = 0.0f;
-    float           bandUpInput         = 10.0f;
-    float           bandDownInput       = 0.0f;
+    int             HyperbolaC          = 12;   // MapChange only: controls the openness of the
+                                                // hyperbolic corner cutout. C = HyperbolaC * 100.
+                                                // Higher = wider curve. Default 12.
+    int             DotDensity          = 200;  // Display only: >0 renders as a dot cloud with
+                                                // this many dots (Circle) or derived spacing (Plane).
+    float           bandCenterInput     = 0.0f; // Circle: centre latitude of the dot band in degrees
+                                                // (-90 = south pole, +90 = north pole).
+    float           bandUpInput         = 10.0f;// Extent upward from band centre (degrees for Circle,
+                                                // metres for Plane). Dots fade to 0 at this boundary.
+    float           bandDownInput       = 0.0f; // Extent downward from band centre (degrees for Circle,
+                                                // metres for Plane). Dots fade to 0 at this boundary.
 };
 
 // ---------------------------------------------------------------------------
@@ -211,7 +218,8 @@ struct Route
 // GetStart / GetGoal  (inline helpers)
 // ---------------------------------------------------------------------------
 // Linear scans to find the designated start or goal checkpoint by flag.
-// Returns nullptr if no checkpoint has the flag set (e.g. an incomplete route).
+// Returns the first goal checkpoint, or nullptr if none is set.
+// For routes with multiple goals, iterate Checkpoints directly.
 // ---------------------------------------------------------------------------
 inline CheckpointState* GetStart(Route& route)
 {
