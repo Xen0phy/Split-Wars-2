@@ -1,6 +1,6 @@
 backups/
 build/
-src/PNG/
+stuff/
 *.o
 *.obj
 *.pdb
@@ -11,4 +11,3 @@ src/PNG/
 *.gz
 *.tar
 *.tar.gz
-src/fonts_embedded.h

@@ -1,4 +1,3 @@
-#pragma once
 // stream_fonts.h
 // Manages the streamer-mode font atlas.
 //
@@ -7,7 +6,7 @@
 // STREAM_FONT_ATLAS_MIN to STREAM_FONT_SIZE_MAX in STREAM_FONT_SIZE_STEP steps.
 // Up to STREAM_FONT_MAX_FILES fonts are loaded.
 //
-// The atlas covers 20–48 px so that derived sizes (main size − 2, − 4) are
+// The atlas covers 16–48 px so that derived sizes (main size − 4, − 8) are
 // always available even when the user picks the minimum selectable size (24).
 // The user-facing size picker is intentionally restricted to 24–48 px.
 //
@@ -16,6 +15,8 @@
 //   GetStreamFont(name, size)       // returns ImFont* or nullptr if not ready
 //   GetStreamFontNames()            // sorted list of discovered font name stems
 //   ReleaseStreamFonts();           // call from AddonUnload
+
+#pragma once
 
 #include "imgui.h"
 #include <string>
@@ -28,7 +29,7 @@ static constexpr float STREAM_FONT_ATLAS_MIN = 16.0f;
 // User-selectable range (shown in the options slider)
 static constexpr float STREAM_FONT_SIZE_MIN  = 24.0f;
 static constexpr float STREAM_FONT_SIZE_MAX  = 48.0f;
-static constexpr float STREAM_FONT_SIZE_STEP =  2.0f;
+static constexpr float STREAM_FONT_SIZE_STEP =  4.0f;
 static constexpr int   STREAM_FONT_MAX_FILES =  5;
 
 // Scan fonts folder and register all sizes with Nexus.

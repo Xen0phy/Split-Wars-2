@@ -1,4 +1,4 @@
-// renderer_browser.cpp
+// render_browser.cpp
 // Implements the "Routes" browser window — the file picker that lets players
 // navigate the addon's route folder, select a route to load, and reorganise
 // routes by dragging them between sub-folders.
@@ -277,12 +277,9 @@ void RenderRouteBrowserWindow()
     }
 
     // Propagate the drag-and-drop refresh request.
-    if (dndRefresh)
-        needsRefresh = true;
-
     // Schedule a refresh when the user selects a route so the browser
     // reflects any external changes next time the tree is rendered.
-    if (selected)
+    if (dndRefresh || selected)
         needsRefresh = true;
 
     ImGui::End();

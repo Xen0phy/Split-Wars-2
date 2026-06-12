@@ -1,4 +1,4 @@
-// renderer_timer.cpp
+// render_timer.cpp
 // Implements the main "Speedrun Timer" overlay window — the split table the
 // player watches during a run.
 //
@@ -26,7 +26,6 @@
 // After a run finishes, "Save as best" and "Reset Timer" buttons are shown.
 
 #include "render_shared.h"
-#include "shared.h"
 #include "stream_fonts.h"
 
 void RenderTimerOverlay()
@@ -62,7 +61,7 @@ void RenderTimerOverlay()
     // -------------------------------------------------------------------------
     if (CompactMode)
     {
-        FormatTime(buf, sizeof(buf), elapsed, StreamerShowRunningMillis); // showMillis = false while running, true when idle/finished
+        FormatTime(buf, sizeof(buf), elapsed, ShowRunningMillis);
         ImVec4 color = (running || finished)
             ? TimeColor(elapsed, hasBest ? BestRun.back().Timestamp : 0.0, running)
             : ImVec4(0.5f, 0.5f, 0.5f, 1.0f); // Grey when idle
@@ -77,7 +76,7 @@ void RenderTimerOverlay()
         // -------------------------------------------------------------------------
         // Hoisted here (were previously inside BeginTable) so they remain in
         // scope for the "Save as best" handler further down.
-        const Checkpoint* goalCp = GetGoal(CurrentRoute);
+        const CheckpointState* goalCp = GetGoal(CurrentRoute);
         bool goalIsAllCheckpoints = goalCp &&
             goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
         bool manualStop = finished && numSplits > 0 &&
@@ -135,7 +134,7 @@ void RenderTimerOverlay()
                     if (i < (int)BestRun.size() && std::abs(diff) > 0.0005)
                     {
                         // isSplit = true: always show full precision for completed splits
-                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true,StreamerShowRunningMillis))
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true,ShowRunningMillis))
                         {
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
@@ -205,7 +204,7 @@ void RenderTimerOverlay()
                     ImGui::TableSetColumnIndex(0);
                     if (hasDiff && std::abs(diff) > 0.0005)
                     {
-                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, finished,StreamerShowRunningMillis))
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, finished,ShowRunningMillis))
                         {
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
@@ -218,7 +217,7 @@ void RenderTimerOverlay()
 
                 // Time cell — no milliseconds shown while running
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
-                FormatTime(buf, sizeof(buf), segmentTime, StreamerShowRunningMillis);
+                FormatTime(buf, sizeof(buf), segmentTime, !running || ShowRunningMillis);
                 float textWidth = ImGui::CalcTextSize(buf).x;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(diffCurSeg, diffBestSeg, running), "%s", buf);
@@ -247,7 +246,7 @@ void RenderTimerOverlay()
                     double totalDiff = elapsed - bestTotal;
                     if (std::abs(totalDiff) > 0.0005)
                     {
-                        if (FormatDiff(diffBuf, sizeof(diffBuf), totalDiff, finished,StreamerShowRunningMillis))
+                        if (FormatDiff(diffBuf, sizeof(diffBuf), totalDiff, finished,ShowRunningMillis))
                         {
                             float textWidth = ImGui::CalcTextSize(diffBuf).x;
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
@@ -261,7 +260,7 @@ void RenderTimerOverlay()
                 ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                 // Show milliseconds only when finished; whole seconds while running
                 double bestTotal = hasBest ? BestRun.back().Timestamp : 0.0;
-                FormatTime(buf, sizeof(buf), elapsed, StreamerShowRunningMillis);
+                FormatTime(buf, sizeof(buf), elapsed, !running || ShowRunningMillis);
                 float textWidth = ImGui::CalcTextSize(buf).x;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                 ImGui::TextColored(TimeColor(elapsed, bestTotal, running), "%s", buf);
@@ -340,7 +339,7 @@ void RenderTimerOverlay()
                 if (finished && !manualStop && !goalIsAllCheckpoints &&
                     (!goalCp || goalCp->Point.TriggerType != ETriggerType::CombatArena))
                 {
-                    decltype(BestRun)::value_type goalEntry{};
+                    Split goalEntry{};
                     goalEntry.Timestamp = elapsed;
                     const char* goalName = (goalCp && goalCp->Name[0] != '\0')
                                           ? goalCp->Name : "Goal";

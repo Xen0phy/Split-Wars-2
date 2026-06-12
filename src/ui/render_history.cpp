@@ -1,4 +1,4 @@
-// renderer_history.cpp
+// render_history.cpp
 // Implements the "Run History" window — a table of every completed run for
 // the active route, with split details available as a hover tooltip.
 //
@@ -147,8 +147,8 @@ void RenderHistoryWindow()
                         FormatTime(buf, sizeof(buf), run.TotalTime);
                         ImGui::TextColored(
                             isFastest
-                                ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
-                                : ImVec4(1.0f, 1.0f, 1.0f, 1.0f),
+                                ? ImVec4(ColorAhead[0], ColorAhead[1], ColorAhead[2], 1.0f)
+                                : ImGui::GetStyle().Colors[ImGuiCol_Text],
                             "%s", buf);
 
                         // -----------------------------------------------------------------
@@ -178,7 +178,7 @@ void RenderHistoryWindow()
                             {
                                 // Suppress the AllCheckpoints synthetic Goal split,
                                 // same logic as the hover tooltip.
-                                const Checkpoint* goalCp = GetGoal(CurrentRoute);
+                                const CheckpointState* goalCp = GetGoal(CurrentRoute);
                                 bool goalIsAllCheckpoints = goalCp &&
                                     goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
                                 int splitsToShow = (int)run.Splits.size();
@@ -232,6 +232,7 @@ void RenderHistoryWindow()
                     // The time shown per split follows the global TimerDisplayMode:
                     //   Split mode   → cumulative time from run start
                     //   Segment mode → time for this segment only (delta from previous split)
+                    // LiveSplit mode falls back to Segment display in the tooltip.
                     // The final "Goal" split added by the AllCheckpoints goal type is
                     // hidden because it carries no meaningful time of its own.
                     // -----------------------------------------------------------------
@@ -246,7 +247,7 @@ void RenderHistoryWindow()
 
                             // Suppress the synthetic "Goal" split that AllCheckpoints
                             // goals append — it's redundant with the Total line below.
-                            const Checkpoint* tooltipGoalCp = GetGoal(CurrentRoute);
+                            const CheckpointState* tooltipGoalCp = GetGoal(CurrentRoute);
                             bool tooltipGoalIsAllCheckpoints = tooltipGoalCp &&
                                 tooltipGoalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
                             int splitsToShow = (int)run.Splits.size();
@@ -387,7 +388,7 @@ void RenderHistoryWindow()
 
                         ImGui::TableSetColumnIndex(1);
                         FormatTime(buf, sizeof(buf), seg.bestTime);
-                        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%s", buf);
+                        ImGui::TextColored(ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f), "%s", buf);
 
                         ImGui::TableSetColumnIndex(2);
                         ImGui::Text("%s", seg.bestDate.c_str());

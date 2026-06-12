@@ -6,7 +6,7 @@
 //   History  — completed run records (splits + timestamps) saved as a .history
 //              file that lives alongside its .json route file.
 //   Settings — UI preferences (window visibility, timer mode, etc.) saved as
-//              settings.json in the addon root directory.
+//              settings.ini in the addon root directory.
 //
 // All Save*/Load* functions return false on failure and never throw —
 // callers don't need try/catch blocks.
@@ -73,53 +73,6 @@ struct RouteFolder
 };
 
 // ---------------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------------
-// Flat struct that mirrors the settings.json file.
-// Used as an intermediary in AddonLoad/AddonUnload to transfer values between
-// the JSON file and the individual global booleans in shared.h:
-//   disk → Settings → globals  (ApplySettings on load)
-//   globals → Settings → disk  (GatherSettings + SaveSettings on unload/save)
-//
-// All fields have defaults matching the intended first-run experience.
-// TimerDisplayMode integer mapping: 0 = Segment, 1 = Split, 2 = LiveSplit.
-// ---------------------------------------------------------------------------
-struct Settings
-{
-    bool ShowTimer               = true;
-    bool ShowConfig              = true;
-    bool ShowZones               = true;
-    float ZoneFadeStart          = 50.0f;
-    float ZoneFadeEnd            = 150.0f;
-    bool ShowDebug               = false;
-    int TimerDisplayMode         = 1;     // Default: Split mode
-    bool CompactMode             = false;
-    bool ShowHistory             = false;
-    bool ShowGrandTotal          = false;
-    bool ShowRouteBrowser        = false;
-    int MaxHistoryRuns           = 10;
-    int DataSource               = 0; // 0 = Default, 1 = Mumble, 2 = RTAPI
-    float ColorStart[3]          = { 0.2f, 1.0f, 0.2f };
-    float ColorGoal[3]           = { 0.2f, 0.5f, 1.0f };
-    float ColorCheckpoint[3]     = { 1.0f, 1.0f, 1.0f };
-    float ColorNull[3]           = { 1.0f, 0.6f, 0.0f };
-    float ColorAhead[3]          = { 0.2f, 1.0f, 0.2f };
-    float ColorBehind[3]         = { 1.0f, 0.3f, 0.3f };
-    float ColorBestRow[3]        = { 0.2f, 0.3f, 0.2f };
-    float ConfigWindowW          = 800.0f;
-    float ConfigWindowH          = 400.0f;
-    float HistoryWindowW         = 400.0f;
-    float HistoryWindowH         = 400.0f;
-    float BrowserWindowW         = 400.0f;
-    float BrowserWindowH         = 400.0f;
-    bool StreamerMode            = false;
-    std::string StreamerFontName = "";   // stem of selected font file, empty = first available
-    int         StreamerFontSize = 32;   // pixel size, 24-48 in 2px steps
-    bool StreamerShowRunningMillis = false; // show milliseconds on live segment/total while timer is running
-    int         StreamerHeaderFontSize = 20; // pixel size, 20-48 in 2px steps
-};
-
-// ---------------------------------------------------------------------------
 // Route I/O
 // ---------------------------------------------------------------------------
 // SaveRoute — serialises route.Checkpoints to a JSON array at filepath.
@@ -180,20 +133,19 @@ bool LoadHistory(const std::string& historyPath,
 // ---------------------------------------------------------------------------
 // Settings I/O
 // ---------------------------------------------------------------------------
-// Both functions operate on addonDir + "\\settings.json".
-// LoadSettings uses j.value() with defaults throughout so settings files
-// written by older versions of the addon load cleanly even if new fields
-// were added since.
+// Both functions operate on addonDir + "\\settings.ini".
+// Unknown keys are silently ignored on load, so settings files written by
+// older versions load cleanly even if new fields were added since.
 // ---------------------------------------------------------------------------
-bool SaveSettings(const std::string& addonDir, const Settings& settings);
-bool LoadSettings(const std::string& addonDir, Settings& settings);
+bool SaveSettings(const std::string& addonDir);
+bool LoadSettings(const std::string& addonDir);
 
 // ---------------------------------------------------------------------------
 // Route tree
 // ---------------------------------------------------------------------------
 // BuildRouteTree — recursively scans addonDir and returns the root RouteFolder.
 //                  Directories sort before files; both groups sort alphabetically.
-//                  settings.json is excluded from the results.
+//                  settings.ini is excluded from the results.
 //                  Returns an empty RouteFolder{} if addonDir doesn't exist.
 // ---------------------------------------------------------------------------
 RouteFolder BuildRouteTree(const std::string& addonDir);

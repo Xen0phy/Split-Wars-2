@@ -1,5 +1,5 @@
-// renderer_shared.cpp
-// Implements the utility functions shared across all renderer_*.cpp files:
+// render_shared.cpp
+// Implements the utility functions shared across all render_*.cpp files:
 //   • FormatTime    — formats a seconds value into a HH:MM:SS[.mmm] string
 //   • FormatDiff    — formats a signed time delta with context-aware precision
 //   • TimeColor     — returns the ahead/behind/neutral color for a split time cell
@@ -42,7 +42,7 @@ void FormatTime(char* buf, int bufSize, double elapsed, bool showMillis)
 }
 
 // ---------------------------------------------------------------------------
-// FormatTimeCSV
+// FormatTimeExport
 // ---------------------------------------------------------------------------
 // Always outputs H:MM:SS.mmm with no leading-zero stripping, so spreadsheet
 // applications like Google Sheets auto-recognise the value as a time type.
@@ -63,19 +63,22 @@ void FormatTimeExport(char* buf, int bufSize, double elapsed)
 // Formats a signed time delta (current - best) into a compact +/- string.
 // Returns false if the diff should be hidden entirely (see below).
 //
-// Two display modes, controlled by isSplit:
+// Three display paths, controlled by isSplit and isShowMillis:
 //
-//   isSplit = true  (used for completed split rows in the timer)
+//   isSplit = true  (completed split rows)
 //     Always shown, full precision, leading zeros stripped.
 //     e.g. "-1:02.345" or "-5.123" or "+12.000"
 //
-//   isSplit = false  (used for the live "ahead/behind" indicator)
+//   isSplit = false, isShowMillis = false  (live running indicator)
 //     Applies progressive detail reduction to keep the display clean:
-//       • More than 60 s ahead   → hidden entirely (return false); the run is
-//         so far ahead that showing a diff would just be noise.
+//       • More than 60 s ahead   → hidden entirely (return false)
 //       • 10–60 s ahead          → whole seconds only, e.g. "-42"
-//       • 0–10 s ahead           → seconds + millis,  e.g. "-5.123"
-//       • Any amount behind      → full format,        e.g. "+1:02.345"
+//       • 0–10 s ahead           → seconds + millis, e.g. "-5.123"
+//       • Any amount behind      → full format,       e.g. "+1:02.345"
+//
+//   isSplit = false, isShowMillis = true  (live running indicator, millis forced on)
+//     Skips detail reduction entirely — always shown with full precision.
+//     Used when the user has "Show Milliseconds" enabled in settings.
 // ---------------------------------------------------------------------------
 bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit, bool isShowMillis)
 {
@@ -85,7 +88,7 @@ bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit, bool isShowMi
     int seconds = (int)(abs) % 60;
     int millis  = (int)(abs * 1000) % 1000;
 
-    if(!isShowMillis)
+    if(!isShowMillis && !isSplit)
     {
         // Live comparison — hide when more than 60 s ahead to reduce visual clutter.
         if (diff < -60.0)

@@ -18,7 +18,6 @@
 //     when decoding raw values arriving in combat-event callbacks.
 
 #include "render_shared.h" // IWYU pragma: keep
-#include "shared.h"
 #include <windows.h>
 
 // ---------------------------------------------------------------------------

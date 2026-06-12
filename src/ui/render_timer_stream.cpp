@@ -1,13 +1,13 @@
-// render_timer_stream_seg.cpp
+// render_timer_stream.cpp
 // Segmented-window variant of the streamer timer overlay.
 //
 // Each split section is its own ImGui window pinned below a single draggable
 // anchor. When a split exceeds MAX_VISIBLE_SPLITS, it is evicted from the
 // stack and plays a slide-up + fade-out animation before disappearing.
 //
-// Call RenderTimerOverlayStream() to use this variant (same function name
-// as render_timer_stream.cpp so the two files are drop-in swappable via
-// CMakeLists.txt).
+// Call RenderTimerOverlayStream() instead of RenderTimerOverlay() to use
+// this variant. Both expose the same entry point so they are drop-in
+// swappable via the CMakeLists.txt source list.
 
 #include "render_shared.h"
 #include "shared.h"
@@ -31,11 +31,6 @@ static constexpr float ANIM_DURATION     = 0.4f; // seconds for slide-out
 // Colors
 // ---------------------------------------------------------------------------
 
-
-
-
-
-
 // Style-derived colors -- read at render time, follow Nexus theme automatically
 static ImVec4 SC_Bg()         { return ImGui::GetStyle().Colors[ImGuiCol_WindowBg];     }
 static ImVec4 SC_HeaderBg()   { return ImGui::GetStyle().Colors[ImGuiCol_TitleBg];      }
@@ -53,7 +48,8 @@ static ImU32 SToU32Alpha(ImVec4 c, float a)
 // ---------------------------------------------------------------------------
 // Anchor position
 // ---------------------------------------------------------------------------
-static ImVec2 s_AnchorPos     = { 10.0f, 10.0f };
+static ImVec2 s_AnchorPos = { 10.0f, 10.0f };
+static bool   s_AnchorInitialised = false;
 
 // ---------------------------------------------------------------------------
 // Outgoing split animation state
@@ -114,9 +110,9 @@ static void SDrawHeaderBarAlpha(ImDrawList* dl, ImVec2 pos, float width,
 struct SFontSet
 {
     ImFont* main        = nullptr;  // running h:m:s      (S)
-    ImFont* mainMillis  = nullptr;  // running .xxx       (S-2)
-    ImFont* comp        = nullptr;  // comparison h:m:s   (S-2)
-    ImFont* compMillis  = nullptr;  // comparison .xxx    (S-4)
+    ImFont* mainMillis  = nullptr;  // running .xxx       (S-4)
+    ImFont* comp        = nullptr;  // comparison h:m:s   (S-4)
+    ImFont* compMillis  = nullptr;  // comparison .xxx    (S-8)
     ImFont* header      = nullptr;  // title bar + buttons (StreamerHeaderFontSize)
 };
 
@@ -145,6 +141,82 @@ static void SplitTimeAtDot(const char* buf,
         strncpy(out_main, buf, main_sz - 1);
         out_main[main_sz - 1] = '\0';
         out_millis[0] = '\0';
+    }
+}
+
+// Draws text in four layers to produce the Crash Mode digit style:
+//   Layer 0 (fill):    solid fill color at full size
+//   Layer 1 (shadow):  shadow color shifted by CMDigitShadowOffset
+//   Layer 2 (base):    base color at (size - 4) centred within the full glyph
+//   Layer 3 (overlay): gradient from top (transparent) to bottom (opaque overlay color)
+static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
+                             ImVec2 pos, float rowTop, float rowHeight,
+                             const char* text, float alpha)
+{
+    if (!text || text[0] == '\0') return;
+
+    ImFont* f       = font ? font : ImGui::GetFont();
+    float baseSize  = size - 4.0f;
+    float basePosY  = pos.y + (size - baseSize); // baseline-align orange/red to black
+    float shadowPosY = basePosY + CMDigitShadowOffset[1]; // anchor shadow to same baseline, then offset
+
+    float shadowX = pos.x;
+    float baseX   = pos.x;
+
+    const char* p = text;
+    while (*p)
+    {
+        // Get the codepoint
+        unsigned int c = (unsigned char)*p;
+        char glyph[5] = { *p, '\0' };
+        p++;
+
+        // Measure advance at both sizes
+        float shadowAdv = f->CalcTextSizeA(size,     FLT_MAX, 0.0f, glyph, glyph + 1).x;
+        float baseAdv   = f->CalcTextSizeA(baseSize, FLT_MAX, 0.0f, glyph, glyph + 1).x;
+
+        // Layer 0: fill
+        if(ShowCMFill)
+        {
+            dl->AddText(f, size, ImVec2(shadowX, basePosY),
+                IM_COL32((int)(CMDigitFillColor[0]*255), (int)(CMDigitFillColor[1]*255), (int)(CMDigitFillColor[2]*255), (int)(alpha*255)),
+                glyph, glyph + 1);
+        }
+
+        // Layer 1: shadow
+        if(ShowCMShadow)
+        {
+            dl->AddText(f, size, ImVec2(shadowX + CMDigitShadowOffset[0], shadowPosY),
+                IM_COL32((int)(CMDigitShadowColor[0]*255), (int)(CMDigitShadowColor[1]*255), (int)(CMDigitShadowColor[2]*255), (int)(alpha*255)),
+                glyph, glyph + 1);
+        }
+        
+        // Layer 2: base
+        float centerOffset = (shadowAdv - baseAdv) * 0.5f;
+        dl->AddText(f, baseSize, ImVec2(baseX + centerOffset, basePosY),
+            IM_COL32((int)(CMDigitBaseColor[0]*255), (int)(CMDigitBaseColor[1]*255), (int)(CMDigitBaseColor[2]*255), (int)(alpha*255)),
+            glyph, glyph + 1);
+
+        // Layer 3: overlay gradient — color from StreamerDigitOverlay, alpha 0 top to 1 bottom
+        int vtxStart = dl->VtxBuffer.Size;
+        dl->AddText(f, baseSize, ImVec2(baseX + centerOffset, basePosY), IM_COL32_WHITE, glyph, glyph + 1);
+        int vtxEnd = dl->VtxBuffer.Size;
+        
+        float range = rowHeight > 0.0f ? rowHeight : 1.0f;
+        ImDrawVert* verts = dl->VtxBuffer.Data;
+        for (int i = vtxStart; i < vtxEnd; i++)
+        {
+            float t = ImClamp((verts[i].pos.y - rowTop) / range, 0.0f, 1.0f);
+            verts[i].col = IM_COL32(
+                (int)(CMDigitOverlay[0] * 255),
+                (int)(CMDigitOverlay[1] * 255),
+                (int)(CMDigitOverlay[2] * 255),
+                (int)(t * alpha * 255)
+            );
+        }
+
+        shadowX += shadowAdv;
+        baseX   += shadowAdv; // base X tracks shadow advances so overall width stays consistent
     }
 }
 
@@ -195,24 +267,29 @@ static void SDrawTimeRowAlpha(ImDrawList* dl, ImVec2 pos, float width,
 
         // Draw h:m:s
         float curX = pos.x + SPAD_X;
-        if (fMain)
-            dl->AddText(fMain, sizeMain, ImVec2(curX, timeY), tc, hms);
+        if (CrashMode)
+            SDrawStyledText(dl, fMain, sizeMain, ImVec2(curX, timeY), pos.y, STIME_ROW_H, hms, alpha);
         else
-            dl->AddText(ImVec2(curX, timeY), tc, hms);
+            if (fMain)
+                dl->AddText(fMain, sizeMain, ImVec2(curX, timeY), tc, hms);
+            else
+                dl->AddText(ImVec2(curX, timeY), tc, hms);
 
         // Draw .xxx aligned to bottom of h:m:s baseline
         if (ms[0] != '\0')
         {
-            // Compute width of the h:m:s part to advance X
             float hmsW = fMain
                 ? fMain->CalcTextSizeA(sizeMain, FLT_MAX, 0.0f, hms).x
                 : ImGui::GetFont()->CalcTextSizeA(sizeMain, FLT_MAX, 0.0f, hms).x;
-            // Baseline-align: bottom of millis == bottom of main
             float msY = timeY + (sizeMain - sizeMillis);
-            if (fMillis)
-                dl->AddText(fMillis, sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+            if (CrashMode)
+                SDrawStyledText(dl, fMillis ? fMillis : ImGui::GetFont(), sizeMillis,
+                                ImVec2(curX + hmsW, msY), pos.y, STIME_ROW_H, ms, alpha);
             else
-                dl->AddText(ImGui::GetFont(), sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+                if (fMillis)
+                    dl->AddText(fMillis, sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
+                else
+                    dl->AddText(ImGui::GetFont(), sizeMillis, ImVec2(curX + hmsW, msY), tc, ms);
         }
     }
 
@@ -285,7 +362,7 @@ static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
 
     if (hasDiff)
     {
-        diffValid = FormatDiff(diffBuf, sizeof(diffBuf), diff, isSplit, StreamerShowRunningMillis);
+        diffValid = FormatDiff(diffBuf, sizeof(diffBuf), diff, isSplit, ShowRunningMillis);
         diffColor = (diff < 0.0)
             ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
             : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f);
@@ -347,7 +424,12 @@ static bool BeginSection(const char* id, ImVec2 pos, bool isAnchor)
 void RenderTimerOverlayStream()
 {
     if (!ShowTimer) return;
-
+    if (!s_AnchorInitialised)
+    {
+        s_AnchorPos          = ImVec2(StreamerAnchor[0], StreamerAnchor[1]);
+        s_AnchorInitialised  = true;
+    }
+    
     const auto& splits    = SpeedrunTimer.GetSplits();
     double      elapsed   = SpeedrunTimer.GetElapsedSeconds();
     double      grand     = DisplayedGrandTotal;
@@ -356,7 +438,7 @@ void RenderTimerOverlayStream()
     bool        hasBest   = !BestRun.empty();
     int         numSplits = (int)splits.size();
 
-    const Checkpoint* goalCp = GetGoal(CurrentRoute);
+    const CheckpointState* goalCp = GetGoal(CurrentRoute);
     bool goalIsAllCheckpoints = goalCp && goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
     bool goalIsCombatArena    = goalCp && goalCp->Point.TriggerType == ETriggerType::CombatArena;
     bool manualStop = finished && numSplits > 0 &&
@@ -369,7 +451,7 @@ void RenderTimerOverlayStream()
     bool showIdle       = !running && !finished;
 
     // Build the four-font set for this frame.
-    // mainFont (S) is the user's chosen size; others derive from it in -2 steps.
+    // mainFont (S) is the user's chosen size; others derive from it in -4 steps.
     // GetStreamFont() returns nullptr if the atlas hasn't delivered yet -- all
     // drawing helpers fall back gracefully to ImGui's current font in that case.
     SFontSet fonts;
@@ -446,7 +528,7 @@ void RenderTimerOverlayStream()
             char diffBuf[32] = {};
             s_Outgoing.diffMainBuf[0] = '\0';
             s_Outgoing.diffDecBuf[0]  = '\0';
-            if (s_Outgoing.hasDiff && FormatDiff(diffBuf, sizeof(diffBuf), diff, true,StreamerShowRunningMillis))
+            if (s_Outgoing.hasDiff && FormatDiff(diffBuf, sizeof(diffBuf), diff, true,ShowRunningMillis))
             {
                 const char* dot = strrchr(diffBuf, '.');
                 if (dot)
@@ -530,6 +612,8 @@ void RenderTimerOverlayStream()
         if (BeginSection("##SW2Seg_0", NextPos(), true))
         {
             s_AnchorPos = ImGui::GetWindowPos();
+            StreamerAnchor[0] = s_AnchorPos.x;
+            StreamerAnchor[1] = s_AnchorPos.y;
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2      wp = ImGui::GetWindowPos();
             const ImGuiStyle& st = ImGui::GetStyle();
@@ -574,6 +658,8 @@ void RenderTimerOverlayStream()
         if (BeginSection(wid, NextPos(), isAnchor))
         {
             if (isAnchor) s_AnchorPos = ImGui::GetWindowPos();
+            StreamerAnchor[0] = s_AnchorPos.x;
+            StreamerAnchor[1] = s_AnchorPos.y;
             ImDrawList* dl = ImGui::GetWindowDrawList();
             ImVec2 wp = ImGui::GetWindowPos();
             float curY = wp.y;
@@ -652,7 +738,7 @@ void RenderTimerOverlayStream()
             : SC_AccentIdle();
 
         RenderSec(segLabel, accent,
-                  segmentTime, !running || StreamerShowRunningMillis,
+                  segmentTime, !running || ShowRunningMillis,
                   hasDiff && std::abs(diff) > 0.0005, diff, finished,
                   TimeColor(diffCurSeg, diffBestSeg, running));
     }
@@ -670,7 +756,7 @@ void RenderTimerOverlayStream()
             : SC_AccentIdle();
 
         RenderSec("TOTAL", accent,
-                  elapsed, !running || StreamerShowRunningMillis,
+                  elapsed, !running || ShowRunningMillis,
                   hasBest && std::abs(totalDiff) > 0.0005, totalDiff, finished,
                   TimeColor(elapsed, bestTotal, running));
     }
@@ -732,7 +818,7 @@ void RenderTimerOverlayStream()
             if (finished && !manualStop && !goalIsAllCheckpoints &&
                 (!goalCp || goalCp->Point.TriggerType != ETriggerType::CombatArena))
             {
-                decltype(BestRun)::value_type goalEntry{};
+                Split goalEntry{};  
                 goalEntry.Timestamp = elapsed;
                 const char* goalName = (goalCp && goalCp->Name[0] != '\0') ? goalCp->Name : "Goal";
                 std::strncpy(goalEntry.Name, goalName, sizeof(goalEntry.Name) - 1);

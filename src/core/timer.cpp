@@ -8,7 +8,7 @@
 // which is essential for accurate split times.
 
 #include "timer.h"
-#include "algorithm"
+#include <algorithm>
 #include <cstring>
 
 // ---------------------------------------------------------------------------
@@ -143,9 +143,11 @@ void Timer::AddSplit(const char* name)
 // ---------------------------------------------------------------------------
 // AddSplitAt
 // ---------------------------------------------------------------------------
-// Records a pre-constructed Split directly, used when the split needs a
-// back-dated timestamp (e.g. CombatArena triggers where the split time
-// should reflect when combat dropped, not when the grace period expired).
+// Record a pre-constructed split with a back-dated timestamp.
+// Inserts in chronological order so back-dated splits appear at the
+// correct position in the split list rather than always at the end.
+// Used by CombatArena triggers where the split time should reflect
+// when combat dropped, not when the grace period expired.
 // ---------------------------------------------------------------------------
 void Timer::AddSplitAt(const Split& split)
 {

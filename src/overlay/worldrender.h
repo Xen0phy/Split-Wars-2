@@ -44,11 +44,11 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b);
 // ---------------------------------------------------------------------------
 // RenderZonePlane
 // ---------------------------------------------------------------------------
-// Draws a projected dot field across an infinite plane trigger zone.
+// Draws a projected dot field across a finite plane trigger zone.
 // Used for Plane trigger types.
 //
 //   point          — the RoutePoint defining the plane origin, normal, and
-//                    radius width.
+//                    width and height.
 //   r, g, b        — dot color (0.0–1.0 per channel); alpha is computed
 //                    internally and fades out when the camera is close to
 //                    the plane.
@@ -70,10 +70,8 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b);
 // Main entry point — iterates the active route and draws every checkpoint
 // zone that belongs to the current map.
 //
-// Color convention:
-//   Green (0.2, 1.0, 0.2) — start checkpoint
-//   Blue  (0.2, 0.5, 1.0) — goal checkpoint
-//   White (1.0, 1.0, 1.0) — intermediate checkpoints
+// Colors are read from the user-configurable ColorStart, ColorGoal, and
+// ColorCheckpoint globals (set in addon_options.cpp).
 //
 // MapChange checkpoints and unplaced checkpoints (position all zeros) are
 // skipped — they have no meaningful zone to draw.

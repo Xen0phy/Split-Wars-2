@@ -10,15 +10,25 @@
 // ---------------------------------------------------------------------------
 // Nexus / GW2 interface pointers
 // ---------------------------------------------------------------------------
-AddonAPI_t*   APIDefs           = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
-Mumble::Data* MumbleLink        = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
-RTAPI::RealTimeData* RTAPIData  = nullptr;
+AddonAPI_t*   APIDefs             = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
+Mumble::Data* MumbleLink          = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
+RTAPI::RealTimeData* RTAPIData    = nullptr;
 ArcDPS::PluginInfo* ArcDPSExports = nullptr;
 
 // ---------------------------------------------------------------------------
-// Data source
+// Settings (persisted to settings.ini via settings_table.h)
 // ---------------------------------------------------------------------------
-EDataSource          PreferredSource = EDataSource::Default;
+#define SETTING(S, Key, Type, Default)              Type Key = Default;
+#define SETTING_ARRAY(S, Key, Size, Defaults)       float Key[Size] = {Defaults};
+#define SETTING_ENUM(S, Key, EnumType, ST, Default) EnumType Key = Default;
+#define SETTING_STRING(S, Key, Default) std::string Key = Default;
+#include "settings_table.h"
+#undef SETTING
+#undef SETTING_ARRAY
+#undef SETTING_ENUM
+#undef SETTING_STRING
+
+bool ShowSettingsMigrationNotice = false;
 
 // ---------------------------------------------------------------------------
 // GameState
@@ -53,7 +63,7 @@ void UpdateGameState()
         (PreferredSource == EDataSource::Default ||
          PreferredSource == EDataSource::RTAPI);
 
-    static unsigned int lastUITick = 0;
+    static unsigned int lastUITick = UINT_MAX;
 
     if (useRTAPI)
     {
@@ -94,6 +104,7 @@ void UpdateGameState()
         lastUITick       = MumbleLink->UITick;
     }
 }
+
 // ---------------------------------------------------------------------------
 // Timers
 // ---------------------------------------------------------------------------
@@ -110,60 +121,10 @@ std::string CurrentHistoryPath;                 // Full path to the paired .hist
 std::string AddonDir;                           // Base directory of the addon (where settings/routes live)
 
 // ---------------------------------------------------------------------------
-// UI visibility flags
-// ---------------------------------------------------------------------------
-bool  ShowZones      = true;
-float ZoneFadeStart  = 50.0f;
-float ZoneFadeEnd    = 150.0f;
-bool  ShowTimer      = true;
-bool  ShowConfig     = true;
-bool  ShowDebug      = false;
-bool  ShowHistory    = false;
-bool  ShowGrandTotal = false;
-bool  ShowRouteBrowser = false;
-
-// ---------------------------------------------------------------------------
-// Zone colors
-// ---------------------------------------------------------------------------
-float ColorStart[3]      = { 0.2f, 1.0f, 0.2f };
-float ColorGoal[3]       = { 0.2f, 0.5f, 1.0f };
-float ColorCheckpoint[3] = { 1.0f, 1.0f, 1.0f };
-float ColorNull[3]       = { 1.0f, 0.6f, 0.0f };
-
-// ---------------------------------------------------------------------------
-// Zone colors
-// ---------------------------------------------------------------------------
-float ColorAhead[3]      = { 0.2f, 1.0f, 0.2f };
-float ColorBehind[3]     = { 1.0f, 0.3f, 0.3f };
-float ColorBestRow[3]    = { 0.2f, 0.3f, 0.2f }; // slightly different from ColorAhead since it's a background
-
-// ---------------------------------------------------------------------------
-// Window sizes
-// ---------------------------------------------------------------------------
-float ConfigWindowW  = 800.0f;
-float ConfigWindowH  = 400.0f;
-float HistoryWindowW = 400.0f;
-float HistoryWindowH = 400.0f;
-float BrowserWindowW = 400.0f;
-float BrowserWindowH = 400.0f;
-
-// ---------------------------------------------------------------------------
-// TimerMode / Timer display settings
-// ---------------------------------------------------------------------------
-TimerMode TimerDisplayMode = TimerMode::Split;
-bool      CompactMode      = false;
-bool StreamerMode = false;
-std::string StreamerFontName = "";
-int         StreamerFontSize = 32;
-bool        StreamerShowRunningMillis = false;
-int         StreamerHeaderFontSize = 20;
-
-// ---------------------------------------------------------------------------
 // History / best run data
 // ---------------------------------------------------------------------------
 std::vector<Split>         BestRun;
 std::vector<HistoricalRun> HistoryRuns;
-int                        MaxHistoryRuns   = 10;
 int                        BestRunIndex = -1; // Index into HistoryRuns; -1 = none set
 std::vector<SegmentRecord> SegmentRecords;
 
@@ -173,7 +134,7 @@ std::vector<SegmentRecord> SegmentRecords;
 bool   RunFinished         = false;
 double DisplayedGrandTotal = 0.0;
 bool   PendingStart        = false;
-double pendingGrandStop    = -1.0; // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
+double PendingGrandStop    = -1.0; // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
 
 // ---------------------------------------------------------------------------
 // Thread-safety
@@ -184,12 +145,7 @@ std::mutex        KeybindMutex;
 // ---------------------------------------------------------------------------
 // Per-checkpoint runtime trigger state
 // ---------------------------------------------------------------------------
-CombatTriggerState              CombatStart;
-std::vector<CombatTriggerState> CombatCheckpoints;
-CombatTriggerState              CombatGoal;
-std::vector<bool>               checkpointTriggered;
-bool                            WasInCircleStart = false;
-std::vector<bool>               WasInCheckpoint;
+std::vector<CheckpointState> CheckpointStates;
 
 // ---------------------------------------------------------------------------
 // FullReset
@@ -203,24 +159,32 @@ std::vector<bool>               WasInCheckpoint;
 // Does NOT touch: UI visibility flags, display settings, history, or the
 // route definition itself — those persist across resets.
 //
-// The three trigger-state vectors are resized to match the current route
-// length here, so if checkpoints were added/removed since the last reset
-// the vectors are correctly sized for the new route.
+// CheckpointStates is resized to match the current route length here,
+// so if checkpoints were added/removed since the last reset the vector
+// is correctly sized for the new route.
 // ---------------------------------------------------------------------------
 void FullReset()
 {
     SpeedrunTimer.Reset();
     GrandTimer.Reset();
     DisplayedGrandTotal = 0.0;
-    pendingGrandStop    = -1.0;
+    PendingGrandStop    = -1.0;
     RunFinished         = false;
     PendingStart        = false;
-    WasInCircleStart    = false;
-    CombatStart         = {};
-    CombatGoal          = {};
-    CombatCheckpoints.assign(CurrentRoute.Checkpoints.size(), {});
-    checkpointTriggered.assign(CurrentRoute.Checkpoints.size(), false);
-    WasInCheckpoint.assign(CurrentRoute.Checkpoints.size(), false);
+
+    // Rebuild CheckpointStates from the current route, zeroing all runtime fields.
+    // If the route hasn't changed this is equivalent to calling ResetRuntime() on
+    // every entry; if checkpoints were added/removed the vector is resized correctly.
+    CheckpointStates.resize(CurrentRoute.Checkpoints.size());
+    for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
+    {
+        const CheckpointState& src = CurrentRoute.Checkpoints[i];
+        CheckpointStates[i].Point   = src.Point;
+        CheckpointStates[i].IsStart = src.IsStart;
+        CheckpointStates[i].IsGoal  = src.IsGoal;
+        strncpy(CheckpointStates[i].Name, src.Name, sizeof(CheckpointStates[i].Name));
+        CheckpointStates[i].ResetRuntime();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +201,7 @@ bool HotbarSavedShowRouteBrowser = false;
 // ArcDPS
 // ---------------------------------------------------------------------------
 std::vector<KillingBlowEvent>   KillingBlows;
-std::vector<ChangeDeadEvent>    RewardEvents;
+std::vector<RewardEvent>        RewardEvents;
 bool                            HasTarget   = false;
 TargetInfo                      LastTarget = {};
 bool                            InCombat = false;
@@ -248,7 +212,8 @@ std::vector<SqCombatStartEvent> SqCombatStartEvents;
 // ---------------------------------------------------------------------------
 // Debug
 // ---------------------------------------------------------------------------
-float occludePixelRadius = 1000.0f; // Base pixel radius for the character occlusion circle
-float occludePixelClamp  = 300.0f;  // Maximum pixel radius the occlusion circle can reach
+bool  ShowDebug                = false;
+float occludePixelRadius       = 1000.0f; // Base pixel radius for the character occlusion circle
+float occludePixelClamp        = 300.0f;  // Maximum pixel radius the occlusion circle can reach
 float ZoneRenderAvgMs          = 0.0f;
 int   ZoneRenderSelectedIndex  = -1;

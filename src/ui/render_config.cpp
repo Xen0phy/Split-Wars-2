@@ -1,4 +1,4 @@
-// renderer_config.cpp
+// render_config.cpp
 // Implements the "Speedrun Config" window — the main route editor UI.
 //
 // From this window the player can:
@@ -16,6 +16,19 @@
 #include <cmath>
 
 namespace fs = std::filesystem;
+
+static const struct { ETriggerType type; const char* label; } TriggerTypeOrder[] =
+{
+    { ETriggerType::Circle,         "Circle"          },
+    { ETriggerType::Plane,          "Plane"           },
+    { ETriggerType::MapChange,      "Map Change"      },
+    { ETriggerType::CircleInteract, "Interact"        },
+    { ETriggerType::CombatArena,    "Combat (Native)" },
+    { ETriggerType::NullCircle,     "Null (Circle)"   },
+    { ETriggerType::NullPlane,      "Null (Plane)"    },
+    { ETriggerType::AllCheckpoints, "All Checkpoints" },
+};
+static const int TriggerTypeCount = (int)std::size(TriggerTypeOrder);
 
 void RenderConfigWindow()
 {
@@ -265,7 +278,7 @@ void RenderConfigWindow()
                 case 2:  Tooltip("Set your checkpoint as Goal point.\nMultiple possble.\nWill end the timer."); break;
                 case 3:  Tooltip("Trigger types that create a checkpoint:\n"
                                        "  * Sphere:          Fires when you enter it. If Start, fires when you leave.\n"
-                                       "  * Plane:           Fires when you walk through it. Infinite height.\n"
+                                       "  * Plane:           Fires when you walk through it. Height defined by Up/Down band.\n"
                                        "  * Interact:        Fires when you interact while in sphere. Check warning when set.\n"
                                        "  * Combat(Native):  Fires twice.\n"
                                        "                     Combat start while in sphere.\n"
@@ -278,9 +291,9 @@ void RenderConfigWindow()
                 case 7:  Tooltip("Enter Z Coordinate here.\nEither you know or you press the capture button."); break;
                 case 8:  Tooltip("Sphere radiues or plane width."); break;
                 case 9:  Tooltip("The amount of dots you want on your sphere or plane.\nBigger numbers need more render time."); break;
-                case 10: Tooltip("A center line for Up and Down.\n Sphere uses longitude degrees, plane uses meter."); break;
-                case 11: Tooltip("How far up you want the dots to extend from center."); break;
-                case 12: Tooltip("How far down you want the dots to extend from center."); break;
+                case 10: Tooltip("Latitude centre of the dot band in degrees.\n-90 = south pole, 0 = equator, 90 = north pole.\nNot used for Plane triggers.");
+                case 11: Tooltip("How far up the dots extend from centre.\nSphere: degrees. Plane: metres.");
+                case 12: Tooltip("How far down the dots extend from centre.\nSphere: degrees. Plane: metres.");
                 case 13: Tooltip("Defines plane angle. Use capture button or adjust manually.\n"
                                        "Shows a Re-Arm button for combat trigger.\n"
                                        "Adjust MapChange indicators hyperbole strength."); break;
@@ -292,12 +305,12 @@ void RenderConfigWindow()
         int removeIndex   = -1; // Set if Delete is chosen from context menu
         int dragReorderFrom = -1;
         int dragReorderTo   = -1;
-        static Checkpoint clipboard;
+        static CheckpointState clipboard;
         static bool       hasClipboard = false;
         for (int i = 0; i < (int)CurrentRoute.Checkpoints.size(); i++)
         {
             ImGui::TableNextRow();
-            Checkpoint& cp        = CurrentRoute.Checkpoints[i];
+            CheckpointState& cp        = CurrentRoute.Checkpoints[i];
             RoutePoint& point     = cp.Point;
             bool isMapChange      = point.TriggerType == ETriggerType::MapChange;
             bool isAllCheckpoints = point.TriggerType == ETriggerType::AllCheckpoints;
@@ -374,11 +387,15 @@ void RenderConfigWindow()
             ImGui::TableSetColumnIndex(3);
             ImGui::SetNextItemWidth(-1);
             char comboLabel[32]; snprintf(comboLabel, sizeof(comboLabel), "##type_%d", i);
-            const char* allTriggerTypes[] = { "Circle", "Plane", "Map Change", "Interact", "Combat(Native)", "All Checkpoints", "Null (Circle)", "Null (Plane)" };
-            int currentType = (int)point.TriggerType;
-            if (ImGui::Combo(comboLabel, &currentType, allTriggerTypes, 8))
+            int currentIndex = 0;
+            for (int t = 0; t < TriggerTypeCount; t++)
+                if (TriggerTypeOrder[t].type == point.TriggerType) { currentIndex = t; break; }
+            const char* labels[TriggerTypeCount];
+            for (int t = 0; t < TriggerTypeCount; t++)
+                labels[t] = TriggerTypeOrder[t].label;
+            if (ImGui::Combo(comboLabel, &currentIndex, labels, TriggerTypeCount))
             {
-                point.TriggerType = (ETriggerType)currentType;
+                point.TriggerType = TriggerTypeOrder[currentIndex].type;
                 if (point.TriggerType == ETriggerType::AllCheckpoints)
                     cp.IsGoal = true;
                 // Changing trigger type can invalidate CombatCheckpoints state
@@ -470,7 +487,7 @@ void RenderConfigWindow()
             //   BandDown   — degrees below centre where dot alpha fades to 0.
             // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(10);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && point.TriggerType != ETriggerType::Plane)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandCenter_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -507,14 +524,13 @@ void RenderConfigWindow()
             ImGui::TableSetColumnIndex(13);
             if (point.TriggerType == ETriggerType::CombatArena)
             {
-                if (i < (int)CombatCheckpoints.size() && CombatCheckpoints[i].finished)
+                if (i < (int)CheckpointStates.size() && CheckpointStates[i].combat.finished)
                 {
                     char rearmLabel[32]; snprintf(rearmLabel, sizeof(rearmLabel), "Re-arm##%d", i);
                     if (ImGui::Button(rearmLabel))
                     {
-                        CombatCheckpoints[i] = {};           // Reset the combat state machine
-                        if (i < (int)checkpointTriggered.size())
-                            checkpointTriggered[i] = false;  // Allow the split to fire again
+                        CheckpointStates[i].combat    = {};    // Reset the combat state machine
+                        CheckpointStates[i].triggered = false; // Allow the split to fire again
                     }
                 }
             }
@@ -647,7 +663,7 @@ void RenderConfigWindow()
         if (dragReorderFrom >= 0 && dragReorderTo >= 0 && dragReorderFrom != dragReorderTo)
         {
             auto& cps = CurrentRoute.Checkpoints;
-            Checkpoint moved = cps[dragReorderFrom];
+            CheckpointState moved = cps[dragReorderFrom];
             cps.erase(cps.begin() + dragReorderFrom);
             // Adjust target index if source was before it.
             int insertAt = (dragReorderFrom < dragReorderTo) ? dragReorderTo : dragReorderTo;
@@ -668,7 +684,7 @@ void RenderConfigWindow()
     // current position (if MumbleLink is available).
     if (ImGui::Button("Add Checkpoint"))
     {
-        Checkpoint cp;
+        CheckpointState cp;
         snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
         cp.Point.X     = GS.PlayerX;
         cp.Point.Y     = GS.PlayerY;
@@ -782,7 +798,7 @@ void RenderConfigWindow()
             {
                 if (ImGui::Button("Add as Checkpoint##calc"))
                 {
-                    Checkpoint cp;
+                    CheckpointState cp;
                     snprintf(cp.Name, sizeof(cp.Name), "Checkpoint %d", (int)CurrentRoute.Checkpoints.size() + 1);
                     cp.Point.X           = calcCX;
                     cp.Point.Y           = calcCY;

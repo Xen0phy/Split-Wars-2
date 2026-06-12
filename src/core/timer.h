@@ -85,6 +85,8 @@ public:
     void AddSplit(const char* name);
 
     // Record a pre-constructed split with a back-dated timestamp.
+    // Inserts in chronological order so back-dated splits appear at the
+    // correct position in the split list rather than always at the end.
     // Used by CombatArena triggers where the split time should reflect
     // when combat dropped, not when the grace period expired.
     void AddSplitAt(const Split& split);

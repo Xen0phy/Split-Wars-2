@@ -1,5 +1,5 @@
-// renderer_shared.h
-// Central header included by every renderer_*.cpp file.
+// render_shared.h
+// Central header included by every render_*.cpp file.
 //
 // Pulls in all ImGui headers, the shared game-state header, and the storage
 // header so each renderer only needs one include line.  Also declares the
@@ -29,7 +29,7 @@ void RenderRouteBrowserWindow();
 void RenderDebugWindow();
 
 // ---------------------------------------------------------------------------
-// Time formatting helpers (implemented in renderer_shared.cpp)
+// Time formatting helpers (implemented in render_shared.cpp)
 // ---------------------------------------------------------------------------
 
 // Formats a seconds value as "HH:MM:SS[.mmm]".
@@ -46,9 +46,9 @@ void FormatTimeExport(char* buf, int bufSize, double elapsed);
 bool FormatDiff(char* buf, int bufSize, double diff, bool isSplit = false, bool isShowMillis = false);
 
 // Returns the ImGui color for a split time cell:
-//   White — segment still in progress  (running = true)
-//   Green — no best time yet, or current <= best
-//   Red   — current time is slower than best
+//   White       — segment still in progress  (running = true)
+//   ColorAhead  — no best time yet, or current <= best
+//   ColorBehind — current time is slower than best
 ImVec4 TimeColor(double current, double best, bool running);
 
 // Loads a route file from disk and updates all shared global state
