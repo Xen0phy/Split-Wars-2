@@ -561,8 +561,124 @@ void AddonOptions()
     if (ImGui::CollapsingHeader("Speedometer Settings"))
     {
         ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
-        ImGui::Checkbox("mph", &SpeedUnitMph);
-        ImGui::Checkbox("tacho", &SpeedoTachometer);
-        ImGui::InputFloat("##speedorad", &SpeedoRadius);
+        ImGui::Checkbox("Use mph", &SpeedUnitMph);
+        ImGui::Checkbox("Tachometer mode", &SpeedoTachometer);
+        ImGui::Checkbox("Edit mode", &SpeedoEditMode);
+
+        ImGui::Separator();
+        ImGui::Text("Geometry");
+
+        ImGui::DragFloat("Arc Angle",  &SpeedoArcAngle,  1.0f, 1.0f, 359.0f, "%.0f deg");
+
+        float rotation = SpeedoAngle;
+        if (ImGui::DragFloat("Rotation", &rotation, 1.0f, 0.0f, 0.0f, "%.0f deg"))
+        {
+            rotation = std::fmod(rotation, 360.0f);
+            if (rotation < 0.0f) rotation += 360.0f;
+            SpeedoAngle = rotation;
+        }
+        constexpr float PI = 3.14159265f;
+        float radius = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
+        float maxPDist = std::fmin(200.0f, radius);
+        SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
+        ImGui::DragFloat("Needle Origin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
+
+        ImGui::Separator();
+        ImGui::Text("Needle");
+        ImGui::Checkbox("Show needle", &SpeedoNeedleVisible);
+        ImGui::DragFloat("Needle width", &SpeedoNeedleWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
+
+        ImGui::Separator();
+        ImGui::Text("Arc");
+        ImGui::DragFloat("Arc width",    &SpeedoArcWidth,   0.1f, 0.1f, 20.0f, "%.1f px");
+        ImGui::DragFloat("Arc bg width", &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
+
+        ImGui::Separator();
+        ImGui::Text("Label");
+        ImGui::Checkbox("Show label", &SpeedoLabelVisible);
+
+        ImGui::Separator();
+        ImGui::Text("Physics");
+        ImGui::DragFloat("Spring stiffness", &SpeedoSpringK, 0.1f, 0.1f, 50.0f, "%.1f");
+        ImGui::DragFloat("Damping",          &SpeedoDamping, 0.1f, 0.1f, 50.0f, "%.1f");
+
+        ImGui::Separator();
+        ImGui::Text("Geometry");
+        {
+            static constexpr float PI          = 3.14159265f;
+            static constexpr float canvasSize  = 200.0f;
+            static constexpr float canvasR     = canvasSize * 0.5f;
+
+            ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+            ImGui::InvisibleButton("##speedogeo", ImVec2(canvasSize, canvasSize));
+
+            float cx = canvasPos.x + canvasR;
+            float cy = canvasPos.y + canvasR;
+
+            if (ImGui::IsItemActive())
+            {
+                ImVec2 mouse  = ImGui::GetMousePos();
+                float  dx     = mouse.x - cx;
+                float  dy     = mouse.y - cy;
+                float  dist   = std::sqrt(dx*dx + dy*dy);
+                float  t      = std::fmin(dist / canvasR, 1.0f); // 0=center, 1=edge
+
+                // Angle → SpeedoAngle (in degrees, wrapped)
+                float angleDeg = std::atan2(dy, dx) * 180.0f / PI;
+                if (angleDeg < 0.0f) angleDeg += 360.0f;
+                SpeedoAngle = angleDeg;
+
+                // Distance → ArcAngle (0 at center = ~0°, edge = 359°)
+                SpeedoArcAngle = t * 359.0f;
+                if (SpeedoArcAngle < 1.0f) SpeedoArcAngle = 1.0f;
+
+                // Scale PDistance with radius so it stays valid
+                float radius = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
+                float maxPDist = std::fmin(200.0f, radius);
+                SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
+
+                SaveCurrentSettings();
+            }
+
+            // Draw canvas
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddCircleFilled(ImVec2(cx, cy), canvasR, IM_COL32(40, 40, 40, 255));
+            dl->AddCircle(ImVec2(cx, cy),       canvasR, IM_COL32(120, 120, 120, 255));
+            // crosshair
+            dl->AddLine(ImVec2(cx, canvasPos.y), ImVec2(cx, canvasPos.y + canvasSize), IM_COL32(80, 80, 80, 255));
+            dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
+
+            // Handle position
+            float t          = SpeedoArcAngle / 359.0f;
+            float handleAngle = SpeedoAngle * PI / 180.0f;
+            ImVec2 handle(
+                cx + std::cos(handleAngle) * t * canvasR,
+                cy + std::sin(handleAngle) * t * canvasR);
+
+            dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
+            dl->AddCircle(handle,       5.0f, IM_COL32(0, 0, 0, 255));
+
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            ImGui::Text("Rotation:  %.0f deg", SpeedoAngle);
+            ImGui::Text("Arc Angle: %.0f deg", SpeedoArcAngle);
+            ImGui::EndGroup();
+
+            if (ImGui::Button("Reset Geometry"))
+            {
+                SpeedoAngle    = 270.0f;
+                SpeedoArcAngle = 120.0f;
+                SaveCurrentSettings();
+            }
+        }
+
+        ImGui::DragFloat("Arc Length",    &SpeedoArcLength,   1.0f, 10.0f, 2000.0f, "%.0f px");
+        {
+            static constexpr float PI = 3.14159265f;
+            float radius   = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
+            float maxPDist = std::fmin(200.0f, radius);
+            SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
+            ImGui::DragFloat("Needle Origin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
+        }
     }
 }

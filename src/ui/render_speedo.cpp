@@ -1,69 +1,59 @@
 // render_speedo.cpp
 // Speedometer overlay for Split Wars 2.
 //
-// Speed is derived each frame by comparing the player's world-space position
-// (GS.PlayerX/Y/Z) against the previous frame's position and dividing by the
-// elapsed wall-clock time. Both Mumble and RTAPI provide positions in meters,
-// so the raw unit is meters per second (m/s).
+// ─── Tachometer geometry ────────────────────────────────────────────────────
 //
-// Unit conversion:
-//   m/s → km/h : × 3.6
-//   m/s → mph  : × 2.23694
+//   SpeedoArcAngle  — total sweep of the arc in degrees (1-359)
+//   SpeedoArcLength — total length of the arc in pixels
+//   SpeedoAngle     — rotation of the whole speedo (0-360)
+//   SpeedoPDistance — distance of needle origin P from the arc (0 = on arc, max 200px)
 //
-// Speed is averaged over the last 100ms using a timestamp-based deque so
-// the smoothing window is consistent regardless of framerate.
+//   radius   = SpeedoArcLength / (SpeedoArcAngle * DEG_TO_RAD)
+//   pDist    = radius - min(SpeedoPDistance, min(200, radius))
+//   arcMid   = SpeedoAngle axis direction
+//   arcStart = arcMid - ArcAngle/2
+//   arcEnd   = arcMid + ArcAngle/2
+//   needle   = line from P to arc point at current speed
 //
-// Speed is suppressed during loading screens so the teleport at the end of a
-// load screen doesn't produce a spurious spike.
+// ─── Render modes ───────────────────────────────────────────────────────────
 //
-// Two display modes (SpeedoDrawMode, persisted setting):
-//   Numeric    — plain text number
-//   Tachometer — 120° arc with filled sweep and needle
+//   Edit mode   — draws inside an ImGui window so the user can drag to position it.
+//                 Window position is saved to SpeedoWindowX/Y.
+//   Play mode   — draws directly to ImGui background draw list at the saved position,
+//                 so no ImGui window occludes world rendering.
+//
+// ────────────────────────────────────────────────────────────────────────────
 
 #include "render_shared.h"
 #include "render_speedo.h"
 #include <chrono>
 #include <cmath>
 #include <deque>
+#include <algorithm>
+#include <functional>
 
 // ---------------------------------------------------------------------------
-// Unit conversion constants
+// Constants
 // ---------------------------------------------------------------------------
-static constexpr float MPS_TO_KMH = 3.6f;
-static constexpr float MPS_TO_MPH = 2.23694f;
-
-// ---------------------------------------------------------------------------
-// Tachometer geometry
-// ---------------------------------------------------------------------------
-// The arc spans 120 degrees, centered at the bottom of the circle.
-// 0 km/h is at the left end, max speed at the right end.
-//
-// In ImGui's draw system, 0° is 3 o'clock and angles increase clockwise.
-// We want the arc to sit like a speedometer — opening upward — so:
-//   left end  (0 speed) = 210° = 7π/6
-//   right end (max)     = 330° = 11π/6
-// ---------------------------------------------------------------------------
-static constexpr float ARC_START_DEG = 210.0f; // degrees, 0 speed
-static constexpr float ARC_END_DEG   = 330.0f; // degrees, max speed
-static constexpr float DEG_TO_RAD    = 3.14159265f / 180.0f;
-
+static constexpr float MPS_TO_KMH  = 3.6f;
+static constexpr float MPS_TO_MPH  = 2.23694f;
 static constexpr float MAX_SPEED_KMH = 200.0f;
-static constexpr float MAX_SPEED_MPH = MAX_SPEED_KMH / 1.60934f; // ~124 mph
+static constexpr float MAX_SPEED_MPH = MAX_SPEED_KMH / 1.60934f;
+static constexpr float DEG_TO_RAD  = 3.14159265f / 180.0f;
+static constexpr float PI          = 3.14159265f;
+static constexpr float TWO_PI      = 6.28318530f;
+static constexpr int   ARC_SEGMENTS = 64;
 
 // ---------------------------------------------------------------------------
-// SpeedoComputeSpeed  (shared between numeric and tachometer modes)
-// ---------------------------------------------------------------------------
-// Returns current smoothed speed in km/h or mph depending on SpeedUnitMph.
-// Manages all static state internally.
+// SpeedoComputeSpeed
 // ---------------------------------------------------------------------------
 static float SpeedoComputeSpeed()
 {
     struct SpeedSample {
-        float                                value;
+        float                                 value;
         std::chrono::steady_clock::time_point time;
     };
     static std::deque<SpeedSample> s_speedSamples;
-
     static float s_prevX   = 0.0f;
     static float s_prevY   = 0.0f;
     static float s_prevZ   = 0.0f;
@@ -73,10 +63,9 @@ static float SpeedoComputeSpeed()
     static Clock::time_point s_prevTime = Clock::now();
 
     Clock::time_point now = Clock::now();
-    double dt = std::chrono::duration<double>(now - s_prevTime).count();
-    s_prevTime = now;
-
-    float displaySpeed = 0.0f;
+    double            dt  = std::chrono::duration<double>(now - s_prevTime).count();
+    s_prevTime            = now;
+    float displaySpeed    = 0.0f;
 
     if (GS.IsLoading)
     {
@@ -85,9 +74,9 @@ static float SpeedoComputeSpeed()
     }
     else if (s_hasPrev && dt > 0.0 && dt < 1.0)
     {
-        float dx = GS.PlayerX - s_prevX;
-        float dy = GS.PlayerY - s_prevY;
-        float dz = GS.PlayerZ - s_prevZ;
+        float dx      = GS.PlayerX - s_prevX;
+        float dy      = GS.PlayerY - s_prevY;
+        float dz      = GS.PlayerZ - s_prevZ;
         float distMPS = std::sqrt(dx*dx + dy*dy + dz*dz) / static_cast<float>(dt);
         float factor  = SpeedUnitMph ? MPS_TO_MPH : MPS_TO_KMH;
         float raw     = distMPS * factor;
@@ -114,8 +103,77 @@ static float SpeedoComputeSpeed()
     s_prevY   = GS.PlayerY;
     s_prevZ   = GS.PlayerZ;
     s_hasPrev = true;
-
     return displaySpeed;
+}
+
+// ---------------------------------------------------------------------------
+// DrawSpeedoContent
+// Draws arc, sweep, needle and label onto any ImDrawList.
+// toScreen converts local coords (C at origin) to screen space.
+// ---------------------------------------------------------------------------
+static void DrawSpeedoContent(
+    ImDrawList*                          draw,
+    std::function<ImVec2(float, float)>  toScreen,
+    float                                t,
+    float                                speed,
+    const char*                          unitLabel,
+    float                                radius,
+    float                                pDist,
+    float                                axisAngleRad,
+    float                                arcStart,
+    float                                arcEnd,
+    float                                arcMidAngle,
+    float                                needleAngle,
+    bool                                 editMode)
+{
+    ImVec2 C_screen = toScreen(0.0f, 0.0f);
+    ImVec2 P_screen = toScreen(
+        std::cos(axisAngleRad) * pDist,
+        std::sin(axisAngleRad) * pDist);
+
+    // Background arc
+    draw->PathArcTo(C_screen, radius, arcStart, arcEnd, ARC_SEGMENTS);
+    draw->PathStroke(IM_COL32(80, 80, 80, 200), false, SpeedoArcBgWidth);
+
+    // Filled sweep
+    if (t > 0.0f)
+    {
+        draw->PathArcTo(C_screen, radius, arcStart, needleAngle, ARC_SEGMENTS);
+        draw->PathStroke(IM_COL32(0, 200, 255, 220), false, SpeedoArcWidth);
+    }
+
+    // Needle from P to arc point
+    if (SpeedoNeedleVisible)
+    {
+        ImVec2 needleTip(
+            C_screen.x + std::cos(needleAngle) * radius,
+            C_screen.y + std::sin(needleAngle) * radius);
+        draw->AddLine(P_screen, needleTip, IM_COL32(255, 255, 255, 230), SpeedoNeedleWidth);
+    }
+
+    // Speed label near arc apex
+    if (SpeedoLabelVisible)
+    {
+        char   buf[16];
+        snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
+        ImVec2 textSize = ImGui::CalcTextSize(buf);
+        ImVec2 apex     = toScreen(
+            std::cos(arcMidAngle) * radius,
+            std::sin(arcMidAngle) * radius);
+        draw->AddText(
+            ImVec2(apex.x - textSize.x * 0.5f, apex.y + 8.0f),
+            IM_COL32(255, 255, 255, 200),
+            buf);
+    }
+
+    // Edit mode markers
+    if (editMode)
+    {
+        draw->AddCircleFilled(C_screen, 4.0f, IM_COL32(255, 200, 0, 255));
+        draw->AddText(ImVec2(C_screen.x + 6, C_screen.y - 8), IM_COL32(255, 200, 0, 255), "C");
+        draw->AddCircleFilled(P_screen, 4.0f, IM_COL32(255, 80, 80, 255));
+        draw->AddText(ImVec2(P_screen.x + 6, P_screen.y - 8), IM_COL32(255, 80, 80, 255), "P");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,10 +183,23 @@ void RenderSpeedoWindow()
 {
     if (!ShowSpeedo) return;
 
-    float speed = SpeedoComputeSpeed();
+    float speed    = SpeedoComputeSpeed();
+    float maxSpeed = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
+    float t        = std::fmin(speed / maxSpeed, 1.0f);
+
+    // Needle spring physics
+    static float s_needlePos = 0.0f;
+    static float s_needleVel = 0.0f;
+    {
+        float dt_needle = ImGui::GetIO().DeltaTime;
+        float force     = (t - s_needlePos) * SpeedoSpringK - s_needleVel * SpeedoDamping;
+        s_needleVel    += force * dt_needle;
+        s_needlePos    += s_needleVel * dt_needle;
+        s_needlePos     = std::fmax(0.0f, std::fmin(s_needlePos, 1.0f));
+        t               = s_needlePos;
+    }
 
     const char* unitLabel = SpeedUnitMph ? "mph" : "km/h";
-    float       maxSpeed  = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
 
     // -------------------------------------------------------------------------
     // Numeric mode
@@ -149,84 +220,105 @@ void RenderSpeedoWindow()
     }
 
     // -------------------------------------------------------------------------
-    // Tachometer mode
+    // Geometry
     // -------------------------------------------------------------------------
-    // Transparent, borderless, fixed-size window.
-    // The tach radius drives the window size; position defaults to center-ish.
+    float arcAngleRad  = std::fmax(SpeedoArcAngle, 1.0f) * DEG_TO_RAD;
+    arcAngleRad        = std::fmin(arcAngleRad, TWO_PI * 0.999f);
+    float radius       = SpeedoArcLength / arcAngleRad;
+    float maxPDist     = std::fmin(200.0f, radius);
+    float pDist        = radius - std::fmin(SpeedoPDistance, maxPDist);
+    float axisAngleRad = SpeedoAngle * DEG_TO_RAD;
+    float arcMidAngle  = axisAngleRad;
+    float arcStart     = arcMidAngle - arcAngleRad * 0.5f;
+    float arcEnd       = arcMidAngle + arcAngleRad * 0.5f;
+    float needleAngle  = arcStart + t * (arcEnd - arcStart);
+
+    // P in local space (C at origin)
+    ImVec2 P_local(
+        std::cos(axisAngleRad) * pDist,
+        std::sin(axisAngleRad) * pDist);
+
     // -------------------------------------------------------------------------
-    const float radius      = SpeedoRadius;        // persisted setting
-    const float windowSize  = radius * 2.0f + 20.0f; // padding on each side
+    // Bounding box (local space, C at origin)
+    // -------------------------------------------------------------------------
+    const float padding = 8.0f;
+    float minX =  1e9f, minY =  1e9f;
+    float maxX = -1e9f, maxY = -1e9f;
 
-    // Default position: horizontally centered, 200px from the bottom.
-    ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(
-        ImVec2(io.DisplaySize.x * 0.5f - windowSize * 0.5f,
-               io.DisplaySize.y - windowSize - 200.0f),
-        ImGuiCond_FirstUseEver
-    );
-    ImGui::SetNextWindowSize(ImVec2(windowSize, windowSize), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.0f);
-    ImGui::Begin("##speedo_tach", nullptr,
-        ImGuiWindowFlags_NoDecoration       |
-        ImGuiWindowFlags_NoFocusOnAppearing |
-        ImGuiWindowFlags_NoNav              |
-        ImGuiWindowFlags_NoScrollbar        |
-        ImGuiWindowFlags_NoScrollWithMouse
-    );
-
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    ImVec2      wPos = ImGui::GetWindowPos();
-
-    // Centre of the arc in screen space.
-    ImVec2 centre(wPos.x + windowSize * 0.5f, wPos.y + windowSize * 0.5f);
-
-    static float s_needlePos = 0.0f; // current needle position 0..1
-    static float s_needleVel = 0.0f; // current needle velocity
-
-    float target     = std::fmin(speed / maxSpeed, 1.0f);
-    float springK    = 12.0f;  // stiffness — how eagerly it chases the target
-    float damping    = 6.0f;   // damping — higher = less overshoot/oscillation
-    float dt_needle  = ImGui::GetIO().DeltaTime;
-
-    float force      = (target - s_needlePos) * springK - s_needleVel * damping;
-    s_needleVel     += force * dt_needle;
-    s_needlePos     += s_needleVel * dt_needle;
-    s_needlePos      = std::fmax(0.0f, std::fmin(s_needlePos, 1.0f));
-
-    float t = s_needlePos;
-    
-    float arcStart = ARC_START_DEG * DEG_TO_RAD;
-    float arcEnd   = ARC_END_DEG   * DEG_TO_RAD;
-    float arcSpan  = arcEnd - arcStart;                  // positive = clockwise
-    float needleAngle = arcStart + t * arcSpan;
-
-    // --- Background arc (thin, dark) ---
-    draw->PathArcTo(centre, radius, arcStart, arcEnd, 64);
-    draw->PathStroke(IM_COL32(80, 80, 80, 200), false, 2.0f);
-
-    // --- Filled sweep arc ---
-    if (t > 0.0f)
+    for (int i = 0; i <= ARC_SEGMENTS; i++)
     {
-        draw->PathArcTo(centre, radius, arcStart, needleAngle, 64);
-        draw->PathStroke(IM_COL32(0, 200, 255, 220), false, 4.0f);
+        float a = arcStart + (arcEnd - arcStart) * static_cast<float>(i) / ARC_SEGMENTS;
+        float x = std::cos(a) * radius;
+        float y = std::sin(a) * radius;
+        minX = std::min(minX, x); minY = std::min(minY, y);
+        maxX = std::max(maxX, x); maxY = std::max(maxY, y);
     }
 
-    // --- Needle (line from centre to arc) ---
-    ImVec2 needleTip(
-        centre.x + std::cos(needleAngle) * radius,
-        centre.y + std::sin(needleAngle) * radius
-    );
-    draw->AddLine(centre, needleTip, IM_COL32(255, 255, 255, 230), 1.5f);
+    // Include P but not C
+    minX = std::min(minX, P_local.x); minY = std::min(minY, P_local.y);
+    maxX = std::max(maxX, P_local.x); maxY = std::max(maxY, P_local.y);
 
-    // --- Speed label below centre ---
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
-    ImVec2 textSize = ImGui::CalcTextSize(buf);
-    draw->AddText(
-        ImVec2(centre.x - textSize.x * 0.5f, centre.y + radius * 0.3f),
-        IM_COL32(255, 255, 255, 200),
-        buf
-    );
+    float windowW = (maxX - minX) + padding * 2.0f;
+    float windowH = (maxY - minY) + padding * 2.0f;
+    float offsetX = -minX + padding;
+    float offsetY = -minY + padding;
 
-    ImGui::End();
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Default position if not yet set
+    float defaultX = io.DisplaySize.x * 0.5f - windowW * 0.5f;
+    float defaultY = io.DisplaySize.y - windowH - 200.0f;
+    float wx       = SpeedoWindowX < 0.0f ? defaultX : SpeedoWindowX;
+    float wy       = SpeedoWindowY < 0.0f ? defaultY : SpeedoWindowY;
+
+    auto toScreen = [&](float lx, float ly) -> ImVec2 {
+        return ImVec2(wx + lx + offsetX, wy + ly + offsetY);
+    };
+
+    // -------------------------------------------------------------------------
+    // Edit mode — draw inside ImGui window so it can be dragged
+    // -------------------------------------------------------------------------
+    if (SpeedoEditMode)
+    {
+        ImGui::SetNextWindowPos(ImVec2(wx, wy), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(windowW, windowH), ImGuiCond_Always);
+        ImGui::SetNextWindowBgAlpha(0.4f);
+        ImGui::Begin("##speedo_tach", nullptr,
+            ImGuiWindowFlags_NoDecoration       |
+            ImGuiWindowFlags_NoFocusOnAppearing |
+            ImGuiWindowFlags_NoNav              |
+            ImGuiWindowFlags_NoScrollbar        |
+            ImGuiWindowFlags_NoScrollWithMouse
+        );
+
+        // Save position when window is moved
+        ImVec2 pos = ImGui::GetWindowPos();
+        if (pos.x != SpeedoWindowX || pos.y != SpeedoWindowY)
+        {
+            SpeedoWindowX = pos.x;
+            SpeedoWindowY = pos.y;
+            SaveCurrentSettings();
+        }
+
+        // Recalculate toScreen using actual window position (may differ from wx/wy on first frame)
+        ImVec2 wPos = ImGui::GetWindowPos();
+        auto toScreenEdit = [&](float lx, float ly) -> ImVec2 {
+            return ImVec2(wPos.x + lx + offsetX, wPos.y + ly + offsetY);
+        };
+
+        DrawSpeedoContent(ImGui::GetWindowDrawList(), toScreenEdit,
+            t, speed, unitLabel, radius, pDist,
+            axisAngleRad, arcStart, arcEnd, arcMidAngle, needleAngle, true);
+
+        ImGui::End();
+    }
+    // -------------------------------------------------------------------------
+    // Play mode — draw directly to background draw list, no ImGui window
+    // -------------------------------------------------------------------------
+    else
+    {
+        DrawSpeedoContent(ImGui::GetBackgroundDrawList(), toScreen,
+            t, speed, unitLabel, radius, pDist,
+            axisAngleRad, arcStart, arcEnd, arcMidAngle, needleAngle, false);
+    }
 }

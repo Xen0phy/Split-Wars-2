@@ -103,9 +103,21 @@ SETTING_ARRAY (CrashMode,   CMDigitBaseColor,       3,     ARR( 1.0f,  0.45f, 0.
 SETTING_ARRAY (CrashMode,   CMDigitOverlay,         3,     ARR( 0.9f,  0.0f,  0.0f))
 
 // ---------------------------------------------------------------------------
-// [Speedometer]
-// ---------------------------------------------------------------------------
-SETTING       (Speedometer,      ShowSpeedo,             bool,  true)
-SETTING       (Speedometer,      SpeedUnitMph,           bool,  false)   // false = km/h, true = mph
-SETTING       (Speedometer,      SpeedoTachometer,       bool,  false)
-SETTING       (Speedometer,      SpeedoRadius,           float, 80.0f)
+// [Speedo] — replace existing [Speedo] block in settings_table.h with this
+SETTING(Speedo, ShowSpeedo,          bool,  false)
+SETTING(Speedo, SpeedUnitMph,        bool,  false)
+SETTING(Speedo, SpeedoTachometer,    bool,  false)
+SETTING(Speedo, SpeedoEditMode,      bool,  false)
+SETTING(Speedo, SpeedoArcAngle,      float, 120.0f)  // sweep in degrees; small=flat, 360=circle
+SETTING(Speedo, SpeedoArcLength,     float, 200.0f)  // arc length in px
+SETTING(Speedo, SpeedoAngle,         float, 270.0f)  // rotation; 270=arc opens upward
+SETTING(Speedo, SpeedoPDistance,     float, 0.0f)    // needle origin offset from C (0=center)
+SETTING(Speedo, SpeedoNeedleVisible, bool,  true)
+SETTING(Speedo, SpeedoNeedleWidth,   float, 1.5f)
+SETTING(Speedo, SpeedoArcWidth,      float, 4.0f)
+SETTING(Speedo, SpeedoArcBgWidth,    float, 2.0f)
+SETTING(Speedo, SpeedoLabelVisible,  bool,  true)
+SETTING(Speedo, SpeedoSpringK,       float, 12.0f)
+SETTING(Speedo, SpeedoDamping,       float, 6.0f)
+SETTING(Speedo, SpeedoWindowX, float, -1.0f)  // -1 = not yet set
+SETTING(Speedo, SpeedoWindowY, float, -1.0f)
