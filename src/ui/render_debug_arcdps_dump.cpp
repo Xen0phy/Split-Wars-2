@@ -375,7 +375,56 @@ void RenderArcDPSDump()
         }
     }
 
-    if (ImGui::CollapsingHeader("Current Target"))
+    // -------------------------------------------------------------------------
+    // Log NPC Update
+    // CBTS_LOGNPCUPDATE fires (realtime: yes) when ArcDPS switches which NPC
+    // it considers the active log boss.  src_agent is the species id of the
+    // new boss; dst_agent is the related agent id; value (as uint32) is the
+    // server unix timestamp at the transition.
+    // -------------------------------------------------------------------------
+    if (ImGui::CollapsingHeader("Log NPC Update"))
+    {
+        if (ImGui::Button("Clear##lognpcupdate"))
+        {
+            std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+            LogNpcUpdateEvents.clear();
+        }
+
+        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+
+        if (LogNpcUpdateEvents.empty())
+        {
+            ImGui::TextDisabled("No LOGNPCUPDATE events yet.");
+        }
+        else
+        {
+            if (ImGui::BeginTable("##lognpcupdate", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
+            {
+                ImGui::TableSetupColumn("Source");
+                ImGui::TableSetupColumn("Species ID");
+                ImGui::TableSetupColumn("Agent ID");
+                ImGui::TableSetupColumn("Arc Time");
+                ImGui::TableSetupColumn("Offset");
+                ImGui::TableHeadersRow();
+
+                for (auto& e : LogNpcUpdateEvents)
+                {
+                    ImVec4 color = e.IsLocal
+                        ? ImVec4(0.4f, 0.8f, 1.0f, 1.0f)
+                        : ImVec4(1.0f, 0.8f, 0.4f, 1.0f);
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0); ImGui::TextColored(color, "%s", e.IsLocal ? "LOCAL" : "SQUAD");
+                    ImGui::TableSetColumnIndex(1); ImGui::TextColored(color, "0x%llX", (unsigned long long)e.SpeciesID);
+                    ImGui::TableSetColumnIndex(2); ImGui::TextColored(color, "0x%llX", (unsigned long long)e.AgentID);
+                    ImGui::TableSetColumnIndex(3); ImGui::TextColored(color, "%s", FormatArcTime(e.ArcTime).c_str());
+                    ImGui::TableSetColumnIndex(4); ImGui::TextColored(color, "%s", FormatOffset(e.ArcTime, e.LocalTime).c_str());
+                }
+
+                ImGui::EndTable();
+            }
+        }
+    }
     {
         if (!HasTarget)
             ImGui::TextDisabled("No target selected yet.");

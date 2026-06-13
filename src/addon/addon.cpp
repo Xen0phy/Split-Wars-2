@@ -11,7 +11,6 @@
 //   - Migration notice popup (shown once after settings format change)
 
 #include "render_shared.h"
-#include "shared.h"
 #include "version.h"
 #include "worldrender.h"
 
@@ -1024,4 +1023,5 @@ void AddonRender()
     RenderHistoryWindow();
     RenderRouteBrowserWindow();
     RenderDebugWindow();
+    RenderSpeedoWindow();
 }

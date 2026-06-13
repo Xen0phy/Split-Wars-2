@@ -10,6 +10,7 @@
 
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "render_speedo.h"
 #include "shared.h"
 #include <algorithm>
 #include <cstring>
@@ -27,6 +28,7 @@ void RenderConfigWindow();
 void RenderHistoryWindow();
 void RenderRouteBrowserWindow();
 void RenderDebugWindow();
+void RenderSpeedoWindow();
 
 // ---------------------------------------------------------------------------
 // Time formatting helpers (implemented in render_shared.cpp)

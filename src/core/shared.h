@@ -148,6 +148,17 @@ extern int                        BestRunIndex; // Index of the best run in Hist
 extern std::vector<SegmentRecord> SegmentRecords; // Best times per named Start/End pair
 
 // ---------------------------------------------------------------------------
+// Fractal Rota
+// ---------------------------------------------------------------------------
+// Scans HistoryRuns for a run recorded exactly 15 days before today and sets
+// it as the comparison reference (BestRun / BestRunIndex).
+// No-op if FractalRota is disabled, history is empty, or the oldest run is
+// less than 15 days old.  Called once from LoadRouteFile() after history is
+// loaded and segments are recalculated.
+// ---------------------------------------------------------------------------
+void ApplyFractalRota();
+
+// ---------------------------------------------------------------------------
 // Per-run state flags
 // ---------------------------------------------------------------------------
 extern bool   RunFinished;         // Set when a goal trigger fires; cleared by post-run UI actions
@@ -216,6 +227,15 @@ struct RewardEvent {
     bool     IsLocal;
 };
 
+struct LogNpcUpdateEvent {
+    uint64_t  ArcTime;
+    uint64_t  LocalTime;
+    uint64_t  SpeciesID;  // src_agent: species id of the new log boss
+    uint64_t  AgentID;    // dst_agent: related agent id
+    uint32_t  ServerTime; // value as uint32_t: server unix timestamp
+    bool      IsLocal;
+};
+
 struct TargetInfo {
     uintptr_t ID;
     char      Name[64];
@@ -240,6 +260,7 @@ struct SqCombatStartEvent {
 
 extern std::vector<KillingBlowEvent>   KillingBlows;
 extern std::vector<RewardEvent>        RewardEvents;
+extern std::vector<LogNpcUpdateEvent>  LogNpcUpdateEvents;
 extern bool                            HasTarget;
 extern TargetInfo                      LastTarget;
 extern bool                            InCombat;

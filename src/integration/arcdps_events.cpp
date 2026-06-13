@@ -96,6 +96,23 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
         return;
     }
 
+    if (data->ev->IsStatechange == ArcDPS::CBTS_LOGNPCUPDATE)
+    {
+        LogNpcUpdateEvent ev = {};
+        ev.ArcTime    = data->ev->Time;
+        ev.LocalTime  = GetTickCount64();
+        ev.SpeciesID  = data->ev->SourceAgent;
+        ev.AgentID    = data->ev->DestinationAgent;
+        ev.ServerTime = (uint32_t)data->ev->Value;
+        ev.IsLocal    = isLocal;
+
+        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+        if (LogNpcUpdateEvents.size() >= 20)
+            LogNpcUpdateEvents.erase(LogNpcUpdateEvents.begin());
+        LogNpcUpdateEvents.push_back(ev);
+        return;
+    }
+
     if (data->ev->IsStatechange == ArcDPS::CBTS_REWARD)
     {
         RewardEvent ev = {};

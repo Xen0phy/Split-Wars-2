@@ -34,6 +34,7 @@ add_library(SplitWars2 SHARED
     src/ui/render_debug.cpp
     src/ui/render_history.cpp
     src/ui/render_shared.cpp
+    src/ui/render_speedo.cpp
     src/ui/render_timer_stream.cpp
     src/ui/render_timer.cpp
     include/imgui.cpp

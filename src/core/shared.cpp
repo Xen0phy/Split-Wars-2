@@ -202,12 +202,97 @@ bool HotbarSavedShowRouteBrowser = false;
 // ---------------------------------------------------------------------------
 std::vector<KillingBlowEvent>   KillingBlows;
 std::vector<RewardEvent>        RewardEvents;
+std::vector<LogNpcUpdateEvent>  LogNpcUpdateEvents;
 bool                            HasTarget   = false;
 TargetInfo                      LastTarget = {};
 bool                            InCombat = false;
 std::vector<SquadCombatEntry>   CombatEntries = {};
 std::mutex                      CombatEntriesMutex;
 std::vector<SqCombatStartEvent> SqCombatStartEvents;
+
+// ---------------------------------------------------------------------------
+// ApplyFractalRota
+// ---------------------------------------------------------------------------
+// Sets the best-run reference to the run from exactly 15 days ago, enabling
+// like-for-like comparison across GW2's 15-day fractal daily rotation.
+//
+// Logic:
+//   1. Guard: disabled setting, empty history, or no history path → return.
+//   2. Oldest run (last entry, history is newest-first) must be ≥ 15 days old;
+//      otherwise the rotation hasn't completed a full cycle yet → return.
+//   3. Compute the target date: today's local date minus exactly 15 days.
+//   4. Scan HistoryRuns for a run whose date string matches that target date
+//      (date-only comparison, "YYYY-MM-DD", ignoring the HH:MM time suffix).
+//   5. If found: promote it to BestRun/BestRunIndex (does NOT save to disk —
+//      Fractal Rota is a transient selection, not a permanent best-run override).
+//   6. If not found: leave BestRun/BestRunIndex unchanged.
+//
+// Date parsing uses the "YYYY-MM-DD HH:MM" format written by
+// GetCurrentDateTimeString().  mktime() normalises out-of-range fields, so
+// subtracting 15 from tm_mday works correctly across month and year boundaries.
+// ---------------------------------------------------------------------------
+void ApplyFractalRota()
+{
+    if (!FractalRota)             return;
+    if (HistoryRuns.empty())      return;
+    if (CurrentHistoryPath.empty()) return;
+
+    // --- Step 1: check the oldest run is at least 15 days old ---
+    // History is newest-first, so the oldest run is the last entry.
+    const std::string& oldestDate = HistoryRuns.back().Date; // "YYYY-MM-DD HH:MM"
+    if (oldestDate.size() < 10)   return; // malformed, bail
+
+    // Parse oldest run's date
+    struct tm tmOldest = {};
+    tmOldest.tm_year  = std::stoi(oldestDate.substr(0, 4)) - 1900;
+    tmOldest.tm_mon   = std::stoi(oldestDate.substr(5, 2)) - 1;
+    tmOldest.tm_mday  = std::stoi(oldestDate.substr(8, 2));
+    tmOldest.tm_isdst = -1;
+    time_t tOldest = mktime(&tmOldest);
+
+    // Get today's date at midnight
+    time_t tNow = time(nullptr);
+    struct tm tmToday = {};
+    localtime_s(&tmToday, &tNow);
+    tmToday.tm_hour  = 0;
+    tmToday.tm_min   = 0;
+    tmToday.tm_sec   = 0;
+    tmToday.tm_isdst = -1;
+    time_t tToday = mktime(&tmToday);
+
+    // Oldest run must be at least 15 days old
+    constexpr double SECONDS_PER_DAY = 86400.0;
+    double ageDays = difftime(tToday, tOldest) / SECONDS_PER_DAY;
+    if (ageDays < 15.0) return;
+
+    // --- Step 2: compute the target date (today − 15 days) ---
+    struct tm tmTarget  = tmToday;
+    tmTarget.tm_mday   -= 15;
+    tmTarget.tm_isdst   = -1;
+    mktime(&tmTarget); // normalise (handles month/year rollover)
+
+    char targetDateStr[11]; // "YYYY-MM-DD\0"
+    snprintf(targetDateStr, sizeof(targetDateStr), "%04d-%02d-%02d",
+        tmTarget.tm_year + 1900,
+        tmTarget.tm_mon  + 1,
+        tmTarget.tm_mday);
+
+    // --- Step 3: scan for a run on the target date ---
+    for (int i = 0; i < (int)HistoryRuns.size(); i++)
+    {
+        const std::string& runDate = HistoryRuns[i].Date;
+        if (runDate.size() < 10) continue;
+
+        // Compare only the "YYYY-MM-DD" prefix, ignoring the " HH:MM" suffix
+        if (runDate.compare(0, 10, targetDateStr) == 0)
+        {
+            BestRun      = HistoryRuns[i].Splits;
+            BestRunIndex = i;
+            return;
+        }
+    }
+    // No match found — leave BestRun/BestRunIndex as loaded from disk
+}
 
 // ---------------------------------------------------------------------------
 // Debug

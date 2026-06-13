@@ -106,6 +106,8 @@ static void AddonQuickAccessMenu()
     if (ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser)) {}
     ImGui::Separator();
     if (ImGui::MenuItem("Checkpoints",   nullptr, &ShowZones))        {}
+    ImGui::Separator();
+    if (ImGui::MenuItem("Fractal Rota",   nullptr, &FractalRota))        {}
 }
 
 // ---------------------------------------------------------------------------

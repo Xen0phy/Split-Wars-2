@@ -1,7 +1,7 @@
 const int Maj = 1;
 const int Min = 3;
-const int Bld = 0;
-const int Rev = 2;
+const int Bld = 2;
+const int Rev = 0;
 
 static constexpr const char* VersionNotice =
     "Welcome! If you're new, I hope you enjoy Split Wars 2.\n\n"

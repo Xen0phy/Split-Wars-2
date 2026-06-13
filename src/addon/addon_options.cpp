@@ -6,6 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // Settings are persisted to settings.ini via SaveCurrentSettings().
 
+#include "imgui.h"
 #include "render_shared.h"
 #include "shared.h"
 #include "stream_fonts.h"
@@ -140,11 +141,19 @@ void AddonOptions()
                 SaveCurrentSettings();
             }
             
-            // Row 5
+            // Row 5 — Fractal Rota
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
+            if (ImGui::Checkbox("Fractal Rota", &FractalRota))
+                SaveCurrentSettings();
+            Tooltip("When enabled, sets the comparison run to the run from exactly\n"
+                    "15 days ago on route load, matching GW2's fractal daily rotation.\n"
+                    "If the history has no run from 15 days ago, no comparison is made.\n"
+                    "Requires at least one run older than 15 days in history.\n");
             ImGui::Separator();
+
             ImGui::TableSetColumnIndex(1);
+            ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
             ImGui::Separator();
     
             // --- Streamer section ---
@@ -544,5 +553,16 @@ void AddonOptions()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();    
+    }
+
+    // ---------------------------------------------------------------------------
+    // Speedometer Settings
+    // ---------------------------------------------------------------------------
+    if (ImGui::CollapsingHeader("Speedometer Settings"))
+    {
+        ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
+        ImGui::Checkbox("mph", &SpeedUnitMph);
+        ImGui::Checkbox("tacho", &SpeedoTachometer);
+        ImGui::InputFloat("##speedorad", &SpeedoRadius);
     }
 }
