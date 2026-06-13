@@ -560,54 +560,20 @@ void AddonOptions()
     // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Speedometer Settings"))
     {
+        static constexpr float PI = 3.14159265f;
+        static int selectedStop = 0; 
+
         ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
-        ImGui::Checkbox("Use mph", &SpeedUnitMph);
-        ImGui::Checkbox("Tachometer mode", &SpeedoTachometer);
-        ImGui::Checkbox("Edit mode", &SpeedoEditMode);
+        ImGui::Checkbox("Speed Unit",       &SpeedUnitMph);
+        ImGui::Checkbox("Tachometer mode",  &SpeedoTachometer);
+        ImGui::Checkbox("Edit mode",        &SpeedoEditMode);
+        ImGui::DragFloat("Opacity",         &SpeedoOpacity, 0.01f, 0.0f, 1.0f, "%.2f");
 
+        // ── Geometry ────────────────────────────────────────────────────────
         ImGui::Separator();
-        ImGui::Text("Geometry");
-
-        ImGui::DragFloat("Arc Angle",  &SpeedoArcAngle,  1.0f, 1.0f, 359.0f, "%.0f deg");
-
-        float rotation = SpeedoAngle;
-        if (ImGui::DragFloat("Rotation", &rotation, 1.0f, 0.0f, 0.0f, "%.0f deg"))
         {
-            rotation = std::fmod(rotation, 360.0f);
-            if (rotation < 0.0f) rotation += 360.0f;
-            SpeedoAngle = rotation;
-        }
-        constexpr float PI = 3.14159265f;
-        float radius = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
-        float maxPDist = std::fmin(200.0f, radius);
-        SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
-        ImGui::DragFloat("Needle Origin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
-
-        ImGui::Separator();
-        ImGui::Text("Needle");
-        ImGui::Checkbox("Show needle", &SpeedoNeedleVisible);
-        ImGui::DragFloat("Needle width", &SpeedoNeedleWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
-
-        ImGui::Separator();
-        ImGui::Text("Arc");
-        ImGui::DragFloat("Arc width",    &SpeedoArcWidth,   0.1f, 0.1f, 20.0f, "%.1f px");
-        ImGui::DragFloat("Arc bg width", &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
-
-        ImGui::Separator();
-        ImGui::Text("Label");
-        ImGui::Checkbox("Show label", &SpeedoLabelVisible);
-
-        ImGui::Separator();
-        ImGui::Text("Physics");
-        ImGui::DragFloat("Spring stiffness", &SpeedoSpringK, 0.1f, 0.1f, 50.0f, "%.1f");
-        ImGui::DragFloat("Damping",          &SpeedoDamping, 0.1f, 0.1f, 50.0f, "%.1f");
-
-        ImGui::Separator();
-        ImGui::Text("Geometry");
-        {
-            static constexpr float PI          = 3.14159265f;
-            static constexpr float canvasSize  = 200.0f;
-            static constexpr float canvasR     = canvasSize * 0.5f;
+            static constexpr float canvasSize = 200.0f;
+            static constexpr float canvasR    = canvasSize * 0.5f;
 
             ImVec2 canvasPos = ImGui::GetCursorScreenPos();
             ImGui::InvisibleButton("##speedogeo", ImVec2(canvasSize, canvasSize));
@@ -617,68 +583,343 @@ void AddonOptions()
 
             if (ImGui::IsItemActive())
             {
-                ImVec2 mouse  = ImGui::GetMousePos();
-                float  dx     = mouse.x - cx;
-                float  dy     = mouse.y - cy;
-                float  dist   = std::sqrt(dx*dx + dy*dy);
-                float  t      = std::fmin(dist / canvasR, 1.0f); // 0=center, 1=edge
+                ImVec2 mouse = ImGui::GetMousePos();
+                float  dx    = mouse.x - cx;
+                float  dy    = mouse.y - cy;
+                float  dist  = std::sqrt(dx*dx + dy*dy);
+                float  tVal  = std::fmin(dist / canvasR, 1.0f);
 
-                // Angle → SpeedoAngle (in degrees, wrapped)
                 float angleDeg = std::atan2(dy, dx) * 180.0f / PI;
                 if (angleDeg < 0.0f) angleDeg += 360.0f;
-                SpeedoAngle = angleDeg;
+                SpeedoAngle    = angleDeg;
+                SpeedoArcAngle = tVal * 359.0f;
 
-                // Distance → ArcAngle (0 at center = ~0°, edge = 359°)
-                SpeedoArcAngle = t * 359.0f;
-                if (SpeedoArcAngle < 1.0f) SpeedoArcAngle = 1.0f;
-
-                // Scale PDistance with radius so it stays valid
-                float radius = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
-                float maxPDist = std::fmin(200.0f, radius);
-                SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
-
+                float radius   = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
+                SpeedoPDistance = std::fmin(SpeedoPDistance, std::fmin(200.0f, radius));
                 SaveCurrentSettings();
             }
 
-            // Draw canvas
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddCircleFilled(ImVec2(cx, cy), canvasR, IM_COL32(40, 40, 40, 255));
             dl->AddCircle(ImVec2(cx, cy),       canvasR, IM_COL32(120, 120, 120, 255));
-            // crosshair
             dl->AddLine(ImVec2(cx, canvasPos.y), ImVec2(cx, canvasPos.y + canvasSize), IM_COL32(80, 80, 80, 255));
             dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
 
-            // Handle position
-            float t          = SpeedoArcAngle / 359.0f;
-            float handleAngle = SpeedoAngle * PI / 180.0f;
-            ImVec2 handle(
-                cx + std::cos(handleAngle) * t * canvasR,
-                cy + std::sin(handleAngle) * t * canvasR);
-
+            float  tVal       = SpeedoArcAngle / 359.0f;
+            float  handleAngle = SpeedoAngle * PI / 180.0f;
+            ImVec2 handle(cx + std::cos(handleAngle) * tVal * canvasR,
+                          cy + std::sin(handleAngle) * tVal * canvasR);
             dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
             dl->AddCircle(handle,       5.0f, IM_COL32(0, 0, 0, 255));
 
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::Text("Rotation:  %.0f deg", SpeedoAngle);
-            ImGui::Text("Arc Angle: %.0f deg", SpeedoArcAngle);
+            ImGui::SetNextItemWidth(200);
+            ImGui::DragFloat("Rotation:", &SpeedoAngle, 1.0f, 0.0f, 360.0f, "%.0f°");
+            ImGui::SetNextItemWidth(200);
+            ImGui::DragFloat("Arc Angle:", &SpeedoArcAngle, 1.0f, 0.0f, 359.0f, "%.0f°");
             ImGui::EndGroup();
 
             if (ImGui::Button("Reset Geometry"))
             {
                 SpeedoAngle    = 270.0f;
-                SpeedoArcAngle = 120.0f;
+                SpeedoArcAngle = 60.0f;
                 SaveCurrentSettings();
             }
         }
 
-        ImGui::DragFloat("Arc Length",    &SpeedoArcLength,   1.0f, 10.0f, 2000.0f, "%.0f px");
+        ImGui::DragFloat("Arc Length", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "%.0f px");
         {
-            static constexpr float PI = 3.14159265f;
             float radius   = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
             float maxPDist = std::fmin(200.0f, radius);
             SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
             ImGui::DragFloat("Needle Origin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
         }
+
+        // ── Arc Style ───────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Arc Style");
+        ImGui::Checkbox("Smooth gradient", &SpeedoGradientSmooth);
+        ImGui::DragFloat("Bg width",       &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
+
+        // Gradient bar
+        {
+            // Mirror current stop state for the UI
+            struct UIStop { float* pos; float* color; float* thickness; bool* enabled; };
+            UIStop uiStops[4] = {
+                { nullptr,        SpeedoStop1Color, &SpeedoStop1Thickness, nullptr           },
+                { &SpeedoStop2Pos, SpeedoStop2Color, &SpeedoStop2Thickness, &SpeedoStop2Enabled },
+                { &SpeedoStop3Pos, SpeedoStop3Color, &SpeedoStop3Thickness, &SpeedoStop3Enabled },
+                { &SpeedoStop4Pos, SpeedoStop4Color, &SpeedoStop4Thickness, &SpeedoStop4Enabled },
+            };
+            // Current positions as floats for bar drawing (stop 1 always 0)
+            float stopPos[4] = { 0.0f, SpeedoStop2Pos, SpeedoStop3Pos, SpeedoStop4Pos };
+            bool  stopOn[4]  = { true, SpeedoStop2Enabled, SpeedoStop3Enabled, SpeedoStop4Enabled };
+
+            static constexpr float barW = 240.0f;
+            static constexpr float barH = 16.0f;
+            static constexpr float dotR = 6.0f;
+
+            ImVec2      barPos = ImGui::GetCursorScreenPos();
+            barPos.y          += dotR + 2.0f;
+            ImGui::Dummy(ImVec2(barW, barH + (dotR + 2.0f) * 2.0f));
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+
+            // Draw gradient bar
+            for (int px = 0; px < (int)barW; px++)
+            {
+                float p = (float)px / barW;
+
+                // Gather active stops for sampling
+                float prevPos  = 0.0f;
+                float prevCol[4] = { SpeedoStop1Color[0], SpeedoStop1Color[1], SpeedoStop1Color[2], SpeedoStop1Color[3] };
+                float col[4];
+                for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+
+                for (int s = 1; s < 4; s++)
+                {
+                    if (!stopOn[s]) continue;
+                    if (p <= stopPos[s])
+                    {
+                        if (SpeedoGradientSmooth)
+                        {
+                            float seg = stopPos[s] - prevPos;
+                            float tt  = seg > 0.0f ? (p - prevPos) / seg : 0.0f;
+                            for (int c = 0; c < 4; c++)
+                                col[c] = prevCol[c] + (uiStops[s].color[c] - prevCol[c]) * tt;
+                        }
+                        else
+                        {
+                            for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+                        }
+                        goto drawnColor;
+                    }
+                    prevPos = stopPos[s];
+                    for (int c = 0; c < 4; c++) prevCol[c] = uiStops[s].color[c];
+                }
+                for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+
+                drawnColor:
+                dl->AddRectFilled(
+                    ImVec2(barPos.x + px,     barPos.y),
+                    ImVec2(barPos.x + px + 1, barPos.y + barH),
+                    IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*255)));
+            }
+            dl->AddRect(barPos, ImVec2(barPos.x + barW, barPos.y + barH), IM_COL32(120, 120, 120, 255));
+
+            // Draw stop dots and handle interaction
+            for (int s = 0; s < 4; s++)
+            {
+                if (!stopOn[s]) continue;
+
+                float  dotX = barPos.x + stopPos[s] * barW;
+                float  dotY = barPos.y + barH * 0.5f;
+                bool   isSel = (selectedStop == s);
+                ImU32  dotCol = IM_COL32(
+                    (int)(uiStops[s].color[0]*255),
+                    (int)(uiStops[s].color[1]*255),
+                    (int)(uiStops[s].color[2]*255), 255);
+
+                dl->AddCircleFilled(ImVec2(dotX, dotY), dotR, dotCol);
+                dl->AddCircle(ImVec2(dotX, dotY), dotR,
+                    isSel ? IM_COL32(255,255,255,255) : IM_COL32(0,0,0,200),
+                    12, isSel ? 2.0f : 1.0f);
+
+                ImVec2 mouse = ImGui::GetMousePos();
+                float  mdx   = mouse.x - dotX;
+                float  mdy   = mouse.y - dotY;
+                bool   hovered = (mdx*mdx + mdy*mdy) <= (dotR*dotR * 4.0f);
+                
+                if (hovered && ImGui::IsMouseClicked(0))
+                    selectedStop = s;
+                
+                if (hovered && ImGui::IsMouseDown(0) && s > 0)
+                {
+                    selectedStop = s;
+                    float newPos = std::fmin(std::fmax(
+                        (ImGui::GetMousePos().x - barPos.x) / barW, 0.01f), 1.0f);
+
+                    // Clamp between neighbours
+                    float lo = 0.01f, hi = 1.0f;
+                    for (int prev = s-1; prev >= 0; prev--)
+                        if (stopOn[prev]) { lo = stopPos[prev] + 0.01f; break; }
+                    for (int next = s+1; next < 4; next++)
+                        if (stopOn[next]) { hi = stopPos[next] - 0.01f; break; }
+                    newPos = std::fmin(std::fmax(newPos, lo), hi);
+
+                    *uiStops[s].pos = newPos;
+                    SaveCurrentSettings();
+                }
+            }
+
+            // Add / Remove buttons
+            ImGui::SetCursorScreenPos(ImVec2(barPos.x, barPos.y + barH + dotR + 6.0f));
+
+            // Count active stops
+            int activeCount = 0;
+            for (int s = 0; s < 4; s++) if (stopOn[s]) activeCount++;
+
+            // Add: enable the first disabled stop after the last active one
+            bool canAdd = activeCount < 4;
+            if (!canAdd) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::SmallButton("+##addstop"))
+            {
+                for (int s = 1; s < 4; s++)
+                {
+                    if (!stopOn[s])
+                    {
+                        // Place new stop halfway between last active and 1.0
+                        float lastPos = 0.0f;
+                        for (int prev = s-1; prev >= 0; prev--)
+                            if (stopOn[prev]) { lastPos = stopPos[prev]; break; }
+                        *uiStops[s].pos     = lastPos + (1.0f - lastPos) * 0.5f;
+                        *uiStops[s].enabled = true;
+                        selectedStop        = s;
+                        SaveCurrentSettings();
+                        break;
+                    }
+                }
+            }
+            if (!canAdd) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+
+            ImGui::SameLine();
+
+            // Remove: disable selected stop (not stop 1)
+            bool canRemove = selectedStop > 0 && stopOn[selectedStop];
+            if (!canRemove) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::SmallButton("-##removestop"))
+            {
+                *uiStops[selectedStop].enabled = false;
+                // Cascade: disable all stops after this one too
+                for (int s = selectedStop + 1; s < 4; s++)
+                    if (uiStops[s].enabled) *uiStops[s].enabled = false;
+                selectedStop = std::max(0, selectedStop - 1);
+                SaveCurrentSettings();
+            }
+            if (!canRemove) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+        }
+
+        // Selected stop editor
+        {
+            float* col   = nullptr;
+            float* thick = nullptr;
+            if      (selectedStop == 0) { col = SpeedoStop1Color; thick = &SpeedoStop1Thickness; }
+            else if (selectedStop == 1) { col = SpeedoStop2Color; thick = &SpeedoStop2Thickness; }
+            else if (selectedStop == 2) { col = SpeedoStop3Color; thick = &SpeedoStop3Thickness; }
+            else if (selectedStop == 3) { col = SpeedoStop4Color; thick = &SpeedoStop4Thickness; }
+
+            ImGui::Text("Stop %d", selectedStop + 1);
+            if (col)   ImGui::ColorEdit4("Color##stop", col,
+                                         ImGuiColorEditFlags_AlphaBar |
+                                         ImGuiColorEditFlags_PickerHueWheel);
+            if (thick) ImGui::DragFloat("Thickness##stop", thick, 0.1f, 1.0f, 20.0f, "%.1f px");
+        }
+
+        // ── Decorative line ─────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Decorative Line");
+        ImGui::Checkbox("Enable",     &SpeedoDecoLineEnabled);
+        if (SpeedoDecoLineEnabled)
+        {
+            ImGui::DragFloat("Offset",    &SpeedoDecoLineOffset,   0.5f, -50.0f, 50.0f, "%.0f px");
+            ImGui::ColorEdit4("Color##deco", SpeedoDecoLineColor,
+                              ImGuiColorEditFlags_AlphaBar |
+                              ImGuiColorEditFlags_PickerHueWheel);
+        }
+
+        // ── Needle ──────────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Needle");
+        ImGui::Checkbox("Show needle",   &SpeedoNeedleVisible);
+        if (SpeedoNeedleVisible)
+            ImGui::DragFloat("Needle width", &SpeedoNeedleWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
+
+        // ── Peak hold ───────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Peak Hold");
+        ImGui::Checkbox("Enable##peak",  &SpeedoPeakHoldEnabled);
+        if (SpeedoPeakHoldEnabled)
+            ImGui::DragFloat("Hold time",    &SpeedoPeakHoldTime, 0.1f, 0.1f, 10.0f, "%.1f s");
+
+        // ── Tick marks ──────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Tick Marks");
+        ImGui::Checkbox("Enable##ticks",    &SpeedoTicksEnabled);
+        if (SpeedoTicksEnabled)
+        {
+            ImGui::DragFloat("Minor interval", &SpeedoTickInterval,      1.0f, 1.0f,  100.0f, "%.0f");
+            ImGui::DragFloat("Major interval", &SpeedoTickMajorInterval, 1.0f, 1.0f,  200.0f, "%.0f");
+            ImGui::DragFloat("Height",         &SpeedoTickHeight,        0.5f, 2.0f,  30.0f,  "%.0f px");
+        }
+
+        // ── Label ───────────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Label");
+        ImGui::Checkbox("Show label", &SpeedoLabelVisible);
+        if (SpeedoLabelVisible)
+        {
+            const auto& fontNames = GetStreamFontNames();
+            if (!fontNames.empty())
+            {
+                const char* preview = SpeedoFontName.empty() ? "Default" : SpeedoFontName.c_str();
+                ImGui::SetNextItemWidth(200.0f);
+                if (ImGui::BeginCombo("Font##speedo", preview))
+                {
+                    if (ImGui::Selectable("Default", SpeedoFontName.empty()))
+                    {
+                        SpeedoFontName = "";
+                        SaveCurrentSettings();
+                    }
+                    for (const auto& name : fontNames)
+                    {
+                        bool sel = (SpeedoFontName == name);
+                        if (ImGui::Selectable(name.c_str(), sel))
+                        {
+                            SpeedoFontName = name;
+                            SaveCurrentSettings();
+                        }
+                        if (sel) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+
+                static const float fontSizes[] = { 16, 20, 24, 28, 32, 36, 40, 44, 48 };
+                char sizePreview[8];
+                snprintf(sizePreview, sizeof(sizePreview), "%.0f", SpeedoFontSize);
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::BeginCombo("Size##speedo", sizePreview))
+                {
+                    for (float s : fontSizes)
+                    {
+                        char label[8];
+                        snprintf(label, sizeof(label), "%.0f", s);
+                        if (ImGui::Selectable(label, SpeedoFontSize == s))
+                        {
+                            SpeedoFontSize = s;
+                            SaveCurrentSettings();
+                        }
+                        if (SpeedoFontSize == s) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset font"))
+                {
+                    SpeedoFontName = "";
+                    SpeedoFontSize = 24.0f;
+                    SaveCurrentSettings();
+                }
+            }
+            else
+            {
+                ImGui::TextDisabled("No fonts found — drop .ttf/.otf into fonts/ and restart.");
+            }
+        }
+
+        // ── Physics ─────────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::Text("Physics");
+        ImGui::DragFloat("Spring stiffness", &SpeedoSpringK,  0.1f, 0.1f, 50.0f, "%.1f");
+        ImGui::DragFloat("Damping",          &SpeedoDamping,  0.1f, 0.1f, 50.0f, "%.1f");
     }
 }

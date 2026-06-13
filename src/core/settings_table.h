@@ -104,20 +104,71 @@ SETTING_ARRAY (CrashMode,   CMDigitOverlay,         3,     ARR( 0.9f,  0.0f,  0.
 
 // ---------------------------------------------------------------------------
 // [Speedo] — replace existing [Speedo] block in settings_table.h with this
+
+// General
 SETTING(Speedo, ShowSpeedo,          bool,  false)
 SETTING(Speedo, SpeedUnitMph,        bool,  false)
 SETTING(Speedo, SpeedoTachometer,    bool,  false)
 SETTING(Speedo, SpeedoEditMode,      bool,  false)
-SETTING(Speedo, SpeedoArcAngle,      float, 120.0f)  // sweep in degrees; small=flat, 360=circle
-SETTING(Speedo, SpeedoArcLength,     float, 200.0f)  // arc length in px
-SETTING(Speedo, SpeedoAngle,         float, 270.0f)  // rotation; 270=arc opens upward
-SETTING(Speedo, SpeedoPDistance,     float, 0.0f)    // needle origin offset from C (0=center)
+SETTING(Speedo, SpeedoOpacity,       float, 1.0f)
+
+// Geometry
+SETTING(Speedo, SpeedoArcAngle,      float, 120.0f)
+SETTING(Speedo, SpeedoArcLength,     float, 200.0f)
+SETTING(Speedo, SpeedoAngle,         float, 270.0f)
+SETTING(Speedo, SpeedoPDistance,     float, 0.0f)
+
+// Window position
+SETTING(Speedo, SpeedoWindowX,       float, -1.0f)
+SETTING(Speedo, SpeedoWindowY,       float, -1.0f)
+
+// Needle
 SETTING(Speedo, SpeedoNeedleVisible, bool,  true)
 SETTING(Speedo, SpeedoNeedleWidth,   float, 1.5f)
-SETTING(Speedo, SpeedoArcWidth,      float, 4.0f)
-SETTING(Speedo, SpeedoArcBgWidth,    float, 2.0f)
-SETTING(Speedo, SpeedoLabelVisible,  bool,  true)
-SETTING(Speedo, SpeedoSpringK,       float, 12.0f)
-SETTING(Speedo, SpeedoDamping,       float, 6.0f)
-SETTING(Speedo, SpeedoWindowX, float, -1.0f)  // -1 = not yet set
-SETTING(Speedo, SpeedoWindowY, float, -1.0f)
+
+// Arc rendering
+SETTING(Speedo, SpeedoArcBgWidth,     float, 2.0f)
+SETTING(Speedo, SpeedoGradientSmooth, bool,  true)
+
+// Color + thickness stops (stop 1 always enabled at pos 0)
+SETTING_ARRAY(Speedo, SpeedoStop1Color,     4, ARR(0.0f, 0.78f, 1.0f, 1.0f))
+SETTING      (Speedo, SpeedoStop1Thickness, float, 2.0f)
+
+SETTING      (Speedo, SpeedoStop2Enabled,   bool,  false)
+SETTING      (Speedo, SpeedoStop2Pos,       float, 0.5f)
+SETTING_ARRAY(Speedo, SpeedoStop2Color,     4, ARR(0.0f, 1.0f, 0.4f, 1.0f))
+SETTING      (Speedo, SpeedoStop2Thickness, float, 6.0f)
+
+SETTING      (Speedo, SpeedoStop3Enabled,   bool,  false)
+SETTING      (Speedo, SpeedoStop3Pos,       float, 0.75f)
+SETTING_ARRAY(Speedo, SpeedoStop3Color,     4, ARR(1.0f, 0.5f, 0.0f, 1.0f))
+SETTING      (Speedo, SpeedoStop3Thickness, float, 10.0f)
+
+SETTING      (Speedo, SpeedoStop4Enabled,   bool,  false)
+SETTING      (Speedo, SpeedoStop4Pos,       float, 1.0f)
+SETTING_ARRAY(Speedo, SpeedoStop4Color,     4, ARR(1.0f, 0.0f, 0.0f, 1.0f))
+SETTING      (Speedo, SpeedoStop4Thickness, float, 20.0f)
+
+// Decorative line
+SETTING      (Speedo, SpeedoDecoLineEnabled, bool,  false)
+SETTING      (Speedo, SpeedoDecoLineOffset,  float, -8.0f)
+SETTING_ARRAY(Speedo, SpeedoDecoLineColor,   4, ARR(1.0f, 1.0f, 1.0f, 0.4f))
+
+// Peak hold
+SETTING(Speedo, SpeedoPeakHoldEnabled, bool,  false)
+SETTING(Speedo, SpeedoPeakHoldTime,    float, 2.0f)
+
+// Tick marks
+SETTING(Speedo, SpeedoTicksEnabled,      bool,  false)
+SETTING(Speedo, SpeedoTickInterval,      float, 10.0f)
+SETTING(Speedo, SpeedoTickMajorInterval, float, 50.0f)
+SETTING(Speedo, SpeedoTickHeight,        float, 8.0f)
+
+// Label
+SETTING(Speedo, SpeedoLabelVisible, bool,   true)
+SETTING_STRING (Speedo, SpeedoFontName, "")
+SETTING(Speedo, SpeedoFontSize,     float,  24.0f)
+
+// Physics
+SETTING(Speedo, SpeedoSpringK,  float, 12.0f)
+SETTING(Speedo, SpeedoDamping,  float, 6.0f)
