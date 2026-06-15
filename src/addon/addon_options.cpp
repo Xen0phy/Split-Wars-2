@@ -564,359 +564,102 @@ void AddonOptions()
     // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Speedometer Settings"))
     {
-        static int selectedStop = 0; 
+        static int selectedStop = 0;
+    
+        static const char* mountNames[] = {
+            "Foot", "Jackal", "Griffon", "Springer", "Skimmer", "Raptor",
+            "Beetle", "Warclaw", "Skyscale", "Skiff", "Turtle"
+        };
+    
+        const auto& fontNames = GetStreamFontNames();
 
-        ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
-        ImGui::Checkbox("Speed Unit",       &SpeedUnitMph);
-        ImGui::Checkbox("Tachometer mode",  &SpeedoTachometer);
-        ImGui::Checkbox("Edit mode",        &SpeedoEditMode);
-        ImGui::DragFloat("Opacity",         &SpeedoOpacity, 0.01f, 0.0f, 1.0f, "%.2f");
-
-        // ── Geometry ────────────────────────────────────────────────────────
-        ImGui::Separator();
+        if (ImGui::BeginTable("##speedosettings", 2, ImGuiTableFlags_None))
         {
-            static constexpr float canvasSize = 200.0f;
-            static constexpr float canvasR    = canvasSize * 0.5f;
+            ImGui::TableSetupColumn("##speedoleft",  ImGuiTableColumnFlags_WidthFixed, 200);
+            ImGui::TableSetupColumn("##speedoright", ImGuiTableColumnFlags_WidthFixed);
 
-            ImVec2 canvasPos = ImGui::GetCursorScreenPos();
-            ImGui::InvisibleButton("##speedogeo", ImVec2(canvasSize, canvasSize));
+            // ── Row 1: Show Speedometer | Speed Unit ────────────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
+    
+            if (!ShowSpeedo) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Checkbox("Speed Units", &SpeedUnitMph);
+            Tooltip("Toggle between km/h and mph.");
 
-            float cx = canvasPos.x + canvasR;
-            float cy = canvasPos.y + canvasR;
-
-            if (ImGui::IsItemActive())
+            // ── Row 2: Mount combo | Show Label + Reset Font ─────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
             {
-                ImVec2 mouse = ImGui::GetMousePos();
-                float  dx    = mouse.x - cx;
-                float  dy    = mouse.y - cy;
-                float  dist  = std::sqrt(dx*dx + dy*dy);
-                float  tVal  = std::fmin(dist / canvasR, 1.0f);
-
-                float angleDeg = std::atan2(dy, dx) * 180.0f / IM_PI;
-                if (angleDeg < 0.0f) angleDeg += 360.0f;
-                SpeedoAngle    = angleDeg;
-                SpeedoArcAngle = tVal * 359.0f;
-
-                float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
-                SpeedoPDistance = std::fmin(SpeedoPDistance, std::fmin(200.0f, radius));
-                SaveCurrentSettings();
-            }
-
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddCircleFilled(ImVec2(cx, cy), canvasR, IM_COL32(40, 40, 40, 255));
-            dl->AddCircle(ImVec2(cx, cy),       canvasR, IM_COL32(120, 120, 120, 255));
-            dl->AddLine(ImVec2(cx, canvasPos.y), ImVec2(cx, canvasPos.y + canvasSize), IM_COL32(80, 80, 80, 255));
-            dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
-
-            float  tVal       = SpeedoArcAngle / 359.0f;
-            float  handleAngle = SpeedoAngle * IM_PI / 180.0f;
-            ImVec2 handle(cx + std::cos(handleAngle) * tVal * canvasR,
-                          cy + std::sin(handleAngle) * tVal * canvasR);
-            dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
-            dl->AddCircle(handle,       5.0f, IM_COL32(0, 0, 0, 255));
-
-            ImGui::SameLine();
-            ImGui::BeginGroup();
-            ImGui::SetNextItemWidth(200);
-            ImGui::DragFloat("Rotation:", &SpeedoAngle, 1.0f, 0.0f, 360.0f, "%.0f°");
-            ImGui::SetNextItemWidth(200);
-            ImGui::DragFloat("Arc Angle:", &SpeedoArcAngle, 1.0f, 0.0f, 359.0f, "%.0f°");
-            ImGui::EndGroup();
-
-            if (ImGui::Button("Reset Geometry"))
-            {
-                SpeedoAngle    = 270.0f;
-                SpeedoArcAngle = 60.0f;
-                SaveCurrentSettings();
-            }
-        }
-
-        ImGui::DragFloat("Arc Length", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "%.0f px");
-        {
-            float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
-            float maxPDist = std::fmin(200.0f, radius);
-            SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
-            ImGui::DragFloat("Needle Origin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
-        }
-
-        // ── Arc Style ───────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Arc Style");
-        ImGui::Checkbox("Smooth gradient", &SpeedoGradientSmooth);
-        ImGui::DragFloat("Bg width",       &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
-
-        // Gradient bar
-        {
-            // Mirror current stop state for the UI
-            struct UIStop { float* pos; float* color; float* thickness; bool* enabled; };
-            UIStop uiStops[4] = {
-                { nullptr,        SpeedoStop1Color, &SpeedoStop1Thickness, nullptr           },
-                { &SpeedoStop2Pos, SpeedoStop2Color, &SpeedoStop2Thickness, &SpeedoStop2Enabled },
-                { &SpeedoStop3Pos, SpeedoStop3Color, &SpeedoStop3Thickness, &SpeedoStop3Enabled },
-                { &SpeedoStop4Pos, SpeedoStop4Color, &SpeedoStop4Thickness, &SpeedoStop4Enabled },
-            };
-            // Current positions as floats for bar drawing (stop 1 always 0)
-            float stopPos[4] = { 0.0f, SpeedoStop2Pos, SpeedoStop3Pos, SpeedoStop4Pos };
-            bool  stopOn[4]  = { true, SpeedoStop2Enabled, SpeedoStop3Enabled, SpeedoStop4Enabled };
-
-            static constexpr float barW = 240.0f;
-            static constexpr float barH = 16.0f;
-            static constexpr float dotR = 6.0f;
-
-            ImVec2      barPos = ImGui::GetCursorScreenPos();
-            barPos.y          += dotR + 2.0f;
-            ImGui::Dummy(ImVec2(barW, barH + (dotR + 2.0f) * 2.0f));
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-
-            // Find max thickness across active stops for normalizing bar height
-            float maxThick = SpeedoStop1Thickness;
-            if (SpeedoStop2Enabled) maxThick = std::fmax(maxThick, SpeedoStop2Thickness);
-            if (SpeedoStop3Enabled) maxThick = std::fmax(maxThick, SpeedoStop3Thickness);
-            if (SpeedoStop4Enabled) maxThick = std::fmax(maxThick, SpeedoStop4Thickness);
-            
-            for (int px = 0; px < (int)barW; px++)
-            {
-                float p = (float)px / barW;
-            
-                // Sample color (existing logic unchanged)
-                float prevPos    = 0.0f;
-                float prevCol[4] = { SpeedoStop1Color[0], SpeedoStop1Color[1], SpeedoStop1Color[2], SpeedoStop1Color[3] };
-                float prevThick  = SpeedoStop1Thickness;
-                float col[4];
-                float thick = prevThick;
-                for (int c = 0; c < 4; c++) col[c] = prevCol[c];
-            
-                for (int s = 1; s < 4; s++)
+                // Build preview string
+                char mountPreview[64] = "None";
+                if ((SpeedoMountMask & 0x7FF) == 0x7FF)
                 {
-                    if (!stopOn[s]) continue;
-                    if (p <= stopPos[s])
+                    strcpy(mountPreview, "All");
+                }
+                else if (SpeedoMountMask != 0)
+                {
+                    mountPreview[0] = '\0';
+                    for (int i = 0; i <= 10; i++)
                     {
-                        if (SpeedoGradientSmooth)
+                        if (SpeedoMountMask & (1 << i))
                         {
-                            float seg = stopPos[s] - prevPos;
-                            float tt  = seg > 0.0f ? (p - prevPos) / seg : 0.0f;
-                            for (int c = 0; c < 4; c++)
-                                col[c] = prevCol[c] + (uiStops[s].color[c] - prevCol[c]) * tt;
-                            thick = prevThick + (*uiStops[s].thickness - prevThick) * tt;
+                            if (mountPreview[0]) strncat(mountPreview, ", ", sizeof(mountPreview) - strlen(mountPreview) - 1);
+                            strncat(mountPreview, mountNames[i], sizeof(mountPreview) - strlen(mountPreview) - 1);
                         }
-                        else
+                    }
+                }
+                ImGui::SetNextItemWidth(190.0f);
+                if (ImGui::BeginCombo("##mountfilter", mountPreview))
+                {
+                    if (ImGui::SmallButton("All"))  { SpeedoMountMask = -1; SaveCurrentSettings(); }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("None")) { SpeedoMountMask =  0; SaveCurrentSettings(); }
+                    for (int i = 0; i <= 10; i++)
+                    {
+                        bool checked = (SpeedoMountMask & (1 << i)) != 0;
+                        if (ImGui::Checkbox(mountNames[i], &checked))
                         {
-                            for (int c = 0; c < 4; c++) col[c] = prevCol[c];
-                            thick = prevThick;
+                            if (checked) SpeedoMountMask |=  (1 << i);
+                            else         SpeedoMountMask &= ~(1 << i);
+                            SaveCurrentSettings();
                         }
-                        goto drawnColor;
                     }
-                    prevPos   = stopPos[s];
-                    prevThick = *uiStops[s].thickness;
-                    for (int c = 0; c < 4; c++) prevCol[c] = uiStops[s].color[c];
+                    ImGui::EndCombo();
                 }
-                for (int c = 0; c < 4; c++) col[c] = prevCol[c];
-                thick = prevThick;
-            
-                drawnColor:
-                {
-                    float halfH = (thick / maxThick) * (barH * 0.5f);
-                    float midY  = barPos.y + barH * 0.5f;
-                    float top   = midY - halfH;
-                    float bot   = midY + halfH;
-
-                    // Solid interior
-                    int topFull = (int)std::ceil(top);
-                    int botFull = (int)std::floor(bot);
-                    if (botFull > topFull)
-                    {
-                        dl->AddRectFilled(
-                            ImVec2(barPos.x + px,     (float)topFull),
-                            ImVec2(barPos.x + px + 1, (float)botFull),
-                            IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*255)));
-                    }
-
-                    // Top anti-alias fringe
-                    float topAlpha = (float)topFull - top; // 0-1, how much of that pixel is covered
-                    if (topAlpha > 0.0f)
-                    {
-                        dl->AddRectFilled(
-                            ImVec2(barPos.x + px,     top),
-                            ImVec2(barPos.x + px + 1, (float)topFull),
-                            IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*topAlpha*255)));
-                    }
-
-                    // Bottom anti-alias fringe
-                    float botAlpha = bot - (float)botFull; // 0-1
-                    if (botAlpha > 0.0f)
-                    {
-                        dl->AddRectFilled(
-                            ImVec2(barPos.x + px,     (float)botFull),
-                            ImVec2(barPos.x + px + 1, bot),
-                            IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*botAlpha*255)));
-                    }
-                }
+                Tooltip("Show speedometer only when on selected mounts.");
             }
-            dl->AddRect(barPos, ImVec2(barPos.x + barW, barPos.y + barH), IM_COL32(120, 120, 120, 255));
-
-            // Draw stop dots and handle interaction
-            for (int s = 0; s < 4; s++)
-            {
-                if (!stopOn[s]) continue;
-
-                float  dotX = barPos.x + stopPos[s] * barW;
-                float  dotY = barPos.y + barH * 0.5f;
-                bool   isSel = (selectedStop == s);
-                ImU32  dotCol = IM_COL32(
-                    (int)(uiStops[s].color[0]*255),
-                    (int)(uiStops[s].color[1]*255),
-                    (int)(uiStops[s].color[2]*255), 255);
-
-                dl->AddCircleFilled(ImVec2(dotX, dotY), dotR, dotCol);
-                dl->AddCircle(ImVec2(dotX, dotY), dotR,
-                    isSel ? IM_COL32(255,255,255,255) : IM_COL32(0,0,0,200),
-                    12, isSel ? 2.0f : 1.0f);
-
-                ImVec2 mouse = ImGui::GetMousePos();
-                float  mdx   = mouse.x - dotX;
-                float  mdy   = mouse.y - dotY;
-                bool   hovered = (mdx*mdx + mdy*mdy) <= (dotR*dotR * 4.0f);
-                
-                if (hovered && ImGui::IsMouseClicked(0))
-                    selectedStop = s;
-                
-                if (hovered && ImGui::IsMouseDown(0) && s > 0)
-                {
-                    selectedStop = s;
-                    float newPos = std::fmin(std::fmax(
-                        (ImGui::GetMousePos().x - barPos.x) / barW, 0.01f), 1.0f);
-
-                    // Clamp between neighbours
-                    float lo = 0.01f, hi = 1.0f;
-                    for (int prev = s-1; prev >= 0; prev--)
-                        if (stopOn[prev]) { lo = stopPos[prev] + 0.01f; break; }
-                    for (int next = s+1; next < 4; next++)
-                        if (stopOn[next]) { hi = stopPos[next] - 0.01f; break; }
-                    newPos = std::fmin(std::fmax(newPos, lo), hi);
-
-                    *uiStops[s].pos = newPos;
-                    SaveCurrentSettings();
-                }
-            }
-
-            // Add / Remove buttons
-            ImGui::SetCursorScreenPos(ImVec2(barPos.x, barPos.y + barH + dotR + 6.0f));
-
-            // Count active stops
-            int activeCount = 0;
-            for (int s = 0; s < 4; s++) if (stopOn[s]) activeCount++;
-
-            // Add: enable the first disabled stop after the last active one
-            bool canAdd = activeCount < 4;
-            if (!canAdd) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-            if (ImGui::SmallButton("+##addstop"))
-            {
-                for (int s = 1; s < 4; s++)
-                {
-                    if (!stopOn[s])
-                    {
-                        // Place new stop halfway between last active and 1.0
-                        float lastPos = 0.0f;
-                        for (int prev = s-1; prev >= 0; prev--)
-                            if (stopOn[prev]) { lastPos = stopPos[prev]; break; }
-                        *uiStops[s].pos     = lastPos + (1.0f - lastPos) * 0.5f;
-                        *uiStops[s].enabled = true;
-                        selectedStop        = s;
-                        SaveCurrentSettings();
-                        break;
-                    }
-                }
-            }
-            if (!canAdd) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-
+    
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Checkbox("Show Label", &SpeedoLabelVisible);
             ImGui::SameLine();
-
-            // Remove: disable selected stop (not stop 1)
-            bool canRemove = selectedStop > 0 && stopOn[selectedStop];
-            if (!canRemove) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-            if (ImGui::SmallButton("-##removestop"))
+            if (!SpeedoLabelVisible || fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (ImGui::SmallButton("Reset Font"))
             {
-                *uiStops[selectedStop].enabled = false;
-                // Cascade: disable all stops after this one too
-                for (int s = selectedStop + 1; s < 4; s++)
-                    if (uiStops[s].enabled) *uiStops[s].enabled = false;
-                selectedStop = std::max(0, selectedStop - 1);
+                SpeedoFontName = "";
+                SpeedoFontSize = 24.0f;
                 SaveCurrentSettings();
             }
-            if (!canRemove) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-        }
+            if (!SpeedoLabelVisible || fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
 
-        // Color stop rows — all 4 always visible, inactive ones grayed out
-        {
-            struct UIStop { float* pos; float* color; float* thickness; bool* enabled; };
-            UIStop uiStops[4] = {
-                { nullptr,         SpeedoStop1Color, &SpeedoStop1Thickness, nullptr            },
-                { &SpeedoStop2Pos, SpeedoStop2Color, &SpeedoStop2Thickness, &SpeedoStop2Enabled },
-                { &SpeedoStop3Pos, SpeedoStop3Color, &SpeedoStop3Thickness, &SpeedoStop3Enabled },
-                { &SpeedoStop4Pos, SpeedoStop4Color, &SpeedoStop4Thickness, &SpeedoStop4Enabled },
-            };
-            bool stopOn[4] = { true, SpeedoStop2Enabled, SpeedoStop3Enabled, SpeedoStop4Enabled };
-        
-            for (int s = 0; s < 4; s++)
+            // ── Row 3: Tachometer | Font combo ──────────────────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Tachometer", &SpeedoTachometer);
+            Tooltip("Switch between numeric display and tachometer arc.");
+    
+            ImGui::TableSetColumnIndex(1);
+            if (!SpeedoLabelVisible) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            if (fontNames.empty())
             {
-                bool active = stopOn[s];
-                if (!active) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f); }
-        
-                char label[32];
-                snprintf(label, sizeof(label), "Stop %d", s + 1);
-                ImGui::ColorEdit4(label, uiStops[s].color,
-                    ImGuiColorEditFlags_AlphaBar |
-                    ImGuiColorEditFlags_NoInputs |
-                    ImGuiColorEditFlags_PickerHueWheel);
-                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(80.0f);
-                char thickId[16];
-                snprintf(thickId, sizeof(thickId), "##thick%d", s);
-                ImGui::DragFloat(thickId, uiStops[s].thickness, 0.1f, 0.1f, 20.0f, "%.1f px");
-                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-        
-                if (!active) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                ImGui::TextDisabled("No fonts — drop .ttf/.otf into fonts/ and restart.");
             }
-        }
-
-        // ── Needle ──────────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Needle");
-        ImGui::Checkbox("Show needle",   &SpeedoNeedleVisible);
-        if (SpeedoNeedleVisible)
-            ImGui::DragFloat("Needle width", &SpeedoNeedleWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
-
-        // ── Peak hold ───────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Peak Hold");
-        ImGui::Checkbox("Enable##peak",  &SpeedoPeakHoldEnabled);
-        if (SpeedoPeakHoldEnabled)
-            ImGui::DragFloat("Hold time",    &SpeedoPeakHoldTime, 0.1f, 0.1f, 10.0f, "%.1f s");
-
-        // ── Tick marks ──────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Tick Marks");
-        ImGui::Checkbox("Enable##ticks",    &SpeedoTicksEnabled);
-        if (SpeedoTicksEnabled)
-        {
-            ImGui::DragFloat("Minor interval", &SpeedoTickInterval,      1.0f, 1.0f,  100.0f, "%.0f");
-            ImGui::DragFloat("Major interval", &SpeedoTickMajorInterval, 1.0f, 1.0f,  200.0f, "%.0f");
-            ImGui::DragFloat("Height",         &SpeedoTickHeight,        0.5f, 2.0f,  30.0f,  "%.0f px");
-        }
-
-        // ── Label ───────────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Label");
-        ImGui::Checkbox("Show label", &SpeedoLabelVisible);
-        if (SpeedoLabelVisible)
-        {
-            const auto& fontNames = GetStreamFontNames();
-            if (!fontNames.empty())
+            else
             {
-                const char* preview = SpeedoFontName.empty() ? "Default" : SpeedoFontName.c_str();
-                ImGui::SetNextItemWidth(200.0f);
-                if (ImGui::BeginCombo("Font##speedo", preview))
+                const char* fontPreview = SpeedoFontName.empty() ? "Default" : SpeedoFontName.c_str();
+                ImGui::SetNextItemWidth(120.0f);
+                if (ImGui::BeginCombo("##speedofont", fontPreview))
                 {
                     if (ImGui::Selectable("Default", SpeedoFontName.empty()))
                     {
@@ -935,101 +678,390 @@ void AddonOptions()
                     }
                     ImGui::EndCombo();
                 }
-
+                ImGui::SameLine();
                 static const float fontSizes[] = { 16, 20, 24, 28, 32, 36, 40, 44, 48 };
                 char sizePreview[8];
                 snprintf(sizePreview, sizeof(sizePreview), "%.0f", SpeedoFontSize);
-                ImGui::SetNextItemWidth(80.0f);
-                if (ImGui::BeginCombo("Size##speedo", sizePreview))
+                ImGui::SetNextItemWidth(60.0f);
+                if (ImGui::BeginCombo("##speedofontsize", sizePreview))
                 {
-                    for (float s : fontSizes)
+                    for (float fs : fontSizes)
                     {
-                        char label[8];
-                        snprintf(label, sizeof(label), "%.0f", s);
-                        if (ImGui::Selectable(label, SpeedoFontSize == s))
+                        char lbl[8];
+                        snprintf(lbl, sizeof(lbl), "%.0f", fs);
+                        if (ImGui::Selectable(lbl, SpeedoFontSize == fs))
                         {
-                            SpeedoFontSize = s;
+                            SpeedoFontSize = fs;
                             SaveCurrentSettings();
                         }
-                        if (SpeedoFontSize == s) ImGui::SetItemDefaultFocus();
+                        if (SpeedoFontSize == fs) ImGui::SetItemDefaultFocus();
                     }
                     ImGui::EndCombo();
                 }
-                ImGui::SameLine();
-                if (ImGui::Button("Reset font"))
-                {
-                    SpeedoFontName = "";
-                    SpeedoFontSize = 24.0f;
-                    SaveCurrentSettings();
-                }
             }
-            else
-            {
-                ImGui::TextDisabled("No fonts found — drop .ttf/.otf into fonts/ and restart.");
-            }
-        }
-        ImGui::DragFloat("Label X", &SpeedoLabelOffsetX, 0.5f, -500.0f, 500.0f, "%.0f px");
-        ImGui::DragFloat("Label Y", &SpeedoLabelOffsetY, 0.5f, -500.0f, 500.0f, "%.0f px");
+            if (!SpeedoLabelVisible) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
 
-        // ── Physics ─────────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Physics");
-        ImGui::DragFloat("Spring stiffness", &SpeedoSpringK,  0.1f, 0.1f, 50.0f, "%.1f");
-        ImGui::DragFloat("Damping",          &SpeedoDamping,  0.1f, 0.1f, 50.0f, "%.1f");
-
-        // ---------------------------------------------------------------------------
-        // Mount visibility
-        // ---------------------------------------------------------------------------
-        ImGui::TextDisabled("Show on:");
-        ImGui::SameLine();
-        if (ImGui::SmallButton("All"))  { SpeedoMountMask = -1; SaveCurrentSettings(); }
-        ImGui::SameLine();
-        if (ImGui::SmallButton("None")) { SpeedoMountMask =  0; SaveCurrentSettings(); }
-        
-        static const char* mountNames[] = {
-            "Foot", "Jackal", "Griffon", "Springer", "Skimmer", "Raptor",
-            "Beetle", "Warclaw", "Skyscale", "Skiff", "Turtle"
-        };
-        
-        // Build preview string
-        char mountPreview[64] = "None";
-        if ((SpeedoMountMask & 0x7FF) == 0x7FF)
-        {
-            strcpy(mountPreview, "All");
-        }
-        else if (SpeedoMountMask != 0)
-        {
-            mountPreview[0] = '\0';
-            for (int i = 0; i <= 10; i++)
-            {
-                if (SpeedoMountMask & (1 << i))
-                {
-                    if (mountPreview[0]) strncat(mountPreview, ", ", sizeof(mountPreview) - strlen(mountPreview) - 1);
-                    strncat(mountPreview, mountNames[i], sizeof(mountPreview) - strlen(mountPreview) - 1);
-                }
-            }
-        }
-        
-        ImGui::TextDisabled("Show on:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::BeginCombo("##mountfilter", mountPreview))
-        {
-            if (ImGui::SmallButton("All"))  { SpeedoMountMask = -1; SaveCurrentSettings(); }
+            // ── Row 4: Edit Mode | Label X / Y ──────────────────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Edit Mode", &SpeedoEditMode);
+            Tooltip("Makes the speedometer window draggable.");
+    
+            ImGui::TableSetColumnIndex(1);
+            if (!SpeedoLabelVisible) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            ImGui::SetNextItemWidth(80.0f);
+            ImGui::DragFloat("##labelx", &SpeedoLabelOffsetX, 0.5f, -500.0f, 500.0f, "X:%.0f");
             ImGui::SameLine();
-            if (ImGui::SmallButton("None")) { SpeedoMountMask =  0; SaveCurrentSettings(); }
-        
-            for (int i = 0; i <= 10; i++)
+            ImGui::SetNextItemWidth(80.0f);
+            ImGui::DragFloat("##labely", &SpeedoLabelOffsetY, 0.5f, -500.0f, 500.0f, "Y:%.0f");
+            if (!SpeedoLabelVisible) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+            // ── Separator ────────────────────────────────────────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Separator();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Separator();
+
+            // ── Row 5 (geometry): canvas left | sliders right ────────────────
+            // The canvas is 200px tall so we emit it first in col 0,
+            // then use SameLine-style via the table to fill col 1 with rows.
+            ImGui::TableNextRow();
+            if (!SpeedoEditMode) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+            ImGui::TableSetColumnIndex(0);
             {
-                bool checked = (SpeedoMountMask & (1 << i)) != 0;
-                if (ImGui::Checkbox(mountNames[i], &checked))
+                static constexpr float canvasSize = 190.0f;
+                static constexpr float canvasR    = canvasSize * 0.5f;
+    
+                ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+                ImGui::InvisibleButton("##speedogeo", ImVec2(canvasSize, canvasSize));
+    
+                float cx = canvasPos.x + canvasR;
+                float cy = canvasPos.y + canvasR;
+    
+                if (ImGui::IsItemActive())
                 {
-                    if (checked) SpeedoMountMask |=  (1 << i);
-                    else         SpeedoMountMask &= ~(1 << i);
+                    ImVec2 mouse = ImGui::GetMousePos();
+                    float  dx    = mouse.x - cx;
+                    float  dy    = mouse.y - cy;
+                    float  dist  = std::sqrt(dx*dx + dy*dy);
+                    float  tVal  = std::fmin(dist / canvasR, 1.0f);
+    
+                    float angleDeg = std::atan2(dy, dx) * 180.0f / IM_PI;
+                    if (angleDeg < 0.0f) angleDeg += 360.0f;
+                    SpeedoAngle    = angleDeg;
+                    SpeedoArcAngle = tVal * 359.0f;
+    
+                    float radius = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
+                    SpeedoPDistance = std::fmin(SpeedoPDistance, std::fmin(200.0f, radius));
                     SaveCurrentSettings();
                 }
+    
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+                dl->AddCircleFilled(ImVec2(cx, cy), canvasR, IM_COL32(40, 40, 40, 255));
+                dl->AddCircle(ImVec2(cx, cy),       canvasR, IM_COL32(120, 120, 120, 255));
+                dl->AddLine(ImVec2(cx, canvasPos.y), ImVec2(cx, canvasPos.y + canvasSize), IM_COL32(80, 80, 80, 255));
+                dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
+    
+                float  tVal       = SpeedoArcAngle / 359.0f;
+                float  handleAngle = SpeedoAngle * IM_PI / 180.0f;
+                ImVec2 handle(cx + std::cos(handleAngle) * tVal * canvasR,
+                              cy + std::sin(handleAngle) * tVal * canvasR);
+                if (SpeedoEditMode)
+                    dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
+                else
+                    dl->AddCircleFilled(handle, 5.0f, IM_COL32(128, 128, 128, 128));
+                dl->AddCircle(handle,       5.0f, IM_COL32(0, 0, 0, 255));
             }
-            ImGui::EndCombo();
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::DragFloat("Rotation##geo",  &SpeedoAngle,    1.0f, 0.0f,   360.0f, "%.0f°");
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::DragFloat("Arc Angle##geo", &SpeedoArcAngle, 1.0f, 0.0f,   359.0f, "%.0f°");
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::DragFloat("Arc Length##geo", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "%.0f px");
+            if (ImGui::SmallButton("Reset Geometry"))
+            {
+                SpeedoAngle     = 270.0f;
+                SpeedoArcAngle  = 60.0f;
+                SpeedoArcLength = 200.0f;
+                SaveCurrentSettings();
+            }
+            ImGui::Separator();
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::DragFloat("Spring##phys",  &SpeedoSpringK, 0.1f, 0.1f, 50.0f, "%.1f");
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::DragFloat("Damping##phys", &SpeedoDamping, 0.1f, 0.1f, 50.0f, "%.1f");
+            ImGui::Checkbox("Peak Hold", &SpeedoPeakHoldEnabled);
+            if (!SpeedoPeakHoldEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::DragFloat("Hold Time##peak", &SpeedoPeakHoldTime, 0.1f, 0.1f, 10.0f, "%.1f s");
+            if (!SpeedoPeakHoldEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+            // ── Separator ────────────────────────────────────────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Separator();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Separator();
+
+            // ── Row: Arc style left | Needle + Ticks right ───────────────────
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            {
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::DragFloat("Opacity##arc",  &SpeedoOpacity,   0.01f, 0.0f, 1.0f,  "%.2f");
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::DragFloat("BG Width##arc", &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
+    
+                // ── Gradient bar ─────────────────────────────────────────────
+                struct UIStop { float* pos; float* color; float* thickness; bool* enabled; };
+                UIStop uiStops[4] = {
+                    { nullptr,          SpeedoStop1Color, &SpeedoStop1Thickness, nullptr             },
+                    { &SpeedoStop2Pos,  SpeedoStop2Color, &SpeedoStop2Thickness, &SpeedoStop2Enabled },
+                    { &SpeedoStop3Pos,  SpeedoStop3Color, &SpeedoStop3Thickness, &SpeedoStop3Enabled },
+                    { &SpeedoStop4Pos,  SpeedoStop4Color, &SpeedoStop4Thickness, &SpeedoStop4Enabled },
+                };
+                float stopPos[4] = { 0.0f, SpeedoStop2Pos, SpeedoStop3Pos, SpeedoStop4Pos };
+                bool  stopOn[4]  = { true, SpeedoStop2Enabled, SpeedoStop3Enabled, SpeedoStop4Enabled };
+    
+                static constexpr float barW = 190.0f;
+                static constexpr float barH = 16.0f;
+                static constexpr float dotR = 6.0f;
+    
+                ImVec2 barPos = ImGui::GetCursorScreenPos();
+                barPos.y     += dotR + 2.0f;
+                ImGui::Dummy(ImVec2(barW, barH + (dotR + 2.0f) * 2.0f));
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+    
+                float maxThick = SpeedoStop1Thickness;
+                if (SpeedoStop2Enabled) maxThick = std::fmax(maxThick, SpeedoStop2Thickness);
+                if (SpeedoStop3Enabled) maxThick = std::fmax(maxThick, SpeedoStop3Thickness);
+                if (SpeedoStop4Enabled) maxThick = std::fmax(maxThick, SpeedoStop4Thickness);
+    
+                for (int px = 0; px < (int)barW; px++)
+                {
+                    float p = (float)px / barW;
+                    float prevPos    = 0.0f;
+                    float prevCol[4] = { SpeedoStop1Color[0], SpeedoStop1Color[1], SpeedoStop1Color[2], SpeedoStop1Color[3] };
+                    float prevThick  = SpeedoStop1Thickness;
+                    float col[4];
+                    float thick = prevThick;
+                    for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+    
+                    for (int s = 1; s < 4; s++)
+                    {
+                        if (!stopOn[s]) continue;
+                        if (p <= stopPos[s])
+                        {
+                            if (SpeedoGradientSmooth)
+                            {
+                                float seg = stopPos[s] - prevPos;
+                                float tt  = seg > 0.0f ? (p - prevPos) / seg : 0.0f;
+                                for (int c = 0; c < 4; c++)
+                                    col[c] = prevCol[c] + (uiStops[s].color[c] - prevCol[c]) * tt;
+                                thick = prevThick + (*uiStops[s].thickness - prevThick) * tt;
+                            }
+                            else
+                            {
+                                for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+                                thick = prevThick;
+                            }
+                            goto drawnColor;
+                        }
+                        prevPos   = stopPos[s];
+                        prevThick = *uiStops[s].thickness;
+                        for (int c = 0; c < 4; c++) prevCol[c] = uiStops[s].color[c];
+                    }
+                    for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+                    thick = prevThick;
+    
+                    drawnColor:
+                    {
+                        float halfH = (thick / maxThick) * (barH * 0.5f);
+                        float midY  = barPos.y + barH * 0.5f;
+                        float top   = midY - halfH;
+                        float bot   = midY + halfH;
+    
+                        int topFull = (int)std::ceil(top);
+                        int botFull = (int)std::floor(bot);
+                        if (botFull > topFull)
+                            dl->AddRectFilled(
+                                ImVec2(barPos.x + px,     (float)topFull),
+                                ImVec2(barPos.x + px + 1, (float)botFull),
+                                IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*255)));
+    
+                        float topAlpha = (float)topFull - top;
+                        if (topAlpha > 0.0f)
+                            dl->AddRectFilled(
+                                ImVec2(barPos.x + px,     top),
+                                ImVec2(barPos.x + px + 1, (float)topFull),
+                                IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*topAlpha*255)));
+    
+                        float botAlpha = bot - (float)botFull;
+                        if (botAlpha > 0.0f)
+                            dl->AddRectFilled(
+                                ImVec2(barPos.x + px,     (float)botFull),
+                                ImVec2(barPos.x + px + 1, bot),
+                                IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*botAlpha*255)));
+                    }
+                }
+                dl->AddRect(barPos, ImVec2(barPos.x + barW, barPos.y + barH), IM_COL32(120, 120, 120, 255));
+    
+                // Stop dots
+                if (SpeedoEditMode)
+                {
+                    for (int s = 0; s < 4; s++)
+                    {
+                        if (!stopOn[s]) continue;
+                        float  dotX  = barPos.x + stopPos[s] * barW;
+                        float  dotY  = barPos.y + barH * 0.5f;
+                        bool   isSel = (selectedStop == s);
+                        ImU32  dotCol = IM_COL32(
+                            (int)(uiStops[s].color[0]*255),
+                            (int)(uiStops[s].color[1]*255),
+                            (int)(uiStops[s].color[2]*255), 255);
+                        dl->AddCircleFilled(ImVec2(dotX, dotY), dotR, dotCol);
+                        dl->AddCircle(ImVec2(dotX, dotY), dotR,
+                            isSel ? IM_COL32(255,255,255,255) : IM_COL32(0,0,0,200),
+                            12, isSel ? 2.0f : 1.0f);
+        
+                        ImVec2 mouse  = ImGui::GetMousePos();
+                        float  mdx    = mouse.x - dotX;
+                        float  mdy    = mouse.y - dotY;
+                        bool   hovered = (mdx*mdx + mdy*mdy) <= (dotR*dotR * 4.0f);
+        
+                        if (hovered && ImGui::IsMouseClicked(0))
+                            selectedStop = s;
+        
+                        if (hovered && ImGui::IsMouseDown(0) && s > 0)
+                        {
+                            selectedStop = s;
+                            float newPos = std::fmin(std::fmax(
+                                (ImGui::GetMousePos().x - barPos.x) / barW, 0.01f), 1.0f);
+                            float lo = 0.01f, hi = 1.0f;
+                            for (int prev = s-1; prev >= 0; prev--)
+                                if (stopOn[prev]) { lo = stopPos[prev] + 0.01f; break; }
+                            for (int next = s+1; next < 4; next++)
+                                if (stopOn[next]) { hi = stopPos[next] - 0.01f; break; }
+                            newPos = std::fmin(std::fmax(newPos, lo), hi);
+                            *uiStops[s].pos = newPos;
+                            SaveCurrentSettings();
+                        }
+                    }
+                }
+    
+                // +/- buttons and smooth checkbox on one line
+                ImGui::SetCursorScreenPos(ImVec2(barPos.x, barPos.y + barH + dotR + 6.0f));
+                int  activeCount = 0;
+                for (int s = 0; s < 4; s++) if (stopOn[s]) activeCount++;
+    
+                bool canAdd = activeCount < 4;
+                if (!canAdd) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                if (ImGui::SmallButton("+##addstop"))
+                {
+                    for (int s = 1; s < 4; s++)
+                    {
+                        if (!stopOn[s])
+                        {
+                            float lastPos = 0.0f;
+                            for (int prev = s-1; prev >= 0; prev--)
+                                if (stopOn[prev]) { lastPos = stopPos[prev]; break; }
+                            *uiStops[s].pos     = lastPos + (1.0f - lastPos) * 0.5f;
+                            *uiStops[s].enabled = true;
+                            selectedStop        = s;
+                            SaveCurrentSettings();
+                            break;
+                        }
+                    }
+                }
+                if (!canAdd) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+                ImGui::SameLine();
+    
+                bool canRemove = selectedStop > 0 && stopOn[selectedStop];
+                if (!canRemove) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                if (ImGui::SmallButton("-##removestop"))
+                {
+                    *uiStops[selectedStop].enabled = false;
+                    for (int s = selectedStop + 1; s < 4; s++)
+                        if (uiStops[s].enabled) *uiStops[s].enabled = false;
+                    selectedStop = std::max(0, selectedStop - 1);
+                    SaveCurrentSettings();
+                }
+                if (!canRemove) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    
+                ImGui::SameLine();
+                ImGui::Checkbox("Smooth##gradient", &SpeedoGradientSmooth);
+    
+                // Stop rows
+                for (int s = 0; s < 4; s++)
+                {
+                    bool active = stopOn[s];
+                    if (!active) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f); }
+    
+                    char label[32];
+                    snprintf(label, sizeof(label), "Stop %d", s + 1);
+                    ImGui::ColorEdit4(label, uiStops[s].color,
+                        ImGuiColorEditFlags_AlphaBar |
+                        ImGuiColorEditFlags_NoInputs |
+                        ImGuiColorEditFlags_PickerHueWheel);
+                    if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(80.0f);
+                    char thickId[16];
+                    snprintf(thickId, sizeof(thickId), "##thick%d", s);
+                    ImGui::DragFloat(thickId, uiStops[s].thickness, 0.1f, 0.1f, 20.0f, "%.1f px");
+                    if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+    
+                    if (!active) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                }
+            }
+    
+            ImGui::TableSetColumnIndex(1);
+            {
+                // ── Needle ───────────────────────────────────────────────────
+                ImGui::Checkbox("Show Needle", &SpeedoNeedleVisible);
+                if (!SpeedoNeedleVisible) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                ImGui::SetNextItemWidth(70.0f);
+                ImGui::DragFloat("##needlewidth",  &SpeedoNeedleWidth,  0.1f, 0.1f, 5.0f,     "%.1f px");
+                Tooltip("Needle width");
+                ImGui::SameLine();
+                {
+                    float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
+                    float maxPDist = std::fmin(200.0f, radius);
+                    SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
+                    ImGui::SetNextItemWidth(70.0f);
+                    ImGui::DragFloat("##needleorigin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
+                    Tooltip("Needle origin");
+                }
+                if (!SpeedoNeedleVisible) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+
+                // ── Dummy ───────────────────────────────────────────────────
+                ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+
+                ImGui::Separator();
+
+                // ── Tick Marks ───────────────────────────────────────────────
+                ImGui::Checkbox("Tick Marks", &SpeedoTicksEnabled);
+                if (!SpeedoTicksEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::DragFloat("Minor Interval", &SpeedoTickInterval,      1.0f, 1.0f, 100.0f, "%.0f");
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::DragFloat("Major Interval", &SpeedoTickMajorInterval, 1.0f, 1.0f, 200.0f, "%.0f");
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::DragFloat("Height##ticks",  &SpeedoTickHeight,        0.5f, 2.0f, 30.0f,  "%.0f px");
+                if (!SpeedoTicksEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            }
+
+            if (!SpeedoEditMode) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            if (!ShowSpeedo) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            ImGui::EndTable();
         }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
     }
 }
