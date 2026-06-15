@@ -6,9 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // Settings are persisted to settings.ini via SaveCurrentSettings().
 
-#include "imgui.h"
 #include "render_shared.h"
-#include "shared.h"
 #include "stream_fonts.h"
 
 // ---------------------------------------------------------------------------
@@ -670,17 +668,24 @@ void AddonOptions()
             ImGui::Dummy(ImVec2(barW, barH + (dotR + 2.0f) * 2.0f));
             ImDrawList* dl = ImGui::GetWindowDrawList();
 
-            // Draw gradient bar
+            // Find max thickness across active stops for normalizing bar height
+            float maxThick = SpeedoStop1Thickness;
+            if (SpeedoStop2Enabled) maxThick = std::fmax(maxThick, SpeedoStop2Thickness);
+            if (SpeedoStop3Enabled) maxThick = std::fmax(maxThick, SpeedoStop3Thickness);
+            if (SpeedoStop4Enabled) maxThick = std::fmax(maxThick, SpeedoStop4Thickness);
+            
             for (int px = 0; px < (int)barW; px++)
             {
                 float p = (float)px / barW;
-
-                // Gather active stops for sampling
-                float prevPos  = 0.0f;
+            
+                // Sample color (existing logic unchanged)
+                float prevPos    = 0.0f;
                 float prevCol[4] = { SpeedoStop1Color[0], SpeedoStop1Color[1], SpeedoStop1Color[2], SpeedoStop1Color[3] };
+                float prevThick  = SpeedoStop1Thickness;
                 float col[4];
+                float thick = prevThick;
                 for (int c = 0; c < 4; c++) col[c] = prevCol[c];
-
+            
                 for (int s = 1; s < 4; s++)
                 {
                     if (!stopOn[s]) continue;
@@ -692,23 +697,60 @@ void AddonOptions()
                             float tt  = seg > 0.0f ? (p - prevPos) / seg : 0.0f;
                             for (int c = 0; c < 4; c++)
                                 col[c] = prevCol[c] + (uiStops[s].color[c] - prevCol[c]) * tt;
+                            thick = prevThick + (*uiStops[s].thickness - prevThick) * tt;
                         }
                         else
                         {
                             for (int c = 0; c < 4; c++) col[c] = prevCol[c];
+                            thick = prevThick;
                         }
                         goto drawnColor;
                     }
-                    prevPos = stopPos[s];
+                    prevPos   = stopPos[s];
+                    prevThick = *uiStops[s].thickness;
                     for (int c = 0; c < 4; c++) prevCol[c] = uiStops[s].color[c];
                 }
                 for (int c = 0; c < 4; c++) col[c] = prevCol[c];
-
+                thick = prevThick;
+            
                 drawnColor:
-                dl->AddRectFilled(
-                    ImVec2(barPos.x + px,     barPos.y),
-                    ImVec2(barPos.x + px + 1, barPos.y + barH),
-                    IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*255)));
+                {
+                    float halfH = (thick / maxThick) * (barH * 0.5f);
+                    float midY  = barPos.y + barH * 0.5f;
+                    float top   = midY - halfH;
+                    float bot   = midY + halfH;
+
+                    // Solid interior
+                    int topFull = (int)std::ceil(top);
+                    int botFull = (int)std::floor(bot);
+                    if (botFull > topFull)
+                    {
+                        dl->AddRectFilled(
+                            ImVec2(barPos.x + px,     (float)topFull),
+                            ImVec2(barPos.x + px + 1, (float)botFull),
+                            IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*255)));
+                    }
+
+                    // Top anti-alias fringe
+                    float topAlpha = (float)topFull - top; // 0-1, how much of that pixel is covered
+                    if (topAlpha > 0.0f)
+                    {
+                        dl->AddRectFilled(
+                            ImVec2(barPos.x + px,     top),
+                            ImVec2(barPos.x + px + 1, (float)topFull),
+                            IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*topAlpha*255)));
+                    }
+
+                    // Bottom anti-alias fringe
+                    float botAlpha = bot - (float)botFull; // 0-1
+                    if (botAlpha > 0.0f)
+                    {
+                        dl->AddRectFilled(
+                            ImVec2(barPos.x + px,     (float)botFull),
+                            ImVec2(barPos.x + px + 1, bot),
+                            IM_COL32((int)(col[0]*255),(int)(col[1]*255),(int)(col[2]*255),(int)(col[3]*botAlpha*255)));
+                    }
+                }
             }
             dl->AddRect(barPos, ImVec2(barPos.x + barW, barPos.y + barH), IM_COL32(120, 120, 120, 255));
 
@@ -804,32 +846,38 @@ void AddonOptions()
             if (!canRemove) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
         }
 
-        // Selected stop editor
+        // Color stop rows — all 4 always visible, inactive ones grayed out
         {
-            float* col   = nullptr;
-            float* thick = nullptr;
-            if      (selectedStop == 0) { col = SpeedoStop1Color; thick = &SpeedoStop1Thickness; }
-            else if (selectedStop == 1) { col = SpeedoStop2Color; thick = &SpeedoStop2Thickness; }
-            else if (selectedStop == 2) { col = SpeedoStop3Color; thick = &SpeedoStop3Thickness; }
-            else if (selectedStop == 3) { col = SpeedoStop4Color; thick = &SpeedoStop4Thickness; }
-
-            ImGui::Text("Stop %d", selectedStop + 1);
-            if (col)   ImGui::ColorEdit4("Color##stop", col,
-                                         ImGuiColorEditFlags_AlphaBar |
-                                         ImGuiColorEditFlags_PickerHueWheel);
-            if (thick) ImGui::DragFloat("Thickness##stop", thick, 0.1f, 1.0f, 20.0f, "%.1f px");
-        }
-
-        // ── Decorative line ─────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::Text("Decorative Line");
-        ImGui::Checkbox("Enable",     &SpeedoDecoLineEnabled);
-        if (SpeedoDecoLineEnabled)
-        {
-            ImGui::DragFloat("Offset",    &SpeedoDecoLineOffset,   0.5f, -50.0f, 50.0f, "%.0f px");
-            ImGui::ColorEdit4("Color##deco", SpeedoDecoLineColor,
-                              ImGuiColorEditFlags_AlphaBar |
-                              ImGuiColorEditFlags_PickerHueWheel);
+            struct UIStop { float* pos; float* color; float* thickness; bool* enabled; };
+            UIStop uiStops[4] = {
+                { nullptr,         SpeedoStop1Color, &SpeedoStop1Thickness, nullptr            },
+                { &SpeedoStop2Pos, SpeedoStop2Color, &SpeedoStop2Thickness, &SpeedoStop2Enabled },
+                { &SpeedoStop3Pos, SpeedoStop3Color, &SpeedoStop3Thickness, &SpeedoStop3Enabled },
+                { &SpeedoStop4Pos, SpeedoStop4Color, &SpeedoStop4Thickness, &SpeedoStop4Enabled },
+            };
+            bool stopOn[4] = { true, SpeedoStop2Enabled, SpeedoStop3Enabled, SpeedoStop4Enabled };
+        
+            for (int s = 0; s < 4; s++)
+            {
+                bool active = stopOn[s];
+                if (!active) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f); }
+        
+                char label[32];
+                snprintf(label, sizeof(label), "Stop %d", s + 1);
+                ImGui::ColorEdit4(label, uiStops[s].color,
+                    ImGuiColorEditFlags_AlphaBar |
+                    ImGuiColorEditFlags_NoInputs |
+                    ImGuiColorEditFlags_PickerHueWheel);
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(80.0f);
+                char thickId[16];
+                snprintf(thickId, sizeof(thickId), "##thick%d", s);
+                ImGui::DragFloat(thickId, uiStops[s].thickness, 0.1f, 0.1f, 20.0f, "%.1f px");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+        
+                if (!active) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            }
         }
 
         // ── Needle ──────────────────────────────────────────────────────────
@@ -928,5 +976,60 @@ void AddonOptions()
         ImGui::Text("Physics");
         ImGui::DragFloat("Spring stiffness", &SpeedoSpringK,  0.1f, 0.1f, 50.0f, "%.1f");
         ImGui::DragFloat("Damping",          &SpeedoDamping,  0.1f, 0.1f, 50.0f, "%.1f");
+
+        // ---------------------------------------------------------------------------
+        // Mount visibility
+        // ---------------------------------------------------------------------------
+        ImGui::TextDisabled("Show on:");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("All"))  { SpeedoMountMask = -1; SaveCurrentSettings(); }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("None")) { SpeedoMountMask =  0; SaveCurrentSettings(); }
+        
+        static const char* mountNames[] = {
+            "Foot", "Jackal", "Griffon", "Springer", "Skimmer", "Raptor",
+            "Beetle", "Warclaw", "Skyscale", "Skiff", "Turtle"
+        };
+        
+        // Build preview string
+        char mountPreview[64] = "None";
+        if ((SpeedoMountMask & 0x7FF) == 0x7FF)
+        {
+            strcpy(mountPreview, "All");
+        }
+        else if (SpeedoMountMask != 0)
+        {
+            mountPreview[0] = '\0';
+            for (int i = 0; i <= 10; i++)
+            {
+                if (SpeedoMountMask & (1 << i))
+                {
+                    if (mountPreview[0]) strncat(mountPreview, ", ", sizeof(mountPreview) - strlen(mountPreview) - 1);
+                    strncat(mountPreview, mountNames[i], sizeof(mountPreview) - strlen(mountPreview) - 1);
+                }
+            }
+        }
+        
+        ImGui::TextDisabled("Show on:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::BeginCombo("##mountfilter", mountPreview))
+        {
+            if (ImGui::SmallButton("All"))  { SpeedoMountMask = -1; SaveCurrentSettings(); }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("None")) { SpeedoMountMask =  0; SaveCurrentSettings(); }
+        
+            for (int i = 0; i <= 10; i++)
+            {
+                bool checked = (SpeedoMountMask & (1 << i)) != 0;
+                if (ImGui::Checkbox(mountNames[i], &checked))
+                {
+                    if (checked) SpeedoMountMask |=  (1 << i);
+                    else         SpeedoMountMask &= ~(1 << i);
+                    SaveCurrentSettings();
+                }
+            }
+            ImGui::EndCombo();
+        }
     }
 }

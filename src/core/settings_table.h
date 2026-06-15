@@ -113,7 +113,7 @@ SETTING(Speedo, SpeedoEditMode,      bool,  false)
 SETTING(Speedo, SpeedoOpacity,       float, 1.0f)
 
 // Geometry
-SETTING(Speedo, SpeedoArcAngle,      float, 120.0f)
+SETTING(Speedo, SpeedoArcAngle,      float, 60.0f)
 SETTING(Speedo, SpeedoArcLength,     float, 200.0f)
 SETTING(Speedo, SpeedoAngle,         float, 270.0f)
 SETTING(Speedo, SpeedoPDistance,     float, 0.0f)
@@ -149,11 +149,6 @@ SETTING      (Speedo, SpeedoStop4Pos,       float, 1.0f)
 SETTING_ARRAY(Speedo, SpeedoStop4Color,     4, ARR(1.0f, 0.0f, 0.0f, 1.0f))
 SETTING      (Speedo, SpeedoStop4Thickness, float, 20.0f)
 
-// Decorative line
-SETTING      (Speedo, SpeedoDecoLineEnabled, bool,  false)
-SETTING      (Speedo, SpeedoDecoLineOffset,  float, -8.0f)
-SETTING_ARRAY(Speedo, SpeedoDecoLineColor,   4, ARR(1.0f, 1.0f, 1.0f, 0.4f))
-
 // Peak hold
 SETTING(Speedo, SpeedoPeakHoldEnabled, bool,  false)
 SETTING(Speedo, SpeedoPeakHoldTime,    float, 2.0f)
@@ -174,3 +169,8 @@ SETTING(Speedo, SpeedoLabelOffsetY, float, 0.0f)
 // Physics
 SETTING(Speedo, SpeedoSpringK,  float, 12.0f)
 SETTING(Speedo, SpeedoDamping,  float, 6.0f)
+
+// Mount visibility mask — bit N = show speedo when on mount index N
+// Bit 0 = unmounted, bits 1-10 = mount order from EMountIndex
+// -1 (all bits set) means "show on all", 0 means "controlled only by ShowSpeedo"
+SETTING(Speedo, SpeedoMountMask, int, -1)

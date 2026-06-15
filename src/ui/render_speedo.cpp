@@ -134,15 +134,6 @@ static ImU32 ColorToU32(const float c[4], float masterAlpha)
         (int)(c[3] * masterAlpha * 255));
 }
 
-static ImU32 DecoColor(float masterAlpha)
-{
-    return IM_COL32(
-        (int)(SpeedoDecoLineColor[0] * 255),
-        (int)(SpeedoDecoLineColor[1] * 255),
-        (int)(SpeedoDecoLineColor[2] * 255),
-        (int)(SpeedoDecoLineColor[3] * masterAlpha * 255));
-}
-
 // ---------------------------------------------------------------------------
 // DrawArcSegmented
 // Draws arc with per-segment interpolated color+thickness.
@@ -429,16 +420,6 @@ static void DrawSpeedoContent(
         DrawLineSegmented(draw, linePoint, SpeedoArcLength, 1.0f,
                           stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
 
-        // --- Decorative line (parallel offset) ---
-        if (SpeedoDecoLineEnabled)
-        {
-            float offX = std::sin(perpAngle) * SpeedoDecoLineOffset;
-            float offY = -std::cos(perpAngle) * SpeedoDecoLineOffset;
-            ImVec2 decoStart = toScreen( cosPerp * halfLen + offX,  sinPerp * halfLen + offY);
-            ImVec2 decoEnd   = toScreen(-cosPerp * halfLen + offX, -sinPerp * halfLen + offY);
-            draw->AddLine(decoStart, decoEnd, DecoColor(SpeedoOpacity), 1.0f);
-        }
-
         // --- Filled sweep ---
         if (t > 0.0f)
             DrawLineSegmented(draw, linePoint, SpeedoArcLength, t,
@@ -493,18 +474,6 @@ static void DrawSpeedoContent(
     // --- Background arc ---
     DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, 1.0f,
                      stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
-
-    // --- Decorative arc ---
-    if (SpeedoDecoLineEnabled)
-    {
-        float decoRadius = radius + SpeedoDecoLineOffset;
-        if (decoRadius > 0.0f)
-        {
-            int segs = ArcSegments(decoRadius, 1.0f);
-            draw->PathArcTo(C_screen, decoRadius, arcStart, arcEnd, segs);
-            draw->PathStroke(DecoColor(SpeedoOpacity), false, 1.0f);
-        }
-    }
 
     // --- Filled sweep arc ---
     if (t > 0.0f)
@@ -580,6 +549,15 @@ static void DrawSpeedoContent(
 void RenderSpeedoWindow()
 {
     if (!ShowSpeedo) return;
+    if (!MumbleLink) return;
+    if (MumbleLink->UITick == 0) return;
+
+    // Mount visibility filter
+    if (SpeedoMountMask != -1)
+    {
+        int mountBit = 1 << (int)MumbleLink->Context.MountIndex;
+        if (!(SpeedoMountMask & mountBit)) return;
+    }
 
     // Sanitize settings
     SpeedoArcAngle          = std::fmax(SpeedoArcAngle,          0.0f);
@@ -686,8 +664,6 @@ void RenderSpeedoWindow()
     // Bounding box
     const float padding   = 8.0f;
     float       bboxExtra = SpeedoTicksEnabled ? SpeedoTickHeight * 0.5f + 2.0f : 0.0f;
-    if (SpeedoDecoLineEnabled)
-        bboxExtra = std::fmax(bboxExtra, std::fabs(SpeedoDecoLineOffset) + 2.0f);
 
     float minX =  1e9f, minY =  1e9f;
     float maxX = -1e9f, maxY = -1e9f;
