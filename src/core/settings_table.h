@@ -168,6 +168,8 @@ SETTING(Speedo, SpeedoTickHeight,        float, 8.0f)
 SETTING(Speedo, SpeedoLabelVisible, bool,   true)
 SETTING_STRING (Speedo, SpeedoFontName, "")
 SETTING(Speedo, SpeedoFontSize,     float,  24.0f)
+SETTING(Speedo, SpeedoLabelOffsetX, float, 0.0f)
+SETTING(Speedo, SpeedoLabelOffsetY, float, 0.0f)
 
 // Physics
 SETTING(Speedo, SpeedoSpringK,  float, 12.0f)

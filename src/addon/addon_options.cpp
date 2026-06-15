@@ -555,12 +555,17 @@ void AddonOptions()
         ImGui::Spacing();    
     }
 
+    /**
+    if (!xxx) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+
+
+    if (!xxx) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+    */
     // ---------------------------------------------------------------------------
     // Speedometer Settings
     // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Speedometer Settings"))
     {
-        static constexpr float PI = 3.14159265f;
         static int selectedStop = 0; 
 
         ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
@@ -589,12 +594,12 @@ void AddonOptions()
                 float  dist  = std::sqrt(dx*dx + dy*dy);
                 float  tVal  = std::fmin(dist / canvasR, 1.0f);
 
-                float angleDeg = std::atan2(dy, dx) * 180.0f / PI;
+                float angleDeg = std::atan2(dy, dx) * 180.0f / IM_PI;
                 if (angleDeg < 0.0f) angleDeg += 360.0f;
                 SpeedoAngle    = angleDeg;
                 SpeedoArcAngle = tVal * 359.0f;
 
-                float radius   = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
+                float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
                 SpeedoPDistance = std::fmin(SpeedoPDistance, std::fmin(200.0f, radius));
                 SaveCurrentSettings();
             }
@@ -606,7 +611,7 @@ void AddonOptions()
             dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
 
             float  tVal       = SpeedoArcAngle / 359.0f;
-            float  handleAngle = SpeedoAngle * PI / 180.0f;
+            float  handleAngle = SpeedoAngle * IM_PI / 180.0f;
             ImVec2 handle(cx + std::cos(handleAngle) * tVal * canvasR,
                           cy + std::sin(handleAngle) * tVal * canvasR);
             dl->AddCircleFilled(handle, 5.0f, IM_COL32(255, 255, 255, 255));
@@ -630,7 +635,7 @@ void AddonOptions()
 
         ImGui::DragFloat("Arc Length", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "%.0f px");
         {
-            float radius   = SpeedoArcLength / (SpeedoArcAngle * PI / 180.0f);
+            float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
             float maxPDist = std::fmin(200.0f, radius);
             SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
             ImGui::DragFloat("Needle Origin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
@@ -915,6 +920,8 @@ void AddonOptions()
                 ImGui::TextDisabled("No fonts found — drop .ttf/.otf into fonts/ and restart.");
             }
         }
+        ImGui::DragFloat("Label X", &SpeedoLabelOffsetX, 0.5f, -500.0f, 500.0f, "%.0f px");
+        ImGui::DragFloat("Label Y", &SpeedoLabelOffsetY, 0.5f, -500.0f, 500.0f, "%.0f px");
 
         // ── Physics ─────────────────────────────────────────────────────────
         ImGui::Separator();

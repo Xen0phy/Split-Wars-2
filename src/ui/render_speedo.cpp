@@ -3,24 +3,22 @@
 //
 // ─── Tachometer geometry ────────────────────────────────────────────────────
 //
-//   SpeedoArcAngle  — total sweep of the arc in degrees (1-359)
-//   SpeedoArcLength — total length of the arc in pixels
+//   SpeedoArcAngle  — total sweep of the arc in degrees (1-359), 0 = straight line
+//   SpeedoArcLength — total length of the arc/line in pixels
 //   SpeedoAngle     — rotation of the whole speedo (0-360)
 //   SpeedoPDistance — distance of needle origin P from the arc (0=on arc, max 200px)
 //
-//   radius   = SpeedoArcLength / (SpeedoArcAngle * DEG_TO_RAD)
-//   pDist    = radius - min(SpeedoPDistance, min(200, radius))
-//   arcMid   = SpeedoAngle axis direction
-//   arcStart = arcMid - ArcAngle/2
-//   arcEnd   = arcMid + ArcAngle/2
-//   needle   = line from P to arc point at current speed
+//   Arc mode:
+//     radius   = SpeedoArcLength / (SpeedoArcAngle * DEG_TO_RAD)
+//     pDist    = radius - min(SpeedoPDistance, min(200, radius))
+//     arcMid   = SpeedoAngle axis direction
+//     arcStart = arcMid - ArcAngle/2
+//     arcEnd   = arcMid + ArcAngle/2
+//     needle   = line from P to arc point at current speed
 //
-// ─── Arc rendering ──────────────────────────────────────────────────────────
-//
-//   Up to 4 shared color+thickness stops along the arc (position 0-1).
-//   Stop 1 always at position 0. Others added/removed by the user.
-//   Between stops: smooth gradient (interpolated) or hard cut.
-//   Alpha channel on stop colors controls fade.
+//   Straight line mode (SpeedoArcAngle < 1):
+//     line runs perpendicular to SpeedoAngle, length = SpeedoArcLength
+//     fill grows from lineStart toward lineEnd as speed increases
 //
 // ─── Render modes ───────────────────────────────────────────────────────────
 //
@@ -41,22 +39,26 @@
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-static constexpr float MPS_TO_KMH    = 3.6f;
-static constexpr float MPS_TO_MPH    = 2.23694f;
-static constexpr float MAX_SPEED_KMH = 200.0f;
-static constexpr float MAX_SPEED_MPH = MAX_SPEED_KMH / 1.60934f;
-static constexpr float DEG_TO_RAD    = 3.14159265f / 180.0f;
-static constexpr float PI            = 3.14159265f;
-static constexpr float TWO_PI        = 6.28318530f;
+static constexpr float MPS_TO_KMH              = 3.6f;
+static constexpr float MPS_TO_MPH              = 2.23694f;
+static constexpr float MAX_SPEED_KMH           = 200.0f;
+static constexpr float MAX_SPEED_MPH           = MAX_SPEED_KMH / 1.60934f;
+static constexpr float DEG_TO_RAD              = 3.14159265f / 180.0f;
+static constexpr float PI                      = 3.14159265f;
+static constexpr float TWO_PI                  = 6.28318530f;
+static constexpr float STRAIGHT_LINE_THRESHOLD = 1.0f;
 
-// Segments scales with radius and thickness to avoid gaps in thick arcs
 static int ArcSegments(float radius, float thickness)
 {
-    // At minimum: enough segments so adjacent endpoints overlap at given thickness
-    // circumference / thickness gives a safe lower bound
     float circ = TWO_PI * radius;
-    int   min  = (int)std::ceil(circ / std::fmax(thickness * 0.5f, 1.0f));
-    return std::max(64, std::min(min, 512));
+    int   n    = (int)std::ceil(circ / std::fmax(thickness * 0.5f, 1.0f));
+    return std::max(64, std::min(n, 512));
+}
+
+static int LineSegments(float length, float thickness)
+{
+    int n = (int)std::ceil(length / std::fmax(thickness * 0.5f, 1.0f));
+    return std::max(64, std::min(n, 512));
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +134,152 @@ static ImU32 ColorToU32(const float c[4], float masterAlpha)
         (int)(c[3] * masterAlpha * 255));
 }
 
+static ImU32 DecoColor(float masterAlpha)
+{
+    return IM_COL32(
+        (int)(SpeedoDecoLineColor[0] * 255),
+        (int)(SpeedoDecoLineColor[1] * 255),
+        (int)(SpeedoDecoLineColor[2] * 255),
+        (int)(SpeedoDecoLineColor[3] * masterAlpha * 255));
+}
+
+// ---------------------------------------------------------------------------
+// DrawArcSegmented
+// Draws arc with per-segment interpolated color+thickness.
+// arcFill: 0-1 how much of the arc to draw.
+// isBg: use background color/width instead of stops.
+// ---------------------------------------------------------------------------
+static void DrawArcSegmented(
+    ImDrawList*       draw,
+    ImVec2            center,
+    float             radius,
+    float             arcStart,
+    float             arcEnd,
+    float             arcFill,
+    const SpeedoStop* stops,
+    int               stopCount,
+    bool              smooth,
+    float             masterAlpha,
+    bool              isBg)
+{
+    int   segs     = ArcSegments(radius, isBg ? SpeedoArcBgWidth : stops[stopCount-1].thickness);
+    float arcRange = arcEnd - arcStart;
+    float fillEnd  = arcStart + arcRange * arcFill;
+
+    for (int i = 0; i < segs; i++)
+    {
+        float t0 = static_cast<float>(i)     / segs;
+        float t1 = static_cast<float>(i + 1) / segs;
+        float a0 = arcStart + arcRange * t0;
+        float a1 = arcStart + arcRange * t1;
+
+        if (a0 >= fillEnd) break;
+        if (a1 >  fillEnd) a1 = fillEnd;
+
+        ImVec2 p0(center.x + std::cos(a0) * radius, center.y + std::sin(a0) * radius);
+        ImVec2 p1(center.x + std::cos(a1) * radius, center.y + std::sin(a1) * radius);
+
+        float color[4]; float thickness;
+        if (isBg)
+        {
+            color[0] = 0.31f; color[1] = 0.31f; color[2] = 0.31f; color[3] = 0.78f;
+            thickness = SpeedoArcBgWidth;
+        }
+        else
+        {
+            float color0[4]; float thickness0;
+            float color1[4]; float thickness1;
+            SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color,  thickness);
+            SampleStops(stops, stopCount, t0,                smooth, color0, thickness0);
+            SampleStops(stops, stopCount, t1,                smooth, color1, thickness1);
+            thickness = std::fmax(thickness0, thickness1);
+            // re-sample mid for color
+            SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, thickness);
+            thickness = std::fmax(thickness0, thickness1);
+        }
+
+        // Extend slightly to prevent gaps
+        ImVec2 dir(p1.x - p0.x, p1.y - p0.y);
+        float  len = std::sqrt(dir.x*dir.x + dir.y*dir.y);
+        if (len > 0.0f)
+        {
+            float ext = thickness * 0.5f / len;
+            p0.x -= dir.x * ext;
+            p0.y -= dir.y * ext;
+            p1.x += dir.x * ext;
+            p1.y += dir.y * ext;
+        }
+
+        draw->AddLine(p0, p1, ColorToU32(color, masterAlpha), thickness);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DrawLineSegmented
+// Mirrors DrawArcSegmented but for a straight line.
+// linePoint(t) converts 0-1 position to screen coords.
+// lineFill: 0-1 how much of the line to draw.
+// isBg: use background color/width instead of stops.
+// ---------------------------------------------------------------------------
+static void DrawLineSegmented(
+    ImDrawList*                         draw,
+    std::function<ImVec2(float)>        linePoint,
+    float                               length,
+    float                               lineFill,
+    const SpeedoStop*                   stops,
+    int                                 stopCount,
+    bool                                smooth,
+    float                               masterAlpha,
+    bool                                isBg)
+{
+    int segs = LineSegments(length, isBg ? SpeedoArcBgWidth : stops[stopCount-1].thickness);
+
+    for (int i = 0; i < segs; i++)
+    {
+        float t0 = static_cast<float>(i)     / segs;
+        float t1 = static_cast<float>(i + 1) / segs;
+
+        if (t0 >= lineFill) break;
+        if (t1 >  lineFill) t1 = lineFill;
+
+        float color[4]; float thickness;
+        if (isBg)
+        {
+            color[0] = 0.31f; color[1] = 0.31f; color[2] = 0.31f; color[3] = 0.78f;
+            thickness = SpeedoArcBgWidth;
+        }
+        else
+        {
+            float color0[4]; float thickness0;
+            float color1[4]; float thickness1;
+            SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color,  thickness);
+            SampleStops(stops, stopCount, t0,                smooth, color0, thickness0);
+            SampleStops(stops, stopCount, t1,                smooth, color1, thickness1);
+            // use max thickness of endpoints to prevent gaps
+            thickness = std::fmax(thickness0, thickness1);
+            // re-sample mid for color only
+            float dummy; SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, dummy);
+        }
+
+        ImVec2 p0 = linePoint(t0);
+        ImVec2 p1 = linePoint(t1);
+
+        // Extend slightly to prevent gaps
+        ImVec2 dir(p1.x - p0.x, p1.y - p0.y);
+        float  len = std::sqrt(dir.x*dir.x + dir.y*dir.y);
+        if (len > 0.0f)
+        {
+            float ext = thickness * 0.5f / len;
+            p0.x -= dir.x * ext;
+            p0.y -= dir.y * ext;
+            p1.x += dir.x * ext;
+            p1.y += dir.y * ext;
+        }
+
+        draw->AddLine(p0, p1, ColorToU32(color, masterAlpha), thickness);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SpeedoComputeSpeed
 // ---------------------------------------------------------------------------
@@ -195,62 +343,39 @@ static float SpeedoComputeSpeed()
 }
 
 // ---------------------------------------------------------------------------
-// DrawArcSegmented
+// DrawSpeedLabel
 // ---------------------------------------------------------------------------
-static void DrawArcSegmented(
-    ImDrawList*       draw,
-    ImVec2            center,
-    float             radius,
-    float             arcStart,
-    float             arcEnd,
-    float             arcFill,
-    const SpeedoStop* stops,
-    int               stopCount,
-    bool              smooth,
-    float             masterAlpha,
-    bool              isBg)
+static void DrawSpeedLabel(ImDrawList* draw, ImVec2 pos, float speed,
+                            const char* unitLabel, float masterAlpha)
 {
-    int   segs     = ArcSegments(radius, isBg ? SpeedoArcBgWidth : stops[stopCount-1].thickness);
-    float arcRange = arcEnd - arcStart;
-    float fillEnd  = arcStart + arcRange * arcFill;
+    char    buf[16];
+    snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
+    ImFont* font    = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
+    ImU32   textCol = IM_COL32(255, 255, 255, (int)(200 * masterAlpha));
 
-    for (int i = 0; i < segs; i++)
-    {
-        float t0 = static_cast<float>(i)     / segs;
-        float t1 = static_cast<float>(i + 1) / segs;
-        float a0 = arcStart + arcRange * t0;
-        float a1 = arcStart + arcRange * t1;
+    ImVec2 textSize = font
+        ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
+        : ImGui::CalcTextSize(buf);
 
-        if (a0 >= fillEnd) break;
-        if (a1 >  fillEnd) a1 = fillEnd;
+    ImVec2 drawPos(
+        pos.x - textSize.x * 0.5f + SpeedoLabelOffsetX,
+        pos.y + 8.0f + SpeedoLabelOffsetY);
 
-        ImVec2 p0(center.x + std::cos(a0) * radius, center.y + std::sin(a0) * radius);
-        ImVec2 p1(center.x + std::cos(a1) * radius, center.y + std::sin(a1) * radius);
+    if (font)
+        draw->AddText(font, font->FontSize, drawPos, textCol, buf);
+    else
+        draw->AddText(drawPos, textCol, buf);
+}
 
-        float color[4]; float thickness;
-        if (isBg)
-        {
-            color[0] = 0.31f; color[1] = 0.31f; color[2] = 0.31f; color[3] = 0.78f;
-            thickness = SpeedoArcBgWidth;
-        }
-        else
-        {
-            float tmid = (t0 + t1) * 0.5f;
-            SampleStops(stops, stopCount, tmid, smooth, color, thickness);
-        }
-
-        // Extend segment slightly to prevent gaps at high thickness
-        ImVec2 dir(p1.x - p0.x, p1.y - p0.y);
-        float  len = std::sqrt(dir.x*dir.x + dir.y*dir.y);
-        if (len > 0.0f)
-        {
-            float ext = thickness * 0.5f / len;
-            p1.x += dir.x * ext;
-            p1.y += dir.y * ext;
-        }
-
-        draw->AddLine(p0, p1, ColorToU32(color, masterAlpha), thickness);
-    }
+// ---------------------------------------------------------------------------
+// DrawEditMarkers
+// ---------------------------------------------------------------------------
+static void DrawEditMarkers(ImDrawList* draw, ImVec2 C_screen, ImVec2 P_screen)
+{
+    draw->AddCircleFilled(C_screen, 4.0f, IM_COL32(255, 200, 0, 255));
+    draw->AddText(ImVec2(C_screen.x + 6, C_screen.y - 8), IM_COL32(255, 200, 0, 255), "C");
+    draw->AddCircleFilled(P_screen, 4.0f, IM_COL32(255, 80, 80, 255));
+    draw->AddText(ImVec2(P_screen.x + 6, P_screen.y - 8), IM_COL32(255, 80, 80, 255), "P");
 }
 
 // ---------------------------------------------------------------------------
@@ -270,46 +395,106 @@ static void DrawSpeedoContent(
     float                                arcEnd,
     float                                arcMidAngle,
     float                                needleAngle,
-    bool                                 straightLine, 
+    bool                                 straightLine,
     bool                                 editMode)
 {
     ImVec2 C_screen = toScreen(0.0f, 0.0f);
     ImVec2 P_screen = toScreen(
         std::cos(axisAngleRad) * pDist,
         std::sin(axisAngleRad) * pDist);
-    
+
     SpeedoStop stops[4];
     int        stopCount = GatherStops(stops);
 
+    // =========================================================================
+    // STRAIGHT LINE FORK
+    // =========================================================================
     if (straightLine)
     {
         float perpAngle = axisAngleRad + PI * 0.5f;
         float halfLen   = SpeedoArcLength * 0.5f;
-    
-        ImVec2 lineStart = toScreen( std::cos(perpAngle) * halfLen,  std::sin(perpAngle) * halfLen);
-        ImVec2 lineEnd   = toScreen(-std::cos(perpAngle) * halfLen, -std::sin(perpAngle) * halfLen);
-    
-        draw->AddLine(lineStart, lineEnd,
-            IM_COL32(80, 80, 80, (int)(200 * SpeedoOpacity)), SpeedoArcBgWidth);
-    
-        ImVec2 fillEnd = toScreen(
-            std::cos(perpAngle) * halfLen * (1.0f - t * 2.0f),
-            std::sin(perpAngle) * halfLen * (1.0f - t * 2.0f));
-        draw->AddLine(lineEnd, fillEnd,
-            ColorToU32(stops[0].color, SpeedoOpacity), stops[0].thickness);
-    
-        if (SpeedoNeedleVisible)
-            draw->AddLine(P_screen, fillEnd,
-                IM_COL32(255, 255, 255, (int)(230 * SpeedoOpacity)), SpeedoNeedleWidth);
-    
-        return; // skip arc drawing below
+        float cosPerp   = std::cos(perpAngle);
+        float sinPerp   = std::sin(perpAngle);
+        float cosAxis   = std::cos(axisAngleRad);
+        float sinAxis   = std::sin(axisAngleRad);
+
+        // 0 = lineStart, 1 = lineEnd
+        auto linePoint = [&](float p) -> ImVec2 {
+            return toScreen(
+                cosPerp * halfLen * (p * 2.0f - 1.0f),
+                sinPerp * halfLen * (p * 2.0f - 1.0f));
+        };
+
+        // --- Background line ---
+        DrawLineSegmented(draw, linePoint, SpeedoArcLength, 1.0f,
+                          stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
+
+        // --- Decorative line (parallel offset) ---
+        if (SpeedoDecoLineEnabled)
+        {
+            float offX = std::sin(perpAngle) * SpeedoDecoLineOffset;
+            float offY = -std::cos(perpAngle) * SpeedoDecoLineOffset;
+            ImVec2 decoStart = toScreen( cosPerp * halfLen + offX,  sinPerp * halfLen + offY);
+            ImVec2 decoEnd   = toScreen(-cosPerp * halfLen + offX, -sinPerp * halfLen + offY);
+            draw->AddLine(decoStart, decoEnd, DecoColor(SpeedoOpacity), 1.0f);
+        }
+
+        // --- Filled sweep ---
+        if (t > 0.0f)
+            DrawLineSegmented(draw, linePoint, SpeedoArcLength, t,
+                              stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, false);
+
+        // --- Peak hold marker ---
+        if (SpeedoPeakHoldEnabled && peakT > 0.0f)
+        {
+            ImVec2 peakCenter = linePoint(peakT);
+            float  tickH      = SpeedoTickHeight * 0.5f;
+            ImVec2 pk0(peakCenter.x + cosAxis * tickH, peakCenter.y + sinAxis * tickH);
+            ImVec2 pk1(peakCenter.x - cosAxis * tickH, peakCenter.y - sinAxis * tickH);
+            draw->AddLine(pk0, pk1,
+                IM_COL32(255, 255, 255, (int)(200 * SpeedoOpacity)), 2.0f);
+        }
+
+        // --- Tick marks ---
+        if (SpeedoTicksEnabled)
+        {
+            float maxSpeed = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
+            float tickStep = std::fmax(SpeedoTickInterval, 1.0f);
+
+            for (float spd = tickStep; spd < maxSpeed; spd += tickStep)
+            {
+                float  tp      = spd / maxSpeed;
+                bool   isMajor = std::fmod(spd, std::fmax(SpeedoTickMajorInterval, 1.0f)) < 0.5f;
+                float  tickH   = (isMajor ? SpeedoTickHeight : SpeedoTickHeight * 0.6f) * 0.5f;
+                ImVec2 center  = linePoint(tp);
+                ImVec2 ti(center.x + cosAxis * tickH, center.y + sinAxis * tickH);
+                ImVec2 to(center.x - cosAxis * tickH, center.y - sinAxis * tickH);
+                draw->AddLine(ti, to,
+                    IM_COL32(255, 255, 255, (int)(180 * SpeedoOpacity)),
+                    isMajor ? 2.0f : 1.0f);
+            }
+        }
+
+        // --- Speed label ---
+        if (SpeedoLabelVisible)
+            DrawSpeedLabel(draw, toScreen(0.0f, 0.0f), speed, unitLabel, SpeedoOpacity);
+
+        // --- Edit mode markers ---
+        if (editMode)
+            DrawEditMarkers(draw, C_screen, P_screen);
+
+        return;
     }
 
-    // Background arc
+    // =========================================================================
+    // ARC FORK
+    // =========================================================================
+
+    // --- Background arc ---
     DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, 1.0f,
                      stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
 
-    // Decorative line
+    // --- Decorative arc ---
     if (SpeedoDecoLineEnabled)
     {
         float decoRadius = radius + SpeedoDecoLineOffset;
@@ -317,22 +502,16 @@ static void DrawSpeedoContent(
         {
             int segs = ArcSegments(decoRadius, 1.0f);
             draw->PathArcTo(C_screen, decoRadius, arcStart, arcEnd, segs);
-            draw->PathStroke(
-                IM_COL32(
-                    (int)(SpeedoDecoLineColor[0] * 255),
-                    (int)(SpeedoDecoLineColor[1] * 255),
-                    (int)(SpeedoDecoLineColor[2] * 255),
-                    (int)(SpeedoDecoLineColor[3] * SpeedoOpacity * 255)),
-                false, 1.0f);
+            draw->PathStroke(DecoColor(SpeedoOpacity), false, 1.0f);
         }
     }
 
-    // Filled sweep
+    // --- Filled sweep arc ---
     if (t > 0.0f)
         DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, t,
                          stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, false);
 
-    // Peak hold marker
+    // --- Peak hold marker ---
     if (SpeedoPeakHoldEnabled && peakT > 0.0f)
     {
         float  peakAngle = arcStart + peakT * (arcEnd - arcStart);
@@ -346,80 +525,53 @@ static void DrawSpeedoContent(
             IM_COL32(255, 255, 255, (int)(200 * SpeedoOpacity)), 2.0f);
     }
 
-    // Tick marks
+    // --- Tick marks ---
     if (SpeedoTicksEnabled)
     {
         float maxSpeed = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
         float arcRange = arcEnd - arcStart;
+        float tickStep = std::fmax(SpeedoTickInterval, 1.0f);
 
-        for (float spd = SpeedoTickInterval; spd < maxSpeed; spd += SpeedoTickInterval)
+        for (float spd = tickStep; spd < maxSpeed; spd += tickStep)
         {
-            float tp         = spd / maxSpeed;
-            float tickAngle  = arcStart + tp * arcRange;
-            bool  isMajor    = std::fmod(spd, SpeedoTickMajorInterval) < 0.5f;
-            float tickH      = isMajor ? SpeedoTickHeight : SpeedoTickHeight * 0.6f;
-            float tickW      = isMajor ? 1.5f  : 1.5f  * 0.7f;
-            float innerR     = radius - tickH * 0.5f;
-            float outerR     = radius + tickH * 0.5f;
-
+            float  tp        = spd / maxSpeed;
+            float  tickAngle = arcStart + tp * arcRange;
+            bool   isMajor   = std::fmod(spd, std::fmax(SpeedoTickMajorInterval, 1.0f)) < 0.5f;
+            float  tickH     = isMajor ? SpeedoTickHeight : SpeedoTickHeight * 0.6f;
+            float  innerR    = radius - tickH * 0.5f;
+            float  outerR    = radius + tickH * 0.5f;
             ImVec2 ti(C_screen.x + std::cos(tickAngle) * innerR,
                       C_screen.y + std::sin(tickAngle) * innerR);
             ImVec2 to(C_screen.x + std::cos(tickAngle) * outerR,
                       C_screen.y + std::sin(tickAngle) * outerR);
             draw->AddLine(ti, to,
-                IM_COL32(255, 255, 255, (int)(180 * SpeedoOpacity)), tickW);
+                IM_COL32(255, 255, 255, (int)(180 * SpeedoOpacity)),
+                isMajor ? 2.0f : 1.0f);
         }
     }
 
-    // Needle
+    // --- Needle ---
     if (SpeedoNeedleVisible)
     {
         ImVec2 needleTip(
             C_screen.x + std::cos(needleAngle) * radius,
             C_screen.y + std::sin(needleAngle) * radius);
         draw->AddLine(P_screen, needleTip,
-            IM_COL32(255, 255, 255, (int)(230 * SpeedoOpacity)),
-            SpeedoNeedleWidth);
+            IM_COL32(255, 255, 255, (int)(230 * SpeedoOpacity)), SpeedoNeedleWidth);
     }
 
-    // Speed label
+    // --- Speed label ---
     if (SpeedoLabelVisible)
     {
-        char    buf[16];
-        snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
-
-        ImFont* font = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
-
         ImVec2 apex = toScreen(
             std::cos(arcMidAngle) * radius,
             std::sin(arcMidAngle) * radius);
-
-        ImU32 textCol = IM_COL32(255, 255, 255, (int)(200 * SpeedoOpacity));
-
-        if (font)
-        {
-            ImVec2 textSize = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf);
-            draw->AddText(font, font->FontSize,
-                ImVec2(apex.x - textSize.x * 0.5f, apex.y + 8.0f),
-                textCol, buf);
-        }
-        else
-        {
-            ImVec2 textSize = ImGui::CalcTextSize(buf);
-            draw->AddText(
-                ImVec2(apex.x - textSize.x * 0.5f, apex.y + 8.0f),
-                textCol, buf);
-        }
+        DrawSpeedLabel(draw, apex, speed, unitLabel, SpeedoOpacity);
     }
 
-    // Edit mode markers
+    // --- Edit mode markers ---
     if (editMode)
-    {
-        draw->AddCircleFilled(C_screen, 4.0f, IM_COL32(255, 200, 0, 255));
-        draw->AddText(ImVec2(C_screen.x + 6, C_screen.y - 8), IM_COL32(255, 200, 0, 255), "C");
-        draw->AddCircleFilled(P_screen, 4.0f, IM_COL32(255, 80, 80, 255));
-        draw->AddText(ImVec2(P_screen.x + 6, P_screen.y - 8), IM_COL32(255, 80, 80, 255), "P");
-    }
+        DrawEditMarkers(draw, C_screen, P_screen);
 }
 
 // ---------------------------------------------------------------------------
@@ -429,10 +581,10 @@ void RenderSpeedoWindow()
 {
     if (!ShowSpeedo) return;
 
-    // Sanitize settings — guard against manual text entry or bad ini values
+    // Sanitize settings
     SpeedoArcAngle          = std::fmax(SpeedoArcAngle,          0.0f);
     SpeedoArcLength         = std::fmax(SpeedoArcLength,         1.0f);
-    SpeedoOpacity           = std::fmin(std::fmax(SpeedoOpacity,  0.0f),  1.0f);
+    SpeedoOpacity           = std::fmin(std::fmax(SpeedoOpacity,  0.0f), 1.0f);
     SpeedoNeedleWidth       = std::fmax(SpeedoNeedleWidth,       0.1f);
     SpeedoArcBgWidth        = std::fmax(SpeedoArcBgWidth,        0.1f);
     SpeedoStop1Thickness    = std::fmax(SpeedoStop1Thickness,    0.1f);
@@ -506,7 +658,6 @@ void RenderSpeedoWindow()
     }
 
     // Geometry
-    static constexpr float STRAIGHT_LINE_THRESHOLD = 1.0f;
     bool  straightLine = SpeedoArcAngle < STRAIGHT_LINE_THRESHOLD;
     float axisAngleRad = SpeedoAngle * DEG_TO_RAD;
     float arcAngleRad  = 0.0f;
@@ -516,45 +667,80 @@ void RenderSpeedoWindow()
     float arcStart     = 0.0f;
     float arcEnd       = 0.0f;
     float needleAngle  = 0.0f;
-    
+
     if (!straightLine)
     {
-        arcAngleRad = std::fmin(SpeedoArcAngle * DEG_TO_RAD, TWO_PI * 0.999f);
-        radius      = SpeedoArcLength / arcAngleRad;
+        arcAngleRad    = std::fmin(SpeedoArcAngle * DEG_TO_RAD, TWO_PI * 0.999f);
+        radius         = SpeedoArcLength / arcAngleRad;
         float maxPDist = std::fmin(200.0f, radius);
-        pDist       = radius - std::fmin(SpeedoPDistance, maxPDist);
-        arcStart    = axisAngleRad - arcAngleRad * 0.5f;
-        arcEnd      = axisAngleRad + arcAngleRad * 0.5f;
-        needleAngle = arcStart + t * (arcEnd - arcStart);
+        pDist          = radius - std::fmin(SpeedoPDistance, maxPDist);
+        arcStart       = axisAngleRad - arcAngleRad * 0.5f;
+        arcEnd         = axisAngleRad + arcAngleRad * 0.5f;
+        needleAngle    = arcStart + t * (arcEnd - arcStart);
     }
 
     ImVec2 P_local(
         std::cos(axisAngleRad) * pDist,
         std::sin(axisAngleRad) * pDist);
 
-    // Bounding box — include deco line and tick overhang
-    const float padding    = 8.0f;
-    float       bboxExtra  = SpeedoTicksEnabled ? SpeedoTickHeight * 0.5f + 2.0f : 0.0f;
+    // Bounding box
+    const float padding   = 8.0f;
+    float       bboxExtra = SpeedoTicksEnabled ? SpeedoTickHeight * 0.5f + 2.0f : 0.0f;
     if (SpeedoDecoLineEnabled)
         bboxExtra = std::fmax(bboxExtra, std::fabs(SpeedoDecoLineOffset) + 2.0f);
-    float bboxRadius = radius + bboxExtra;
 
     float minX =  1e9f, minY =  1e9f;
     float maxX = -1e9f, maxY = -1e9f;
-    int   bboxSegs = ArcSegments(bboxRadius, 1.0f);
-    for (int i = 0; i <= bboxSegs; i++)
-    {
-        float a = arcStart + (arcEnd - arcStart) * static_cast<float>(i) / bboxSegs;
-        float x = std::cos(a) * bboxRadius;
-        float y = std::sin(a) * bboxRadius;
-        minX = std::min(minX, x); minY = std::min(minY, y);
-        maxX = std::max(maxX, x); maxY = std::max(maxY, y);
-    }
-    minX = std::min(minX, P_local.x); minY = std::min(minY, P_local.y);
-    maxX = std::max(maxX, P_local.x); maxY = std::max(maxY, P_local.y);
 
-    float windowW = (maxX - minX) + padding * 2.0f;
-    float windowH = (maxY - minY) + padding * 2.0f;
+    if (straightLine)
+    {
+        float perpAngle = axisAngleRad + PI * 0.5f;
+        float halfLen   = SpeedoArcLength * 0.5f + bboxExtra;
+        float tickOff   = SpeedoTicksEnabled ? SpeedoTickHeight * 0.5f : 0.0f;
+        float cosPerp   = std::cos(perpAngle);
+        float sinPerp   = std::sin(perpAngle);
+        minX = std::min({ -std::abs(cosPerp * halfLen), P_local.x, -tickOff });
+        minY = std::min({ -std::abs(sinPerp * halfLen), P_local.y, -tickOff });
+        maxX = std::max({  std::abs(cosPerp * halfLen), P_local.x,  tickOff });
+        maxY = std::max({  std::abs(sinPerp * halfLen), P_local.y,  tickOff });
+    }
+    else
+    {
+        float bboxRadius = radius + bboxExtra;
+        int   bboxSegs   = ArcSegments(bboxRadius, 1.0f);
+        for (int i = 0; i <= bboxSegs; i++)
+        {
+            float a = arcStart + (arcEnd - arcStart) * static_cast<float>(i) / bboxSegs;
+            float x = std::cos(a) * bboxRadius;
+            float y = std::sin(a) * bboxRadius;
+            minX = std::min(minX, x); minY = std::min(minY, y);
+            maxX = std::max(maxX, x); maxY = std::max(maxY, y);
+        }
+        minX = std::min(minX, P_local.x); minY = std::min(minY, P_local.y);
+        maxX = std::max(maxX, P_local.x); maxY = std::max(maxY, P_local.y);
+    }
+
+    if (SpeedoLabelVisible)
+    {
+        float labelX, labelY;
+        if (straightLine)
+        {
+            labelX = SpeedoLabelOffsetX;
+            labelY = 8.0f + SpeedoLabelOffsetY;
+        }
+        else
+        {
+            labelX = std::cos(arcMidAngle) * radius + SpeedoLabelOffsetX;
+            labelY = std::sin(arcMidAngle) * radius + 8.0f + SpeedoLabelOffsetY;
+        }
+        minX = std::min(minX, labelX - 50.0f);
+        minY = std::min(minY, labelY);
+        maxX = std::max(maxX, labelX + 50.0f);
+        maxY = std::max(maxY, labelY + 20.0f);
+    }
+
+    float windowW = std::fmax((maxX - minX) + padding * 2.0f, 1.0f);
+    float windowH = std::fmax((maxY - minY) + padding * 2.0f, 1.0f);
     float offsetX = -minX + padding;
     float offsetY = -minY + padding;
 
