@@ -209,6 +209,15 @@ bool                            InCombat = false;
 std::vector<SquadCombatEntry>   CombatEntries = {};
 std::mutex                      CombatEntriesMutex;
 std::vector<SqCombatStartEvent> SqCombatStartEvents;
+std::vector<ApiDelayedEvent>    ApiDelayedEvents;
+uint32_t                        StatechangeFreqLocal[256] = {};
+uint32_t                        StatechangeFreqSquad[256] = {};
+
+void StatechangeFreq_Clear()
+{
+    memset(StatechangeFreqLocal, 0, sizeof(StatechangeFreqLocal));
+    memset(StatechangeFreqSquad, 0, sizeof(StatechangeFreqSquad));
+}
 
 // ---------------------------------------------------------------------------
 // ApplyFractalRota

@@ -107,7 +107,7 @@ SETTING_ARRAY (CrashMode,   CMDigitOverlay,         3,     ARR( 0.9f,  0.0f,  0.
 
 // General
 SETTING(Speedo, ShowSpeedo,          bool,  false)
-SETTING(Speedo, SpeedUnitMph,        bool,  false)
+SETTING(Speedo, SpeedUnit,           int,   0)  // 0=km/h, 1=mph, 2=u/s, 3=none(km/h scale)
 SETTING(Speedo, SpeedoTachometer,    bool,  false)
 SETTING(Speedo, SpeedoEditMode,      bool,  false)
 SETTING(Speedo, SpeedoOpacity,       float, 1.0f)
@@ -163,8 +163,8 @@ SETTING(Speedo, SpeedoTickHeight,        float, 8.0f)
 SETTING(Speedo, SpeedoLabelVisible, bool,   true)
 SETTING_STRING (Speedo, SpeedoFontName, "")
 SETTING(Speedo, SpeedoFontSize,     float,  24.0f)
-SETTING(Speedo, SpeedoLabelOffsetX, float, 0.0f)
-SETTING(Speedo, SpeedoLabelOffsetY, float, 0.0f)
+SETTING(Speedo, SpeedoLabelX,       float,  100.0f)
+SETTING(Speedo, SpeedoLabelY,       float,  300.0f)
 
 // Physics
 SETTING(Speedo, SpeedoSpringK,  float, 12.0f)
@@ -174,3 +174,17 @@ SETTING(Speedo, SpeedoDamping,  float, 6.0f)
 // Bit 0 = unmounted, bits 1-10 = mount order from EMountIndex
 // -1 (all bits set) means "show on all", 0 means "controlled only by ShowSpeedo"
 SETTING(Speedo, SpeedoMountMask, int, -1)
+
+// Face texture
+SETTING       (Speedo, SpeedoFaceEnabled,  bool,  false)
+SETTING_STRING(Speedo, SpeedoFacePath,     "")
+SETTING       (Speedo, SpeedoFaceX,        float, 100.0f)
+SETTING       (Speedo, SpeedoFaceY,        float, 100.0f)
+SETTING       (Speedo, SpeedoFaceScale,    float, 1.0f)
+
+// Needle texture
+SETTING       (Speedo, SpeedoNeedleTexEnabled,     bool,  false)
+SETTING_STRING(Speedo, SpeedoNeedleTexPath,        "")
+SETTING       (Speedo, SpeedoNeedleTexAxisOffset,  float, 0.0f)
+SETTING       (Speedo, SpeedoNeedleTexScale,       float, 1.0f)
+SETTING       (Speedo, SpeedoNeedleTexAngleOffset, float, 0.0f)

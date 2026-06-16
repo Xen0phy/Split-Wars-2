@@ -47,6 +47,22 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
         return;
     }
 
+    // -----------------------------------------------------------------------
+    // Catch-all frequency counter.
+    // Incremented for EVERY event before any specific handler runs, so the
+    // debug dump can show exactly which IsStatechange values the Nexus bridge
+    // actually delivers — including any that we have no handler for yet.
+    // This is how we confirm whether CBTS_APIDELAYED (or any other type) ever
+    // arrives, without having to add a named handler for each candidate first.
+    // -----------------------------------------------------------------------
+    {
+        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+        if (isLocal)
+            StatechangeFreqLocal[data->ev->IsStatechange]++;
+        else
+            StatechangeFreqSquad[data->ev->IsStatechange]++;
+    }
+
     if (data->ev->IsStatechange == ArcDPS::CBTS_SQCOMBATSTART)
     {
         SqCombatStartEvent ev = {};
@@ -125,6 +141,54 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
         if (RewardEvents.size() >= 20)
             RewardEvents.erase(RewardEvents.begin());
         RewardEvents.push_back(ev);
+        return;
+    }
+
+    // -----------------------------------------------------------------------
+    // APIDELAYED — capture every field verbatim.
+    // ArcDPS fires one of these per event it deemed unsafe for realtime,
+    // delivered after squad combat ends.  The field that carries the original
+    // ECombatStateChange is undocumented; storing everything lets the debug
+    // dump reveal it by inspection across a post-combat burst.
+    // Capped at 50 to survive a full post-combat flush without runaway alloc.
+    // -----------------------------------------------------------------------
+    if (data->ev->IsStatechange == ArcDPS::CBTS_APIDELAYED)
+    {
+        ApiDelayedEvent ev = {};
+        ev.ArcTime               = data->ev->Time;
+        ev.LocalTime             = GetTickCount64();
+        ev.SourceAgent           = data->ev->SourceAgent;
+        ev.DestinationAgent      = data->ev->DestinationAgent;
+        ev.Value                 = data->ev->Value;
+        ev.BuffDamage            = data->ev->BuffDamage;
+        ev.OverstackValue        = data->ev->OverstackValue;
+        ev.SkillID               = data->ev->SkillID;
+        ev.SourceInstanceID      = data->ev->SourceInstanceID;
+        ev.DestinationInstanceID = data->ev->DestinationInstanceID;
+        ev.SrcMasterInstanceID   = data->ev->SrcMasterInstanceID;
+        ev.DstMasterInstanceID   = data->ev->DestinationMasterInstanceID;
+        ev.IFF                   = data->ev->IFF;
+        ev.Buff                  = data->ev->Buff;
+        ev.Result                = data->ev->Result;
+        ev.IsActivation          = data->ev->IsActivation;
+        ev.IsBuffRemove          = data->ev->IsBuffRemove;
+        ev.IsNinety              = data->ev->IsNinety;
+        ev.IsFifty               = data->ev->IsFifty;
+        ev.IsMoving              = data->ev->IsMoving;
+        ev.IsStatechange         = data->ev->IsStatechange;
+        ev.IsFlanking            = data->ev->IsFlanking;
+        ev.IsShields             = data->ev->IsShields;
+        ev.IsOffcycle            = data->ev->IsOffcycle;
+        ev.PAD61                 = data->ev->PAD61;
+        ev.PAD62                 = data->ev->PAD62;
+        ev.PAD63                 = data->ev->PAD63;
+        ev.PAD64                 = data->ev->PAD64;
+        ev.IsLocal               = isLocal;
+
+        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+        if (ApiDelayedEvents.size() >= 50)
+            ApiDelayedEvents.erase(ApiDelayedEvents.begin());
+        ApiDelayedEvents.push_back(ev);
         return;
     }
 

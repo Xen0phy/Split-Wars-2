@@ -24,4 +24,12 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 void RenderSpeedoWindow();
+
+// Returns the sorted list of PNG/JPG filenames in the textures folder.
+// Call ScanTextureFiles() to refresh after adding new files.
+const std::vector<std::string>& GetSpeedoTextureNames();
+void ScanTextureFiles();

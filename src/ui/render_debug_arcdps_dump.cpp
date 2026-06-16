@@ -18,6 +18,7 @@
 //     when decoding raw values arriving in combat-event callbacks.
 
 #include "render_shared.h" // IWYU pragma: keep
+#include <unordered_map>
 #include <windows.h>
 
 // ---------------------------------------------------------------------------
@@ -423,6 +424,262 @@ void RenderArcDPSDump()
 
                 ImGui::EndTable();
             }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Statechange frequency table — catch-all diagnostic
+    //
+    // Every combat event increments a slot in StatechangeFreqLocal[256] or
+    // StatechangeFreqSquad[256] BEFORE any specific handler runs, so this
+    // table shows the complete picture of what the Nexus bridge actually
+    // delivers — including values we have no named handler for.
+    //
+    // How to use:
+    //   1. Fight a few bosses with the debug window open.
+    //   2. Check this table after combat ends.
+    //   3. Any row with a non-zero count that appears only post-combat
+    //      (i.e. not seen mid-fight) is a candidate for CBTS_APIDELAYED
+    //      or another delayed delivery mechanism.
+    //   4. Rows coloured orange are values not present in our CBTS enum —
+    //      those are the most interesting unknowns.
+    // -------------------------------------------------------------------------
+    if (ImGui::CollapsingHeader("Statechange Frequency (catch-all)"))
+    {
+        if (ImGui::Button("Clear##scfreq"))
+        {
+            std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+            StatechangeFreq_Clear();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Counts every IsStatechange byte delivered by the Nexus bridge.");
+
+        // Map raw uint8 values to a display name where we know them.
+        // Values not in this table show as "??" in orange.
+        static const std::unordered_map<uint8_t, const char*> kCBTSNames = {
+            {0,  "NONE"},          {1,  "ENTERCOMBAT"},  {2,  "EXITCOMBAT"},
+            {3,  "CHANGEUP"},      {4,  "CHANGEDEAD"},   {5,  "CHANGEDOWN"},
+            {6,  "SPAWN"},         {7,  "DESPAWN"},      {8,  "HEALTHPCTUPDATE"},
+            {9,  "LOGSTART"},      {10, "LOGEND"},       {11, "WEAPSWAP"},
+            {12, "MAXHEALTHUPDATE"},{13,"POINTOFVIEW"},  {14, "LANGUAGE"},
+            {15, "GWBUILD"},       {16, "SHARDID"},      {17, "REWARD"},
+            {18, "BUFFAPPLY"},     {19, "BUFFREMOVE"},   {20, "ACTIVATION"},
+            {21, "BUFFACTIVE"},    {22, "BUFFFORMULA"},  {23, "TAGCHANGE"},
+            {24, "STACKACTIVE"},   {25, "STACKRESET"},   {26, "GUILD"},
+            {27, "BUFFINFO"},      {28, "BUFFFORMULA2"}, {29, "DEBUGNAME"},
+            {30, "DOGTAG"},        {31, "STATSRESET"},   {32, "RETIREMENT"},
+            {33, "SPAWN2"},        {34, "BREAKBARSTATE"},{35, "BREAKBARPERCENT"},
+            {36, "ERRORCODE"},     {37, "APIDELAYED"},   {38, "TICKRATE"},
+            {39, "LAST90BEFOREDOWN"},{40,"EFFECT"},      {41, "IDTOSKILL"},
+            {42, "UNKNOWN42"},     {43, "UNKNOWN43"},
+        };
+        // Also surface the numeric value ArcDPS.h assigns to CBTS_APIDELAYED
+        // in this build so we can cross-check against what actually arrives.
+        ImGui::TextDisabled("CBTS_APIDELAYED in this ArcDPS.h = %u",
+            (unsigned)ArcDPS::CBTS_APIDELAYED);
+
+        ImGui::Spacing();
+
+        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+
+        // Build a list of only the rows with at least one hit, plus always
+        // show CBTS_APIDELAYED so its zero is visible and not buried.
+        constexpr ImGuiTableFlags tflags =
+            ImGuiTableFlags_Borders        |
+            ImGuiTableFlags_SizingFixedFit |
+            ImGuiTableFlags_RowBg;
+
+        if (ImGui::BeginTable("##scfreq", 4, tflags))
+        {
+            ImGui::TableSetupColumn("Val",   ImGuiTableColumnFlags_WidthFixed, 34.f);
+            ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthFixed, 160.f);
+            ImGui::TableSetupColumn("LOCAL", ImGuiTableColumnFlags_WidthFixed, 64.f);
+            ImGui::TableSetupColumn("SQUAD", ImGuiTableColumnFlags_WidthFixed, 64.f);
+            ImGui::TableHeadersRow();
+
+            for (int i = 0; i < 256; i++)
+            {
+                uint32_t loc = StatechangeFreqLocal[i];
+                uint32_t sqd = StatechangeFreqSquad[i];
+                bool isApidelayed = (i == (int)ArcDPS::CBTS_APIDELAYED);
+
+                // Show rows that have hits, or always show APIDELAYED slot
+                if (loc == 0 && sqd == 0 && !isApidelayed)
+                    continue;
+
+                auto it = kCBTSNames.find((uint8_t)i);
+                bool known = (it != kCBTSNames.end());
+                const char* name = known ? it->second : "??";
+
+                // Unknown values → orange; APIDELAYED at zero → grey; else white
+                ImVec4 nameColor;
+                if (!known)
+                    nameColor = ImVec4(1.0f, 0.5f, 0.1f, 1.0f); // orange = unknown
+                else if (isApidelayed && loc == 0 && sqd == 0)
+                    nameColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f); // grey = expected but absent
+                else
+                    nameColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::TextColored(nameColor, "%d", i);
+                ImGui::TableSetColumnIndex(1); ImGui::TextColored(nameColor, "%s", name);
+                ImGui::TableSetColumnIndex(2);
+                if (loc > 0) ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "%u", loc);
+                else         ImGui::TextDisabled("0");
+                ImGui::TableSetColumnIndex(3);
+                if (sqd > 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "%u", sqd);
+                else         ImGui::TextDisabled("0");
+            }
+
+            ImGui::EndTable();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // APIDELAYED — forensic field dump
+    //
+    // CBTS_APIDELAYED (realtime: yes) fires once per event that ArcDPS deemed
+    // unsafe for realtime, delivered in a burst after squad combat ends.
+    // The EVTC spec says CBTS_HEALTHPCTUPDATE (value 8) comes through this
+    // channel, which would give us an exact kill timestamp post-combat.
+    //
+    // The problem: the field that carries the *original* ECombatStateChange is
+    // not documented.  This table dumps every byte of every APIDELAYED event
+    // so we can identify the pattern by inspection:
+    //   • Look for a column where a value of 8 (CBTS_HEALTHPCTUPDATE) appears
+    //     consistently alongside DestinationAgent == 0 (= 0% * 10000).
+    //   • Candidates: Value (int32), IFF, Buff, Result, IsActivation,
+    //     IsBuffRemove, IsNinety, IsFifty, IsMoving, IsFlanking, PAD61-64.
+    //   • Fields matching any known CBTS value are highlighted in yellow.
+    // -------------------------------------------------------------------------
+    if (ImGui::CollapsingHeader("APIDELAYED (forensic)"))
+    {
+        if (ImGui::Button("Clear##apidelayed"))
+        {
+            std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+            ApiDelayedEvents.clear();
+        }
+
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%zu / 50 slots used)", ApiDelayedEvents.size());
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.3f, 1.0f), "Yellow");
+        ImGui::SameLine();
+        ImGui::TextDisabled("= field value matches a CBTS constant");
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("Looking for: a column that shows 8 (CBTS_HEALTHPCTUPDATE) when DstAgent == 0.");
+        ImGui::Spacing();
+
+        // Helper: return yellow if a byte value matches any ECombatStateChange
+        // that is interesting (non-zero, not CBTS_UNKNOWN), white otherwise.
+        auto SCHighlight = [](uint8_t v) -> ImVec4 {
+            if (v == 0) return ImVec4(1,1,1,1);
+            // Any plausible SC value 1..57 that isn't CBTS_NONE/CBTS_UNKNOWN
+            if (v >= 1 && v <= (uint8_t)ArcDPS::CBTS_STUNBREAK)
+                return ImVec4(1.0f, 1.0f, 0.3f, 1.0f); // yellow
+            return ImVec4(1,1,1,1);
+        };
+
+        std::lock_guard<std::mutex> lock(CombatEntriesMutex);
+
+        if (ApiDelayedEvents.empty())
+        {
+            ImGui::TextDisabled("No APIDELAYED events captured yet — fight a boss, then exit combat.");
+        }
+        else
+        {
+            // Outer child with horizontal scroll so the wide table doesn't clip
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
+            if (ImGui::BeginChild("##apidelayed_scroll", ImVec2(0, 320), true,
+                ImGuiWindowFlags_HorizontalScrollbar))
+            {
+                constexpr ImGuiTableFlags tflags =
+                    ImGuiTableFlags_Borders        |
+                    ImGuiTableFlags_SizingFixedFit |
+                    ImGuiTableFlags_ScrollX        |
+                    ImGuiTableFlags_RowBg;
+
+                // 24 columns: #, Src, ArcTime, Offset, SrcInst, DstInst, DstAgent(hex),
+                //             Value, SkillID, IFF, Buff, Result, IsAct, IsBufRm,
+                //             IsNinety, IsFifty, IsMoving, IsFlanking, IsShields,
+                //             IsOffcycle, PAD61, PAD62, PAD63, PAD64
+                if (ImGui::BeginTable("##apidelayed_table", 24, tflags))
+                {
+                    ImGui::TableSetupScrollFreeze(1, 1); // keep # column and header visible
+                    ImGui::TableSetupColumn("#",          ImGuiTableColumnFlags_WidthFixed, 30.f);
+                    ImGui::TableSetupColumn("Src",        ImGuiTableColumnFlags_WidthFixed, 46.f);
+                    ImGui::TableSetupColumn("ArcTime",    ImGuiTableColumnFlags_WidthFixed, 90.f);
+                    ImGui::TableSetupColumn("Offset",     ImGuiTableColumnFlags_WidthFixed, 62.f);
+                    ImGui::TableSetupColumn("SrcInst",    ImGuiTableColumnFlags_WidthFixed, 56.f);
+                    ImGui::TableSetupColumn("DstInst",    ImGuiTableColumnFlags_WidthFixed, 56.f);
+                    ImGui::TableSetupColumn("DstAgent",   ImGuiTableColumnFlags_WidthFixed, 80.f);
+                    ImGui::TableSetupColumn("Value",      ImGuiTableColumnFlags_WidthFixed, 52.f);
+                    ImGui::TableSetupColumn("SkillID",    ImGuiTableColumnFlags_WidthFixed, 56.f);
+                    ImGui::TableSetupColumn("IFF",        ImGuiTableColumnFlags_WidthFixed, 34.f);
+                    ImGui::TableSetupColumn("Buff",       ImGuiTableColumnFlags_WidthFixed, 34.f);
+                    ImGui::TableSetupColumn("Result",     ImGuiTableColumnFlags_WidthFixed, 40.f);
+                    ImGui::TableSetupColumn("IsAct",      ImGuiTableColumnFlags_WidthFixed, 40.f);
+                    ImGui::TableSetupColumn("IsBufRm",    ImGuiTableColumnFlags_WidthFixed, 52.f);
+                    ImGui::TableSetupColumn("Is90",       ImGuiTableColumnFlags_WidthFixed, 34.f);
+                    ImGui::TableSetupColumn("Is50",       ImGuiTableColumnFlags_WidthFixed, 34.f);
+                    ImGui::TableSetupColumn("IsMov",      ImGuiTableColumnFlags_WidthFixed, 40.f);
+                    ImGui::TableSetupColumn("IsFlnk",     ImGuiTableColumnFlags_WidthFixed, 42.f);
+                    ImGui::TableSetupColumn("IsShld",     ImGuiTableColumnFlags_WidthFixed, 40.f);
+                    ImGui::TableSetupColumn("IsOff",      ImGuiTableColumnFlags_WidthFixed, 38.f);
+                    ImGui::TableSetupColumn("P61",        ImGuiTableColumnFlags_WidthFixed, 30.f);
+                    ImGui::TableSetupColumn("P62",        ImGuiTableColumnFlags_WidthFixed, 30.f);
+                    ImGui::TableSetupColumn("P63",        ImGuiTableColumnFlags_WidthFixed, 30.f);
+                    ImGui::TableSetupColumn("P64",        ImGuiTableColumnFlags_WidthFixed, 30.f);
+                    ImGui::TableHeadersRow();
+
+                    int idx = 0;
+                    for (auto& e : ApiDelayedEvents)
+                    {
+                        ImVec4 rowColor = e.IsLocal
+                            ? ImVec4(0.4f, 0.8f, 1.0f, 1.0f)
+                            : ImVec4(1.0f, 0.8f, 0.4f, 1.0f);
+
+                        // Highlight the DstAgent column when it is 0
+                        // (0% health = 0 * 10000 = 0) — the expected kill signal
+                        ImVec4 dstAgentColor = (e.DestinationAgent == 0)
+                            ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
+                            : rowColor;
+
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);  ImGui::TextColored(rowColor,    "%d",      idx++);
+                        ImGui::TableSetColumnIndex(1);  ImGui::TextColored(rowColor,    "%s",      e.IsLocal ? "LOC" : "SQD");
+                        ImGui::TableSetColumnIndex(2);  ImGui::TextColored(rowColor,    "%s",      FormatArcTime(e.ArcTime).c_str());
+                        ImGui::TableSetColumnIndex(3);  ImGui::TextColored(rowColor,    "%s",      FormatOffset(e.ArcTime, e.LocalTime).c_str());
+                        ImGui::TableSetColumnIndex(4);  ImGui::TextColored(rowColor,    "%u",      e.SourceInstanceID);
+                        ImGui::TableSetColumnIndex(5);  ImGui::TextColored(rowColor,    "%u",      e.DestinationInstanceID);
+                        ImGui::TableSetColumnIndex(6);  ImGui::TextColored(dstAgentColor, "%llX", (unsigned long long)e.DestinationAgent);
+                        ImGui::TableSetColumnIndex(7);  ImGui::TextColored(SCHighlight((uint8_t)e.Value), "%d", e.Value);
+                        ImGui::TableSetColumnIndex(8);  ImGui::TextColored(rowColor,    "%u",      e.SkillID);
+                        ImGui::TableSetColumnIndex(9);  ImGui::TextColored(SCHighlight(e.IFF),          "%u", e.IFF);
+                        ImGui::TableSetColumnIndex(10); ImGui::TextColored(SCHighlight(e.Buff),         "%u", e.Buff);
+                        ImGui::TableSetColumnIndex(11); ImGui::TextColored(SCHighlight(e.Result),       "%u", e.Result);
+                        ImGui::TableSetColumnIndex(12); ImGui::TextColored(SCHighlight(e.IsActivation), "%u", e.IsActivation);
+                        ImGui::TableSetColumnIndex(13); ImGui::TextColored(SCHighlight(e.IsBuffRemove), "%u", e.IsBuffRemove);
+                        ImGui::TableSetColumnIndex(14); ImGui::TextColored(SCHighlight(e.IsNinety),     "%u", e.IsNinety);
+                        ImGui::TableSetColumnIndex(15); ImGui::TextColored(SCHighlight(e.IsFifty),      "%u", e.IsFifty);
+                        ImGui::TableSetColumnIndex(16); ImGui::TextColored(SCHighlight(e.IsMoving),     "%u", e.IsMoving);
+                        ImGui::TableSetColumnIndex(17); ImGui::TextColored(SCHighlight(e.IsFlanking),   "%u", e.IsFlanking);
+                        ImGui::TableSetColumnIndex(18); ImGui::TextColored(SCHighlight(e.IsShields),    "%u", e.IsShields);
+                        ImGui::TableSetColumnIndex(19); ImGui::TextColored(SCHighlight(e.IsOffcycle),   "%u", e.IsOffcycle);
+                        ImGui::TableSetColumnIndex(20); ImGui::TextColored(SCHighlight(e.PAD61),        "%u", e.PAD61);
+                        ImGui::TableSetColumnIndex(21); ImGui::TextColored(SCHighlight(e.PAD62),        "%u", e.PAD62);
+                        ImGui::TableSetColumnIndex(22); ImGui::TextColored(SCHighlight(e.PAD63),        "%u", e.PAD63);
+                        ImGui::TableSetColumnIndex(23); ImGui::TextColored(SCHighlight(e.PAD64),        "%u", e.PAD64);
+                    }
+
+                    ImGui::EndTable();
+                }
+            }
+            ImGui::EndChild();
+            ImGui::PopStyleVar();
         }
     }
     {

@@ -585,8 +585,22 @@ void AddonOptions()
     
             if (!ShowSpeedo) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
             ImGui::TableSetColumnIndex(1);
-            ImGui::Checkbox("Speed Units", &SpeedUnitMph);
-            Tooltip("Toggle between km/h and mph.");
+            const char* unitItems[] = { "km/h", "mph", "u/s" };
+            ImGui::SetNextItemWidth(120.0f);
+            if (ImGui::BeginCombo("Speed Unit##speedunit", unitItems[SpeedUnit < 3 ? SpeedUnit : 0]))
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    if (ImGui::Selectable(unitItems[i], SpeedUnit == i))
+                    {
+                        SpeedUnit = i;
+                        SaveCurrentSettings();
+                    }
+                    if (SpeedUnit == i) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            Tooltip("u/s = game units per second (1 unit ≈ 1 inch).");
 
             // ── Row 2: Mount combo | Show Label + Reset Font ─────────────────
             ImGui::TableNextRow();
@@ -708,13 +722,8 @@ void AddonOptions()
             Tooltip("Makes the speedometer window draggable.");
     
             ImGui::TableSetColumnIndex(1);
-            if (!SpeedoLabelVisible) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-            ImGui::SetNextItemWidth(80.0f);
-            ImGui::DragFloat("##labelx", &SpeedoLabelOffsetX, 0.5f, -500.0f, 500.0f, "X:%.0f");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(80.0f);
-            ImGui::DragFloat("##labely", &SpeedoLabelOffsetY, 0.5f, -500.0f, 500.0f, "Y:%.0f");
-            if (!SpeedoLabelVisible) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            if (SpeedoLabelVisible)
+                ImGui::TextDisabled("Drag label in Edit Mode");
     
             // ── Separator ────────────────────────────────────────────────────
             ImGui::TableNextRow();
@@ -1053,6 +1062,106 @@ void AddonOptions()
                 ImGui::SetNextItemWidth(160.0f);
                 ImGui::DragFloat("Height##ticks",  &SpeedoTickHeight,        0.5f, 2.0f, 30.0f,  "%.0f px");
                 if (!SpeedoTicksEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                // ── Face Texture ─────────────────────────────────────────────
+                ImGui::Checkbox("Face Texture##facetex", &SpeedoFaceEnabled);
+                Tooltip("Load a gauge-face image. Position and scale it freely, then overlay the drawn arc on top for alignment.");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+
+                if (!SpeedoFaceEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+
+                {
+                    const auto& texNames = GetSpeedoTextureNames();
+                    const char* facePreview = SpeedoFacePath.empty() ? "None" : SpeedoFacePath.c_str();
+                    if (ImGui::BeginCombo("##facetexcombo", facePreview))
+                    {
+                        if (ImGui::Selectable("None", SpeedoFacePath.empty()))
+                        {
+                            SpeedoFacePath.clear();
+                            SaveCurrentSettings();
+                        }
+                        for (const auto& name : texNames)
+                        {
+                            bool sel = (SpeedoFacePath == name);
+                            if (ImGui::Selectable(name.c_str(), sel))
+                            {
+                                SpeedoFacePath = name;
+                                SaveCurrentSettings();
+                            }
+                            if (sel) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Refresh##facetex"))
+                        ScanTextureFiles();
+                    Tooltip("PNG/JPG files from addons/Split Wars 2/textures/. Hit Refresh after adding new files.");
+                }
+
+                ImGui::DragFloat("Scale##facescale", &SpeedoFaceScale, 0.01f, 0.01f, 10.0f, "%.2fx");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                Tooltip("Scale the face texture uniformly.");
+
+                ImGui::DragFloat("X##facex", &SpeedoFaceX, 1.0f, 0.0f, 4096.0f, "%.0f px");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                ImGui::DragFloat("Y##facey", &SpeedoFaceY, 1.0f, 0.0f, 4096.0f, "%.0f px");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                Tooltip("Position of the top-left corner of the face texture. In Edit Mode you can also drag it directly on screen.");
+
+                if (!SpeedoFaceEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+
+                ImGui::Spacing();
+
+                // ── Needle Texture ───────────────────────────────────────────
+                ImGui::Checkbox("Needle Texture##needletex", &SpeedoNeedleTexEnabled);
+                Tooltip("Load a needle image. It rotates around the drawn needle's pivot point P.");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+
+                if (!SpeedoNeedleTexEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+
+                {
+                    const auto& texNames = GetSpeedoTextureNames();
+                    const char* needlePreview = SpeedoNeedleTexPath.empty() ? "None" : SpeedoNeedleTexPath.c_str();
+                    if (ImGui::BeginCombo("##needletexcombo", needlePreview))
+                    {
+                        if (ImGui::Selectable("None", SpeedoNeedleTexPath.empty()))
+                        {
+                            SpeedoNeedleTexPath.clear();
+                            SaveCurrentSettings();
+                        }
+                        for (const auto& name : texNames)
+                        {
+                            bool sel = (SpeedoNeedleTexPath == name);
+                            if (ImGui::Selectable(name.c_str(), sel))
+                            {
+                                SpeedoNeedleTexPath = name;
+                                SaveCurrentSettings();
+                            }
+                            if (sel) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Refresh##needletex"))
+                        ScanTextureFiles();
+                    Tooltip("PNG/JPG files from addons/Split Wars 2/textures/. Hit Refresh after adding new files.");
+                }
+
+                ImGui::DragFloat("Scale##needlescale", &SpeedoNeedleTexScale, 0.01f, 0.01f, 10.0f, "%.2fx");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+
+                ImGui::DragFloat("Axis Offset##needleoffset", &SpeedoNeedleTexAxisOffset, 0.5f, -500.0f, 500.0f, "%.0f px");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                Tooltip("Shifts the texture along the needle axis. Use this to align the texture's own rotation centre with point P.");
+
+                ImGui::DragFloat("Angle Offset##needleangle", &SpeedoNeedleTexAngleOffset, 1.0f, -180.0f, 180.0f, "%.0f deg");
+                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                Tooltip("Rotates the texture relative to the needle angle. Use this to align the tip of your needle image with the drawn needle direction.");
+
+                if (!SpeedoNeedleTexEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
             }
 
             if (!SpeedoEditMode) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }

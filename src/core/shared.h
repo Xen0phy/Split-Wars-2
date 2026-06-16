@@ -258,6 +258,50 @@ struct SqCombatStartEvent {
     bool     IsLocal;
 };
 
+// ---------------------------------------------------------------------------
+// ApiDelayedEvent
+// ---------------------------------------------------------------------------
+// Captures every field of a CBTS_APIDELAYED combat event verbatim.
+// The internal layout of APIDELAYED is undocumented — ArcDPS delivers events
+// that were "unsafe for realtime" after squad combat ends, but which field
+// carries the original ECombatStateChange is unknown.
+// Storing everything lets the debug dump reveal the pattern across a burst of
+// post-combat events, making it possible to identify the right field by
+// inspection (e.g. Value == 8 would mean CBTS_HEALTHPCTUPDATE is in Value).
+// ---------------------------------------------------------------------------
+struct ApiDelayedEvent {
+    uint64_t ArcTime;
+    uint64_t LocalTime;
+    // Raw CombatEvent fields — every byte captured for forensic analysis
+    uint64_t SourceAgent;
+    uint64_t DestinationAgent;
+    int32_t  Value;
+    int32_t  BuffDamage;
+    uint32_t OverstackValue;
+    uint32_t SkillID;
+    uint16_t SourceInstanceID;
+    uint16_t DestinationInstanceID;
+    uint16_t SrcMasterInstanceID;
+    uint16_t DstMasterInstanceID;
+    uint8_t  IFF;
+    uint8_t  Buff;
+    uint8_t  Result;
+    uint8_t  IsActivation;
+    uint8_t  IsBuffRemove;
+    uint8_t  IsNinety;
+    uint8_t  IsFifty;
+    uint8_t  IsMoving;
+    uint8_t  IsStatechange; // always CBTS_APIDELAYED here; original SC is elsewhere
+    uint8_t  IsFlanking;
+    uint8_t  IsShields;
+    uint8_t  IsOffcycle;
+    uint8_t  PAD61;
+    uint8_t  PAD62;
+    uint8_t  PAD63;
+    uint8_t  PAD64;
+    bool     IsLocal;
+};
+
 extern std::vector<KillingBlowEvent>   KillingBlows;
 extern std::vector<RewardEvent>        RewardEvents;
 extern std::vector<LogNpcUpdateEvent>  LogNpcUpdateEvents;
@@ -267,6 +311,21 @@ extern bool                            InCombat;
 extern std::vector<SquadCombatEntry>   CombatEntries;
 extern std::mutex                      CombatEntriesMutex;
 extern std::vector<SqCombatStartEvent> SqCombatStartEvents;
+extern std::vector<ApiDelayedEvent>    ApiDelayedEvents;
+
+// ---------------------------------------------------------------------------
+// StatechangeFreq
+// ---------------------------------------------------------------------------
+// Catch-all frequency counters — one slot per possible uint8_t statechange
+// value (0-255), split by channel.  Every combat event increments the slot
+// for its raw IsStatechange byte before any specific handling runs, so the
+// render dump can show exactly which values the Nexus bridge delivers and
+// which never arrive (e.g. CBTS_APIDELAYED).  Protected by CombatEntriesMutex.
+// Call StatechangeFreq_Clear() to zero both arrays.
+// ---------------------------------------------------------------------------
+extern uint32_t StatechangeFreqLocal[256];
+extern uint32_t StatechangeFreqSquad[256];
+void            StatechangeFreq_Clear();
 
 // ---------------------------------------------------------------------------
 // Debug

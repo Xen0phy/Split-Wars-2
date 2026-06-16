@@ -27,6 +27,7 @@
 //
 // ────────────────────────────────────────────────────────────────────────────
 
+#include "imgui.h"
 #include "render_shared.h"
 #include "render_speedo.h"
 #include "stream_fonts.h"
@@ -37,12 +38,125 @@
 #include <functional>
 
 // ---------------------------------------------------------------------------
+// Texture state — loaded on demand when filenames change, never freed manually
+// (Nexus owns the lifetime).
+// ---------------------------------------------------------------------------
+static Texture_t* s_faceTexture         = nullptr;
+static std::string s_loadedFacePath;
+static Texture_t* s_needleTexture       = nullptr;
+static std::string s_loadedNeedleTexPath;
+
+// Cached list of PNG/JPG filenames found in the textures folder.
+static std::vector<std::string> s_textureNames;
+static bool                     s_textureNamesScanned = false;
+
+// Scan (or re-scan) the textures directory and rebuild s_textureNames.
+void ScanTextureFiles()
+{
+    s_textureNames.clear();
+    s_textureNamesScanned = true;
+
+    std::string texDir = std::string(APIDefs->Paths_GetAddonDirectory("Split Wars 2"))
+                         + "\\textures";
+
+    std::error_code ec;
+    for (auto& entry : std::filesystem::directory_iterator(texDir, ec))
+    {
+        if (!entry.is_regular_file(ec)) continue;
+        auto ext = entry.path().extension().string();
+        for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+            s_textureNames.push_back(entry.path().filename().string());
+    }
+    std::sort(s_textureNames.begin(), s_textureNames.end());
+}
+
+const std::vector<std::string>& GetSpeedoTextureNames()
+{
+    if (!s_textureNamesScanned)
+        ScanTextureFiles();
+    return s_textureNames;
+}
+
+// Reload textures when filenames change.
+// Files are resolved relative to <GW2>/addons/Split Wars 2/textures/.
+static void UpdateSpeedoTextures()
+{
+    // Build base path once — APIDefs->Paths_GetAddonDirectory returns a
+    // persistent string so it's safe to call every frame.
+    std::string texDir = std::string(APIDefs->Paths_GetAddonDirectory("Split Wars 2"))
+                         + "\\textures\\";
+
+    if (SpeedoFaceEnabled && !SpeedoFacePath.empty() &&
+        SpeedoFacePath != s_loadedFacePath)
+    {
+        std::string fullPath = texDir + SpeedoFacePath;
+        std::string id       = "SW2_SPEEDO_FACE_" + SpeedoFacePath;
+        s_faceTexture    = APIDefs->Textures_GetOrCreateFromFile(id.c_str(), fullPath.c_str());
+        s_loadedFacePath = SpeedoFacePath;
+    }
+    if (!SpeedoFaceEnabled)
+    {
+        s_faceTexture    = nullptr;
+        s_loadedFacePath.clear();
+    }
+
+    if (SpeedoNeedleTexEnabled && !SpeedoNeedleTexPath.empty() &&
+        SpeedoNeedleTexPath != s_loadedNeedleTexPath)
+    {
+        std::string fullPath = texDir + SpeedoNeedleTexPath;
+        std::string id       = "SW2_SPEEDO_NEEDLE_" + SpeedoNeedleTexPath;
+        s_needleTexture       = APIDefs->Textures_GetOrCreateFromFile(id.c_str(), fullPath.c_str());
+        s_loadedNeedleTexPath = SpeedoNeedleTexPath;
+    }
+    if (!SpeedoNeedleTexEnabled)
+    {
+        s_needleTexture       = nullptr;
+        s_loadedNeedleTexPath.clear();
+    }
+}
+
+// Draw a texture centred on (cx,cy), scaled and rotated by angleRad.
+// The texture is drawn as a quad with four rotated corners.
+static void DrawRotatedImage(
+    ImDrawList* draw,
+    ImTextureID texID,
+    float       cx, float cy,
+    float       w,  float h,
+    float       angleRad)
+{
+    float cosA = std::cos(angleRad);
+    float sinA = std::sin(angleRad);
+
+    float hw = w * 0.5f;
+    float hh = h * 0.5f;
+
+    // Four corners relative to centre, then rotated
+    auto rot = [&](float lx, float ly) -> ImVec2 {
+        return ImVec2(cx + lx * cosA - ly * sinA,
+                      cy + lx * sinA + ly * cosA);
+    };
+
+    ImVec2 tl = rot(-hw, -hh);
+    ImVec2 tr = rot( hw, -hh);
+    ImVec2 br = rot( hw,  hh);
+    ImVec2 bl = rot(-hw,  hh);
+
+    draw->AddImageQuad(texID,
+        tl, tr, br, bl,
+        ImVec2(0,0), ImVec2(1,0), ImVec2(1,1), ImVec2(0,1),
+        IM_COL32_WHITE);
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 static constexpr float MPS_TO_KMH              = 3.6f;
 static constexpr float MPS_TO_MPH              = 2.23694f;
+static constexpr float MPS_TO_UPS              = 1.0f / 0.0254f; // GW2: 1 unit = 1 inch
 static constexpr float MAX_SPEED_KMH           = 200.0f;
 static constexpr float MAX_SPEED_MPH           = MAX_SPEED_KMH / 1.60934f;
+static constexpr float MAX_SPEED_UPS           = MAX_SPEED_KMH / 3.6f * MPS_TO_UPS;
 static constexpr float DEG_TO_RAD              = 3.14159265f / 180.0f;
 static constexpr float PI                      = 3.14159265f;
 static constexpr float TWO_PI                  = 6.28318530f;
@@ -305,7 +419,9 @@ static float SpeedoComputeSpeed()
         float dy      = GS.PlayerY - s_prevY;
         float dz      = GS.PlayerZ - s_prevZ;
         float distMPS = std::sqrt(dx*dx + dy*dy + dz*dz) / static_cast<float>(dt);
-        float factor  = SpeedUnitMph ? MPS_TO_MPH : MPS_TO_KMH;
+        float factor  = (SpeedUnit == 1) ? MPS_TO_MPH
+                      : (SpeedUnit == 2) ? MPS_TO_UPS
+                      : MPS_TO_KMH;
         float raw     = distMPS * factor;
 
         auto cutoff = now - std::chrono::milliseconds(100);
@@ -336,7 +452,7 @@ static float SpeedoComputeSpeed()
 // ---------------------------------------------------------------------------
 // DrawSpeedLabel
 // ---------------------------------------------------------------------------
-static void DrawSpeedLabel(ImDrawList* draw, ImVec2 pos, float speed,
+static void DrawSpeedLabel(ImDrawList* draw, float speed,
                             const char* unitLabel, float masterAlpha)
 {
     char    buf[16];
@@ -349,8 +465,8 @@ static void DrawSpeedLabel(ImDrawList* draw, ImVec2 pos, float speed,
         : ImGui::CalcTextSize(buf);
 
     ImVec2 drawPos(
-        pos.x - textSize.x * 0.5f + SpeedoLabelOffsetX,
-        pos.y + 8.0f + SpeedoLabelOffsetY);
+        SpeedoLabelX - textSize.x * 0.5f,
+        SpeedoLabelY - textSize.y * 0.5f);
 
     if (font)
         draw->AddText(font, font->FontSize, drawPos, textCol, buf);
@@ -393,6 +509,11 @@ static void DrawSpeedoContent(
     ImVec2 P_screen = toScreen(
         std::cos(axisAngleRad) * pDist,
         std::sin(axisAngleRad) * pDist);
+
+    // =========================================================================
+    // FACE TEXTURE — drawn via GetBackgroundDrawList() in RenderSpeedoWindow,
+    // not here, so it is never clipped by the speedo window bounds.
+    // =========================================================================
 
     SpeedoStop stops[4];
     int        stopCount = GatherStops(stops);
@@ -439,7 +560,7 @@ static void DrawSpeedoContent(
         // --- Tick marks ---
         if (SpeedoTicksEnabled)
         {
-            float maxSpeed = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
+            float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;
             float tickStep = std::fmax(SpeedoTickInterval, 1.0f);
 
             for (float spd = tickStep; spd < maxSpeed; spd += tickStep)
@@ -455,10 +576,6 @@ static void DrawSpeedoContent(
                     isMajor ? 2.0f : 1.0f);
             }
         }
-
-        // --- Speed label ---
-        if (SpeedoLabelVisible)
-            DrawSpeedLabel(draw, toScreen(0.0f, 0.0f), speed, unitLabel, SpeedoOpacity);
 
         // --- Edit mode markers ---
         if (editMode)
@@ -497,7 +614,7 @@ static void DrawSpeedoContent(
     // --- Tick marks ---
     if (SpeedoTicksEnabled)
     {
-        float maxSpeed = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
+        float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;
         float arcRange = arcEnd - arcStart;
         float tickStep = std::fmax(SpeedoTickInterval, 1.0f);
 
@@ -529,13 +646,21 @@ static void DrawSpeedoContent(
             IM_COL32(255, 255, 255, (int)(230 * SpeedoOpacity)), SpeedoNeedleWidth);
     }
 
-    // --- Speed label ---
-    if (SpeedoLabelVisible)
+    // --- Needle texture ---
+    if (SpeedoNeedleTexEnabled && s_needleTexture && s_needleTexture->Resource)
     {
-        ImVec2 apex = toScreen(
-            std::cos(arcMidAngle) * radius,
-            std::sin(arcMidAngle) * radius);
-        DrawSpeedLabel(draw, apex, speed, unitLabel, SpeedoOpacity);
+        float w = s_needleTexture->Width  * SpeedoNeedleTexScale;
+        float h = s_needleTexture->Height * SpeedoNeedleTexScale;
+
+        // Pivot is P_screen. The texture is offset along the needle axis by
+        // SpeedoNeedleTexAxisOffset so the user can align the texture's own
+        // rotation centre with the drawn pivot point.
+        float cx = P_screen.x + std::cos(needleAngle) * SpeedoNeedleTexAxisOffset;
+        float cy = P_screen.y + std::sin(needleAngle) * SpeedoNeedleTexAxisOffset;
+
+        DrawRotatedImage(draw, (ImTextureID)s_needleTexture->Resource,
+                         cx, cy, w, h,
+                         needleAngle + SpeedoNeedleTexAngleOffset * DEG_TO_RAD);
     }
 
     // --- Edit mode markers ---
@@ -551,6 +676,8 @@ void RenderSpeedoWindow()
     if (!ShowSpeedo) return;
     if (!MumbleLink) return;
     if (MumbleLink->UITick == 0) return;
+
+    UpdateSpeedoTextures();
 
     // Mount visibility filter
     if (SpeedoMountMask != -1)
@@ -581,7 +708,7 @@ void RenderSpeedoWindow()
     SpeedoFontSize          = std::fmin(std::fmax(SpeedoFontSize, 16.0f), 48.0f);
 
     float speed    = SpeedoComputeSpeed();
-    float maxSpeed = SpeedUnitMph ? MAX_SPEED_MPH : MAX_SPEED_KMH;
+    float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;
     float t        = std::fmin(speed / maxSpeed, 1.0f);
 
     // Needle spring physics
@@ -618,13 +745,19 @@ void RenderSpeedoWindow()
         s_peakT = 0.0f;
     }
 
-    const char* unitLabel = SpeedUnitMph ? "mph" : "km/h";
+    const char* unitLabel = (SpeedUnit == 1) ? ""
+                          : (SpeedUnit == 2) ? ""
+                          : "";
+    maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH
+                   : (SpeedUnit == 2) ? MAX_SPEED_UPS
+                   : MAX_SPEED_KMH;
 
     // Numeric mode
     if (!SpeedoTachometer)
     {
         ImGui::SetNextWindowPos(ImVec2(10, 200), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowBgAlpha(0.6f);
+        ImGui::SetNextWindowSize(ImVec2(200.0f ,50.0f));
         ImGui::Begin("##speedo", nullptr,
             ImGuiWindowFlags_NoDecoration       |
             ImGuiWindowFlags_AlwaysAutoResize   |
@@ -696,25 +829,6 @@ void RenderSpeedoWindow()
         maxX = std::max(maxX, P_local.x); maxY = std::max(maxY, P_local.y);
     }
 
-    if (SpeedoLabelVisible)
-    {
-        float labelX, labelY;
-        if (straightLine)
-        {
-            labelX = SpeedoLabelOffsetX;
-            labelY = 8.0f + SpeedoLabelOffsetY;
-        }
-        else
-        {
-            labelX = std::cos(arcMidAngle) * radius + SpeedoLabelOffsetX;
-            labelY = std::sin(arcMidAngle) * radius + 8.0f + SpeedoLabelOffsetY;
-        }
-        minX = std::min(minX, labelX - 50.0f);
-        minY = std::min(minY, labelY);
-        maxX = std::max(maxX, labelX + 50.0f);
-        maxY = std::max(maxY, labelY + 20.0f);
-    }
-
     float windowW = std::fmax((maxX - minX) + padding * 2.0f, 1.0f);
     float windowH = std::fmax((maxY - minY) + padding * 2.0f, 1.0f);
     float offsetX = -minX + padding;
@@ -727,6 +841,58 @@ void RenderSpeedoWindow()
     auto toScreen = [&](float lx, float ly) -> ImVec2 {
         return ImVec2(wx + lx + offsetX, wy + ly + offsetY);
     };
+
+    // Face texture — always on background draw list so it's never clipped
+    if (SpeedoFaceEnabled && s_faceTexture && s_faceTexture->Resource)
+    {
+        float w = s_faceTexture->Width  * SpeedoFaceScale;
+        float h = s_faceTexture->Height * SpeedoFaceScale;
+        ImGui::GetBackgroundDrawList()->AddImage(
+            (ImTextureID)s_faceTexture->Resource,
+            ImVec2(SpeedoFaceX, SpeedoFaceY),
+            ImVec2(SpeedoFaceX + w, SpeedoFaceY + h));
+    }
+
+    // Speed label — independent window, always on background draw list
+    if (SpeedoLabelVisible)
+    {
+        DrawSpeedLabel(ImGui::GetBackgroundDrawList(), speed, unitLabel, SpeedoOpacity);
+
+        if (SpeedoEditMode)
+        {
+            // Estimate label size for the drag window
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
+            ImFont* font = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
+            ImVec2 textSize = font
+                ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
+                : ImGui::CalcTextSize(buf);
+            float lw = std::fmax(textSize.x + 8.0f, 40.0f);
+            float lh = std::fmax(textSize.y + 8.0f, 20.0f);
+
+            ImGui::SetNextWindowPos(ImVec2(SpeedoLabelX - lw * 0.5f, SpeedoLabelY - lh * 0.5f), ImGuiCond_Once);
+            ImGui::SetNextWindowSize(ImVec2(lw, lh), ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(0.3f);
+            ImGui::Begin("##speedo_label_drag", nullptr,
+                ImGuiWindowFlags_NoDecoration       |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoNav              |
+                ImGuiWindowFlags_NoScrollbar        |
+                ImGuiWindowFlags_NoScrollWithMouse  |
+                ImGuiWindowFlags_NoSavedSettings);
+
+            ImVec2 lPos = ImGui::GetWindowPos();
+            float newX = lPos.x + lw * 0.5f;
+            float newY = lPos.y + lh * 0.5f;
+            if (newX != SpeedoLabelX || newY != SpeedoLabelY)
+            {
+                SpeedoLabelX = newX;
+                SpeedoLabelY = newY;
+                SaveCurrentSettings();
+            }
+            ImGui::End();
+        }
+    }
 
     if (SpeedoEditMode)
     {
@@ -746,6 +912,35 @@ void RenderSpeedoWindow()
             SpeedoWindowX = pos.x;
             SpeedoWindowY = pos.y;
             SaveCurrentSettings();
+        }
+
+        // Face texture drag — handled outside the ImGui window so it can be
+        // anywhere on screen. We use an invisible ImGui window sized to the
+        // texture so the user can click and drag it independently.
+        if (SpeedoFaceEnabled && s_faceTexture && s_faceTexture->Resource)
+        {
+            float fw = s_faceTexture->Width  * SpeedoFaceScale;
+            float fh = s_faceTexture->Height * SpeedoFaceScale;
+
+            ImGui::SetNextWindowPos(ImVec2(SpeedoFaceX, SpeedoFaceY), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(fw, fh), ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(0.0f);
+            ImGui::Begin("##speedo_face_drag", nullptr,
+                ImGuiWindowFlags_NoDecoration       |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoNav              |
+                ImGuiWindowFlags_NoScrollbar        |
+                ImGuiWindowFlags_NoScrollWithMouse  |
+                ImGuiWindowFlags_NoSavedSettings);
+
+            ImVec2 facePos = ImGui::GetWindowPos();
+            if (facePos.x != SpeedoFaceX || facePos.y != SpeedoFaceY)
+            {
+                SpeedoFaceX = facePos.x;
+                SpeedoFaceY = facePos.y;
+                SaveCurrentSettings();
+            }
+            ImGui::End();
         }
 
         ImVec2 wPos = ImGui::GetWindowPos();
