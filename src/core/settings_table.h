@@ -152,6 +152,7 @@ SETTING      (Speedo, SpeedoStop4Thickness, float, 20.0f)
 // Peak hold
 SETTING(Speedo, SpeedoPeakHoldEnabled, bool,  false)
 SETTING(Speedo, SpeedoPeakHoldTime,    float, 2.0f)
+SETTING(Speedo, SpeedoPeakHoldSize, float, 10.0f)
 
 // Label
 SETTING(Speedo, SpeedoLabelVisible, bool,   true)

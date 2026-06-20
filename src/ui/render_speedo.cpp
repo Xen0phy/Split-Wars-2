@@ -167,7 +167,6 @@ static constexpr float DEG_TO_RAD              = 3.14159265f / 180.0f;
 static constexpr float PI                      = 3.14159265f;
 static constexpr float TWO_PI                  = 6.28318530f;
 static constexpr float STRAIGHT_LINE_THRESHOLD = 1.0f;
-static constexpr float PEAK_MARKER_SIZE        = 8.0f; // size of the peak-hold marker (was tied to tick height)
 
 static int ArcSegments(float radius, float thickness)
 {
@@ -570,7 +569,7 @@ static void DrawSpeedoContent(
         if (SpeedoPeakHoldEnabled && peakT > 0.0f)
         {
             ImVec2 peakCenter = linePoint(peakT);
-            float  tickH      = PEAK_MARKER_SIZE * 0.5f;
+            float  tickH      = SpeedoPeakHoldSize * 0.5f;
             ImVec2 pk0(peakCenter.x + cosAxis * tickH, peakCenter.y + sinAxis * tickH);
             ImVec2 pk1(peakCenter.x - cosAxis * tickH, peakCenter.y - sinAxis * tickH);
             draw->AddLine(pk0, pk1,
@@ -601,8 +600,8 @@ static void DrawSpeedoContent(
     if (SpeedoPeakHoldEnabled && peakT > 0.0f)
     {
         float  peakAngle = arcStart + peakT * (arcEnd - arcStart);
-        float  innerR    = radius - PEAK_MARKER_SIZE * 0.5f;
-        float  outerR    = radius + PEAK_MARKER_SIZE * 0.5f;
+        float  innerR    = radius - SpeedoPeakHoldSize * 0.5f;
+        float  outerR    = radius + SpeedoPeakHoldSize * 0.5f;
         ImVec2 pk0(C_screen.x + std::cos(peakAngle) * innerR,
                    C_screen.y + std::sin(peakAngle) * innerR);
         ImVec2 pk1(C_screen.x + std::cos(peakAngle) * outerR,
@@ -725,21 +724,65 @@ void RenderSpeedoWindow()
                    : (SpeedUnit == 2) ? MAX_SPEED_UPS
                    : MAX_SPEED_KMH;
 
+    // Speed label — independent window, always on foreground draw list
+    if (SpeedoLabelVisible)
+    {
+        DrawSpeedLabel(ImGui::GetForegroundDrawList(), speed, unitLabel, 1.0f);
+
+        if (SpeedoEditMode)
+        {
+            // Estimate label size for the drag window
+            char buf[16];
+            FormatSpeedLabel(buf, sizeof(buf), speed, unitLabel);
+            ImFont* font = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
+            ImVec2 textSize = font
+                ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
+                : ImGui::CalcTextSize(buf);
+            float lw = std::fmax(textSize.x + 8.0f, 40.0f);
+            float lh = std::fmax(textSize.y + 8.0f, 20.0f);
+
+            ImGui::SetNextWindowPos(ImVec2(SpeedoLabelX - lw, SpeedoLabelY - lh * 0.5f), ImGuiCond_Once);
+            ImGui::SetNextWindowSize(ImVec2(lw, lh), ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(0.3f);
+            ImGui::Begin("##speedo_label_drag", nullptr,
+                ImGuiWindowFlags_NoDecoration       |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoNav              |
+                ImGuiWindowFlags_NoScrollbar        |
+                ImGuiWindowFlags_NoScrollWithMouse  |
+                ImGuiWindowFlags_NoSavedSettings);
+
+            // ImGui only positions the window once (above) and otherwise
+            // leaves its top-left where the user last dragged it — so when
+            // SetNextWindowSize grows the box on its own, ImGui keeps the
+            // left edge fixed and the box grows to the right. To anchor on
+            // the right instead, we detect that width change ourselves and
+            // push the window's left edge left by the same amount, before
+            // anyone reads back its position this frame.
+            float deltaW = (s_prevLabelDragW == 0.0f) ? 0.0f : (lw - s_prevLabelDragW);
+            s_prevLabelDragW = lw;
+            if (deltaW != 0.0f)
+            {
+                ImVec2 cur = ImGui::GetWindowPos();
+                ImGui::SetWindowPos(ImVec2(cur.x - deltaW, cur.y));
+            }
+
+            ImVec2 lPos = ImGui::GetWindowPos();
+            float  newX = lPos.x + lw;
+            float  newY = lPos.y + lh * 0.5f;
+            if (newX != SpeedoLabelX || newY != SpeedoLabelY)
+            {
+                SpeedoLabelX = newX;
+                SpeedoLabelY = newY;
+                SaveCurrentSettings();
+            }
+            ImGui::End();
+        }
+    }
+
     // Numeric mode
     if (!SpeedoTachometer)
     {
-        ImGui::SetNextWindowPos(ImVec2(10, 200), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowBgAlpha(0.6f);
-        ImGui::Begin("##speedo", nullptr,
-            ImGuiWindowFlags_NoDecoration       |
-            ImGuiWindowFlags_AlwaysAutoResize   |
-            ImGuiWindowFlags_NoFocusOnAppearing |
-            ImGuiWindowFlags_NoNav);
-        if (SpeedoShowUnit)
-            ImGui::Text("%.0f %s", speed, unitLabel);
-        else
-            ImGui::Text("%.0f", speed);
-        ImGui::End();
         return;
     }
 
@@ -824,62 +867,6 @@ void RenderSpeedoWindow()
             (ImTextureID)s_faceTexture->Resource,
             ImVec2(SpeedoFaceX, SpeedoFaceY),
             ImVec2(SpeedoFaceX + w, SpeedoFaceY + h));
-    }
-
-    // Speed label — independent window, always on background draw list
-    if (SpeedoLabelVisible)
-    {
-        DrawSpeedLabel(ImGui::GetBackgroundDrawList(), speed, unitLabel, 1.0f);
-
-        if (SpeedoEditMode)
-        {
-            // Estimate label size for the drag window
-            char buf[16];
-            FormatSpeedLabel(buf, sizeof(buf), speed, unitLabel);
-            ImFont* font = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
-            ImVec2 textSize = font
-                ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
-                : ImGui::CalcTextSize(buf);
-            float lw = std::fmax(textSize.x + 8.0f, 40.0f);
-            float lh = std::fmax(textSize.y + 8.0f, 20.0f);
-
-            ImGui::SetNextWindowPos(ImVec2(SpeedoLabelX - lw, SpeedoLabelY - lh * 0.5f), ImGuiCond_Once);
-            ImGui::SetNextWindowSize(ImVec2(lw, lh), ImGuiCond_Always);
-            ImGui::SetNextWindowBgAlpha(0.3f);
-            ImGui::Begin("##speedo_label_drag", nullptr,
-                ImGuiWindowFlags_NoDecoration       |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_NoNav              |
-                ImGuiWindowFlags_NoScrollbar        |
-                ImGuiWindowFlags_NoScrollWithMouse  |
-                ImGuiWindowFlags_NoSavedSettings);
-
-            // ImGui only positions the window once (above) and otherwise
-            // leaves its top-left where the user last dragged it — so when
-            // SetNextWindowSize grows the box on its own, ImGui keeps the
-            // left edge fixed and the box grows to the right. To anchor on
-            // the right instead, we detect that width change ourselves and
-            // push the window's left edge left by the same amount, before
-            // anyone reads back its position this frame.
-            float deltaW = (s_prevLabelDragW == 0.0f) ? 0.0f : (lw - s_prevLabelDragW);
-            s_prevLabelDragW = lw;
-            if (deltaW != 0.0f)
-            {
-                ImVec2 cur = ImGui::GetWindowPos();
-                ImGui::SetWindowPos(ImVec2(cur.x - deltaW, cur.y));
-            }
-
-            ImVec2 lPos = ImGui::GetWindowPos();
-            float  newX = lPos.x + lw;
-            float  newY = lPos.y + lh * 0.5f;
-            if (newX != SpeedoLabelX || newY != SpeedoLabelY)
-            {
-                SpeedoLabelX = newX;
-                SpeedoLabelY = newY;
-                SaveCurrentSettings();
-            }
-            ImGui::End();
-        }
     }
 
     if (SpeedoEditMode)
