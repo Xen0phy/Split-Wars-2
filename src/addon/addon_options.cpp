@@ -6,8 +6,22 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // Settings are persisted to settings.ini via SaveCurrentSettings().
 
+#include "imgui.h"
 #include "render_shared.h"
 #include "stream_fonts.h"
+
+// Push Flag helpers
+
+static void BeginDisabled (bool variableName)
+{
+    if (variableName) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+}
+
+static void EndDisabled (bool variableName)
+{
+    if (variableName) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+}
+
 
 // ---------------------------------------------------------------------------
 // AddonOptions
@@ -73,8 +87,8 @@ void AddonOptions()
     if (ImGui::CollapsingHeader("Timer Settings"))
     {
         bool timerDisabled = !ShowTimer;
-        if (timerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-    
+        BeginDisabled(timerDisabled);
+
         if (ImGui::BeginTable("##timersettings", 2, ImGuiTableFlags_None))
         {
             ImGui::TableSetupColumn("##left",  ImGuiTableColumnFlags_WidthFixed, 200);
@@ -83,14 +97,14 @@ void AddonOptions()
             // Row 1
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            if (timerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(timerDisabled);
             ImGui::Checkbox("Show Timer", &ShowTimer);
             Tooltip("Toggles the speedrun timer overlay.");
             ImGui::SameLine();
             const char* timerModeLabel = (TimerDisplayMode == TimerMode::Segment)  ? "Mode: Segment"
                                        : (TimerDisplayMode == TimerMode::LiveSplit) ? "Mode: LiveSplit"
                                        :                                               "Mode: Split";
-            if (timerDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(timerDisabled);
             if (ImGui::Button(timerModeLabel))
                 TimerDisplayMode = (TimerMode)(((int)TimerDisplayMode + 1) % 3);
             Tooltip("Controls how split times and differences are displayed.\n\n"
@@ -164,7 +178,7 @@ void AddonOptions()
             const auto& fontNames = GetStreamFontNames();
     
             ImGui::TableSetColumnIndex(1);
-            if (!StreamerMode) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!StreamerMode);
             {
                 if (!fontNames.empty())
                 {
@@ -199,7 +213,7 @@ void AddonOptions()
     
             ImGui::TableSetColumnIndex(1);
             {
-                if (fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                BeginDisabled(fontNames.empty());
                 static const int fontSizes[] = { 24, 28, 32, 36, 40, 44, 48 };
                 char preview[8];
                 snprintf(preview, sizeof(preview), "%d", StreamerFontSize);
@@ -243,10 +257,10 @@ void AddonOptions()
                     ImGui::EndCombo();
                 }
                 Tooltip("Pixel size of the section title bar labels.");
-                if (fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                EndDisabled(fontNames.empty());
             }
     
-            if (!StreamerMode) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!StreamerMode);
 
             //Row 8
             ImGui::TableNextRow();
@@ -262,15 +276,15 @@ void AddonOptions()
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             // Crash checkbox only needs streamer enabled
-            if (!StreamerMode || fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!StreamerMode || fontNames.empty());
             if (fontNames.empty() || !StreamerMode) CrashMode = false;
             if (ImGui::Checkbox("Crash Mode##cm", &CrashMode))
                 SaveCurrentSettings();
             Tooltip("Enables the layered digit style with shadow, fill, base and gradient overlay.");
-            if (!StreamerMode || fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!StreamerMode || fontNames.empty());
             
             ImGui::TableSetColumnIndex(1);
-            if (crashDisabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(crashDisabled);
             ImGui::Text("Crash Mode Colors:");
     
             // Row 10 — offset box + fill/base/overlay colors
@@ -316,16 +330,16 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(1);
             ImGui::Checkbox("##hide_cm_1", &ShowCMFill);
             ImGui::SameLine();
-            if (!ShowCMFill) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!ShowCMFill);
             ImGui::ColorEdit3("Fill##cm",    CMDigitFillColor,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-            if (!ShowCMFill) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowCMFill);
             ImGui::Checkbox("##hide_cm_2", &ShowCMShadow);
             ImGui::SameLine();
-            if (!ShowCMShadow) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!ShowCMShadow);
             ImGui::ColorEdit3("Shadow##cm",  CMDigitShadowColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-            if (!ShowCMShadow) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowCMShadow);
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
             ImGui::SameLine();
             ImGui::ColorEdit3("Base##cm",    CMDigitBaseColor,   ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
@@ -348,12 +362,12 @@ void AddonOptions()
                 SaveCurrentSettings();
             }
     
-            if (crashDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-    
+            EndDisabled(crashDisabled);
+            
             ImGui::EndTable();
         }
     
-        if (timerDisabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+        EndDisabled(timerDisabled);
     
         ImGui::Spacing();
         ImGui::Separator();
@@ -378,7 +392,7 @@ void AddonOptions()
             
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(65.0f);
-            if (!ShowConfig) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!ShowConfig);
             if (ImGui::InputFloat("W##cw", &ConfigWindowW, 0, 0, "%.0f"))
             {
                 ConfigWindowW = std::clamp(ConfigWindowW, 200.0f, 3000.0f);
@@ -391,7 +405,7 @@ void AddonOptions()
                 ConfigWindowH = std::clamp(ConfigWindowH, 150.0f, 3000.0f);
                 ImGui::SetWindowSize("Split Wars 2 - Route Config", ImVec2(ConfigWindowW, ConfigWindowH));
             }
-            if (!ShowConfig) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowConfig);
 
             // Row 2 - Route Browser
             ImGui::TableNextRow();
@@ -401,7 +415,7 @@ void AddonOptions()
             
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(65.0f);
-            if (!ShowRouteBrowser) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!ShowRouteBrowser);
             if (ImGui::InputFloat("W##bw", &BrowserWindowW, 0, 0, "%.0f"))
             {
                 BrowserWindowW = std::clamp(BrowserWindowW, 200.0f, 3000.0f);
@@ -414,7 +428,7 @@ void AddonOptions()
                 BrowserWindowH = std::clamp(BrowserWindowH, 150.0f, 3000.0f);
                 ImGui::SetWindowSize("Split Wars 2 - Route Browser", ImVec2(BrowserWindowW, BrowserWindowH));
             }
-            if (!ShowRouteBrowser) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowRouteBrowser);
             
             // Row 3 - Route History
             ImGui::TableNextRow();
@@ -422,7 +436,7 @@ void AddonOptions()
             ImGui::Checkbox("Show History",       &ShowHistory);
             Tooltip("Toggles the history window.");
             ImGui::SameLine();
-            if (!ShowHistory) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!ShowHistory);
             ImGui::ColorEdit3("Best Row##tc", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
 
             ImGui::TableSetColumnIndex(1);
@@ -439,7 +453,7 @@ void AddonOptions()
                 HistoryWindowH = std::clamp(HistoryWindowH, 150.0f, 3000.0f);
                 ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
             }
-            if (!ShowHistory) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowHistory);
 
             // Row 4 - Max History, Best Row Color
             ImGui::TableNextRow();
@@ -450,14 +464,14 @@ void AddonOptions()
             ImGui::SameLine();
             ImGui::SetNextItemWidth(65.0f);
             ImGui::DragInt("##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
-            if (!ShowHistory) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!ShowHistory);
             ImGui::SameLine();
             if (ImGui::Button("Reset Color"))
             {
                 float defBestRow[3]    = { 0.2f, 0.3f, 0.2f };
                 std::copy(defBestRow,    defBestRow    + 3, ColorBestRow);
             }
-            if (!ShowHistory) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowHistory);
             
             ImGui::TableSetColumnIndex(1);
             ImGui::TextDisabled("Tip: You can also resize any window by dragging its edges or bottom-right corner.");
@@ -487,7 +501,7 @@ void AddonOptions()
             Tooltip("Toggles the visibility of checkpoints.");
             
             ImGui::TableSetColumnIndex(1);
-            if (!ShowZones) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+            BeginDisabled(!ShowZones);
             ImGui::ColorEdit3("Start",       ColorStart,      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             
             // Row 2
@@ -543,7 +557,7 @@ void AddonOptions()
                 std::copy(defNull,       defNull       + 3, ColorNull);
             }
 
-            if (!ShowZones) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!ShowZones);
 
             ImGui::EndTable();
         }
@@ -553,12 +567,6 @@ void AddonOptions()
         ImGui::Spacing();    
     }
 
-    /**
-    if (!xxx) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
-
-
-    if (!xxx) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-    */
     // ---------------------------------------------------------------------------
     // Speedometer Settings
     // ---------------------------------------------------------------------------
@@ -583,24 +591,19 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
     
-            if (!ShowSpeedo) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+            BeginDisabled(!ShowSpeedo);
+
             ImGui::TableSetColumnIndex(1);
-            const char* unitItems[] = { "km/h", "mph", "u/s" };
-            ImGui::SetNextItemWidth(120.0f);
-            if (ImGui::BeginCombo("Speed Unit##speedunit", unitItems[SpeedUnit < 3 ? SpeedUnit : 0]))
+            ImGui::Checkbox("Show Label", &SpeedoLabelVisible);
+            ImGui::SameLine();
+            BeginDisabled(!SpeedoLabelVisible || fontNames.empty());
+            if (ImGui::SmallButton("Reset Font"))
             {
-                for (int i = 0; i < 3; i++)
-                {
-                    if (ImGui::Selectable(unitItems[i], SpeedUnit == i))
-                    {
-                        SpeedUnit = i;
-                        SaveCurrentSettings();
-                    }
-                    if (SpeedUnit == i) ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
+                SpeedoFontName = "";
+                SpeedoFontSize = 24.0f;
+                SaveCurrentSettings();
             }
-            Tooltip("u/s = game units per second (1 unit ≈ 1 inch).");
+            EndDisabled(!SpeedoLabelVisible || fontNames.empty());
 
             // ── Row 2: Mount combo | Show Label + Reset Font ─────────────────
             ImGui::TableNextRow();
@@ -646,16 +649,27 @@ void AddonOptions()
             }
     
             ImGui::TableSetColumnIndex(1);
-            ImGui::Checkbox("Show Label", &SpeedoLabelVisible);
-            ImGui::SameLine();
-            if (!SpeedoLabelVisible || fontNames.empty()) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-            if (ImGui::SmallButton("Reset Font"))
+            BeginDisabled(!SpeedoLabelVisible);
+            const char* unitItems[] = { "km/h", "mph", "u/s" };
+            ImGui::SetNextItemWidth(80.0f);
+            if (ImGui::BeginCombo("##speedunit", unitItems[SpeedUnit < 3 ? SpeedUnit : 0]))
             {
-                SpeedoFontName = "";
-                SpeedoFontSize = 24.0f;
-                SaveCurrentSettings();
+                for (int i = 0; i < 3; i++)
+                {
+                    if (ImGui::Selectable(unitItems[i], SpeedUnit == i))
+                    {
+                        SpeedUnit = i;
+                        SaveCurrentSettings();
+                    }
+                    if (SpeedUnit == i) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
-            if (!SpeedoLabelVisible || fontNames.empty()) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            Tooltip("u/s = game units per second (1 unit ≈ 1 inch).");
+            ImGui::SameLine();
+            ImGui::Checkbox("Unit##speedunit", &SpeedoShowUnit);
+            Tooltip("Show/Hide units.");
+            EndDisabled(!SpeedoLabelVisible);
 
             // ── Row 3: Tachometer | Font combo ──────────────────────────────
             ImGui::TableNextRow();
@@ -664,7 +678,7 @@ void AddonOptions()
             Tooltip("Switch between numeric display and tachometer arc.");
     
             ImGui::TableSetColumnIndex(1);
-            if (!SpeedoLabelVisible) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!SpeedoLabelVisible);
             if (fontNames.empty())
             {
                 ImGui::TextDisabled("No fonts — drop .ttf/.otf into fonts/ and restart.");
@@ -713,7 +727,7 @@ void AddonOptions()
                     ImGui::EndCombo();
                 }
             }
-            if (!SpeedoLabelVisible) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!SpeedoLabelVisible);
 
             // ── Row 4: Edit Mode | Label X / Y ──────────────────────────────
             ImGui::TableNextRow();
@@ -736,7 +750,7 @@ void AddonOptions()
             // The canvas is 200px tall so we emit it first in col 0,
             // then use SameLine-style via the table to fill col 1 with rows.
             ImGui::TableNextRow();
-            if (!SpeedoEditMode) {ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);}
+            BeginDisabled(!SpeedoEditMode);
             ImGui::TableSetColumnIndex(0);
             {
                 static constexpr float canvasSize = 190.0f;
@@ -803,11 +817,11 @@ void AddonOptions()
             ImGui::SetNextItemWidth(160.0f);
             ImGui::DragFloat("Damping##phys", &SpeedoDamping, 0.1f, 0.1f, 50.0f, "%.1f");
             ImGui::Checkbox("Peak Hold", &SpeedoPeakHoldEnabled);
-            if (!SpeedoPeakHoldEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+            BeginDisabled(!SpeedoPeakHoldEnabled);
             ImGui::SetNextItemWidth(160.0f);
             ImGui::DragFloat("Hold Time##peak", &SpeedoPeakHoldTime, 0.1f, 0.1f, 10.0f, "%.1f s");
-            if (!SpeedoPeakHoldEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-    
+            EndDisabled(!SpeedoPeakHoldEnabled);
+            
             // ── Separator ────────────────────────────────────────────────────
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
@@ -815,12 +829,12 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(1);
             ImGui::Separator();
 
-            // ── Row: Arc style left | Needle + Ticks right ───────────────────
+            // ── Row: Arc style left | Needle right ───────────────────────────
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             {
                 ImGui::SetNextItemWidth(160.0f);
-                ImGui::DragFloat("Opacity##arc",  &SpeedoOpacity,   0.01f, 0.0f, 1.0f,  "%.2f");
+                ImGui::DragFloat("BG Opacity##arc",  &SpeedoOpacity,   0.01f, 0.0f, 1.0f,  "%.2f");
                 ImGui::SetNextItemWidth(160.0f);
                 ImGui::DragFloat("BG Width##arc", &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "%.1f px");
     
@@ -967,7 +981,7 @@ void AddonOptions()
                 for (int s = 0; s < 4; s++) if (stopOn[s]) activeCount++;
     
                 bool canAdd = activeCount < 4;
-                if (!canAdd) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                BeginDisabled(!canAdd);
                 if (ImGui::SmallButton("+##addstop"))
                 {
                     for (int s = 1; s < 4; s++)
@@ -985,12 +999,12 @@ void AddonOptions()
                         }
                     }
                 }
-                if (!canAdd) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-    
+                EndDisabled(!canAdd);
+                
                 ImGui::SameLine();
     
                 bool canRemove = selectedStop > 0 && stopOn[selectedStop];
-                if (!canRemove) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                BeginDisabled(!canRemove);
                 if (ImGui::SmallButton("-##removestop"))
                 {
                     *uiStops[selectedStop].enabled = false;
@@ -999,8 +1013,8 @@ void AddonOptions()
                     selectedStop = std::max(0, selectedStop - 1);
                     SaveCurrentSettings();
                 }
-                if (!canRemove) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-    
+                EndDisabled(!canRemove);
+                
                 ImGui::SameLine();
                 ImGui::Checkbox("Smooth##gradient", &SpeedoGradientSmooth);
     
@@ -1008,8 +1022,8 @@ void AddonOptions()
                 for (int s = 0; s < 4; s++)
                 {
                     bool active = stopOn[s];
-                    if (!active) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f); }
-    
+                    BeginDisabled(!active);
+                    
                     char label[32];
                     snprintf(label, sizeof(label), "Stop %d", s + 1);
                     ImGui::ColorEdit4(label, uiStops[s].color,
@@ -1024,7 +1038,7 @@ void AddonOptions()
                     ImGui::DragFloat(thickId, uiStops[s].thickness, 0.1f, 0.1f, 20.0f, "%.1f px");
                     if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
     
-                    if (!active) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                    EndDisabled(!active);
                 }
             }
     
@@ -1032,7 +1046,7 @@ void AddonOptions()
             {
                 // ── Needle ───────────────────────────────────────────────────
                 ImGui::Checkbox("Show Needle", &SpeedoNeedleVisible);
-                if (!SpeedoNeedleVisible) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                BeginDisabled(!SpeedoNeedleVisible);
                 ImGui::SetNextItemWidth(70.0f);
                 ImGui::DragFloat("##needlewidth",  &SpeedoNeedleWidth,  0.1f, 0.1f, 5.0f,     "%.1f px");
                 Tooltip("Needle width");
@@ -1045,23 +1059,10 @@ void AddonOptions()
                     ImGui::DragFloat("##needleorigin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "%.0f px");
                     Tooltip("Needle origin");
                 }
-                if (!SpeedoNeedleVisible) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                EndDisabled(!SpeedoNeedleVisible);
 
                 // ── Dummy ───────────────────────────────────────────────────
                 ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
-
-                ImGui::Separator();
-
-                // ── Tick Marks ───────────────────────────────────────────────
-                ImGui::Checkbox("Tick Marks", &SpeedoTicksEnabled);
-                if (!SpeedoTicksEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
-                ImGui::SetNextItemWidth(160.0f);
-                ImGui::DragFloat("Minor Interval", &SpeedoTickInterval,      1.0f, 1.0f, 100.0f, "%.0f");
-                ImGui::SetNextItemWidth(160.0f);
-                ImGui::DragFloat("Major Interval", &SpeedoTickMajorInterval, 1.0f, 1.0f, 200.0f, "%.0f");
-                ImGui::SetNextItemWidth(160.0f);
-                ImGui::DragFloat("Height##ticks",  &SpeedoTickHeight,        0.5f, 2.0f, 30.0f,  "%.0f px");
-                if (!SpeedoTicksEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
 
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -1071,7 +1072,7 @@ void AddonOptions()
                 Tooltip("Load a gauge-face image. Position and scale it freely, then overlay the drawn arc on top for alignment.");
                 if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
 
-                if (!SpeedoFaceEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                BeginDisabled(!SpeedoFaceEnabled);
 
                 {
                     const auto& texNames = GetSpeedoTextureNames();
@@ -1111,7 +1112,7 @@ void AddonOptions()
                 if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                 Tooltip("Position of the top-left corner of the face texture. In Edit Mode you can also drag it directly on screen.");
 
-                if (!SpeedoFaceEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                EndDisabled(!SpeedoFaceEnabled);
 
                 ImGui::Spacing();
 
@@ -1120,7 +1121,7 @@ void AddonOptions()
                 Tooltip("Load a needle image. It rotates around the drawn needle's pivot point P.");
                 if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
 
-                if (!SpeedoNeedleTexEnabled) { ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true); ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); }
+                BeginDisabled(!SpeedoNeedleTexEnabled);
 
                 {
                     const auto& texNames = GetSpeedoTextureNames();
@@ -1161,11 +1162,13 @@ void AddonOptions()
                 if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                 Tooltip("Rotates the texture relative to the needle angle. Use this to align the tip of your needle image with the drawn needle direction.");
 
-                if (!SpeedoNeedleTexEnabled) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+                EndDisabled(!SpeedoNeedleTexEnabled);
             }
 
-            if (!SpeedoEditMode) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
-            if (!ShowSpeedo) { ImGui::PopItemFlag(); ImGui::PopStyleVar(); }
+            EndDisabled(!SpeedoEditMode);
+
+            EndDisabled(!ShowSpeedo);
+
             ImGui::EndTable();
         }
 

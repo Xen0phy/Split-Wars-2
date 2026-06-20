@@ -6,11 +6,11 @@
 //   SpeedoArcAngle  — total sweep of the arc in degrees (1-359), 0 = straight line
 //   SpeedoArcLength — total length of the arc/line in pixels
 //   SpeedoAngle     — rotation of the whole speedo (0-360)
-//   SpeedoPDistance — distance of needle origin P from the arc (0=on arc, max 200px)
+//   SpeedoPDistance — distance of needle origin P from the arc (0=on arc, max 500px)
 //
 //   Arc mode:
 //     radius   = SpeedoArcLength / (SpeedoArcAngle * DEG_TO_RAD)
-//     pDist    = radius - min(SpeedoPDistance, min(200, radius))
+//     pDist    = radius - min(SpeedoPDistance, min(500, radius))
 //     arcMid   = SpeedoAngle axis direction
 //     arcStart = arcMid - ArcAngle/2
 //     arcEnd   = arcMid + ArcAngle/2
@@ -33,6 +33,7 @@
 #include "stream_fonts.h"
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <deque>
 #include <algorithm>
 #include <functional>
@@ -49,6 +50,11 @@ static std::string s_loadedNeedleTexPath;
 // Cached list of PNG/JPG filenames found in the textures folder.
 static std::vector<std::string> s_textureNames;
 static bool                     s_textureNamesScanned = false;
+
+// Width of the speed-label drag box on the previous frame, used in edit
+// mode to grow the box leftward (keeping its right edge pinned) instead of
+// rightward when the displayed number gains or loses digits.
+static float s_prevLabelDragW = 0.0f;
 
 // Scan (or re-scan) the textures directory and rebuild s_textureNames.
 void ScanTextureFiles()
@@ -161,6 +167,7 @@ static constexpr float DEG_TO_RAD              = 3.14159265f / 180.0f;
 static constexpr float PI                      = 3.14159265f;
 static constexpr float TWO_PI                  = 6.28318530f;
 static constexpr float STRAIGHT_LINE_THRESHOLD = 1.0f;
+static constexpr float PEAK_MARKER_SIZE        = 8.0f; // size of the peak-hold marker (was tied to tick height)
 
 static int ArcSegments(float radius, float thickness)
 {
@@ -449,6 +456,16 @@ static float SpeedoComputeSpeed()
     return displaySpeed;
 }
 
+// Format "<speed> <unit>", or just "<speed>" when unitLabel is empty (no
+// trailing space left behind).
+static void FormatSpeedLabel(char* buf, size_t bufSize, float speed, const char* unitLabel)
+{
+    if (unitLabel && unitLabel[0] != '\0')
+        snprintf(buf, bufSize, "%.0f %s", speed, unitLabel);
+    else
+        snprintf(buf, bufSize, "%.0f", speed);
+}
+
 // ---------------------------------------------------------------------------
 // DrawSpeedLabel
 // ---------------------------------------------------------------------------
@@ -456,7 +473,7 @@ static void DrawSpeedLabel(ImDrawList* draw, float speed,
                             const char* unitLabel, float masterAlpha)
 {
     char    buf[16];
-    snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
+    FormatSpeedLabel(buf, sizeof(buf), speed, unitLabel);
     ImFont* font    = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
     ImU32   textCol = IM_COL32(255, 255, 255, (int)(200 * masterAlpha));
 
@@ -464,8 +481,11 @@ static void DrawSpeedLabel(ImDrawList* draw, float speed,
         ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
         : ImGui::CalcTextSize(buf);
 
+    // SpeedoLabelX/Y anchor the label's right edge (vertically centred), so
+    // the text grows leftward as the number gains digits instead of
+    // expanding symmetrically around a centre point.
     ImVec2 drawPos(
-        SpeedoLabelX - textSize.x * 0.5f,
+        SpeedoLabelX - textSize.x,
         SpeedoLabelY - textSize.y * 0.5f);
 
     if (font)
@@ -537,44 +557,24 @@ static void DrawSpeedoContent(
                 sinPerp * halfLen * (p * 2.0f - 1.0f));
         };
 
-        // --- Background line ---
+        // --- Background line --- (SpeedoOpacity governs only this background element)
         DrawLineSegmented(draw, linePoint, SpeedoArcLength, 1.0f,
                           stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
 
-        // --- Filled sweep ---
+        // --- Filled sweep --- (full opacity; per-stop alpha still applies)
         if (t > 0.0f)
             DrawLineSegmented(draw, linePoint, SpeedoArcLength, t,
-                              stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, false);
+                              stops, stopCount, SpeedoGradientSmooth, 1.0f, false);
 
         // --- Peak hold marker ---
         if (SpeedoPeakHoldEnabled && peakT > 0.0f)
         {
             ImVec2 peakCenter = linePoint(peakT);
-            float  tickH      = SpeedoTickHeight * 0.5f;
+            float  tickH      = PEAK_MARKER_SIZE * 0.5f;
             ImVec2 pk0(peakCenter.x + cosAxis * tickH, peakCenter.y + sinAxis * tickH);
             ImVec2 pk1(peakCenter.x - cosAxis * tickH, peakCenter.y - sinAxis * tickH);
             draw->AddLine(pk0, pk1,
-                IM_COL32(255, 255, 255, (int)(200 * SpeedoOpacity)), 2.0f);
-        }
-
-        // --- Tick marks ---
-        if (SpeedoTicksEnabled)
-        {
-            float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;
-            float tickStep = std::fmax(SpeedoTickInterval, 1.0f);
-
-            for (float spd = tickStep; spd < maxSpeed; spd += tickStep)
-            {
-                float  tp      = spd / maxSpeed;
-                bool   isMajor = std::fmod(spd, std::fmax(SpeedoTickMajorInterval, 1.0f)) < 0.5f;
-                float  tickH   = (isMajor ? SpeedoTickHeight : SpeedoTickHeight * 0.6f) * 0.5f;
-                ImVec2 center  = linePoint(tp);
-                ImVec2 ti(center.x + cosAxis * tickH, center.y + sinAxis * tickH);
-                ImVec2 to(center.x - cosAxis * tickH, center.y - sinAxis * tickH);
-                draw->AddLine(ti, to,
-                    IM_COL32(255, 255, 255, (int)(180 * SpeedoOpacity)),
-                    isMajor ? 2.0f : 1.0f);
-            }
+                IM_COL32(255, 255, 255, 200), 2.0f);
         }
 
         // --- Edit mode markers ---
@@ -588,52 +588,27 @@ static void DrawSpeedoContent(
     // ARC FORK
     // =========================================================================
 
-    // --- Background arc ---
+    // --- Background arc --- (SpeedoOpacity governs only this background element)
     DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, 1.0f,
                      stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
 
-    // --- Filled sweep arc ---
+    // --- Filled sweep arc --- (full opacity; per-stop alpha still applies)
     if (t > 0.0f)
         DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, t,
-                         stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, false);
+                         stops, stopCount, SpeedoGradientSmooth, 1.0f, false);
 
     // --- Peak hold marker ---
     if (SpeedoPeakHoldEnabled && peakT > 0.0f)
     {
         float  peakAngle = arcStart + peakT * (arcEnd - arcStart);
-        float  innerR    = radius - SpeedoTickHeight * 0.5f;
-        float  outerR    = radius + SpeedoTickHeight * 0.5f;
+        float  innerR    = radius - PEAK_MARKER_SIZE * 0.5f;
+        float  outerR    = radius + PEAK_MARKER_SIZE * 0.5f;
         ImVec2 pk0(C_screen.x + std::cos(peakAngle) * innerR,
                    C_screen.y + std::sin(peakAngle) * innerR);
         ImVec2 pk1(C_screen.x + std::cos(peakAngle) * outerR,
                    C_screen.y + std::sin(peakAngle) * outerR);
         draw->AddLine(pk0, pk1,
-            IM_COL32(255, 255, 255, (int)(200 * SpeedoOpacity)), 2.0f);
-    }
-
-    // --- Tick marks ---
-    if (SpeedoTicksEnabled)
-    {
-        float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;
-        float arcRange = arcEnd - arcStart;
-        float tickStep = std::fmax(SpeedoTickInterval, 1.0f);
-
-        for (float spd = tickStep; spd < maxSpeed; spd += tickStep)
-        {
-            float  tp        = spd / maxSpeed;
-            float  tickAngle = arcStart + tp * arcRange;
-            bool   isMajor   = std::fmod(spd, std::fmax(SpeedoTickMajorInterval, 1.0f)) < 0.5f;
-            float  tickH     = isMajor ? SpeedoTickHeight : SpeedoTickHeight * 0.6f;
-            float  innerR    = radius - tickH * 0.5f;
-            float  outerR    = radius + tickH * 0.5f;
-            ImVec2 ti(C_screen.x + std::cos(tickAngle) * innerR,
-                      C_screen.y + std::sin(tickAngle) * innerR);
-            ImVec2 to(C_screen.x + std::cos(tickAngle) * outerR,
-                      C_screen.y + std::sin(tickAngle) * outerR);
-            draw->AddLine(ti, to,
-                IM_COL32(255, 255, 255, (int)(180 * SpeedoOpacity)),
-                isMajor ? 2.0f : 1.0f);
-        }
+            IM_COL32(255, 255, 255, 200), 2.0f);
     }
 
     // --- Needle ---
@@ -643,7 +618,7 @@ static void DrawSpeedoContent(
             C_screen.x + std::cos(needleAngle) * radius,
             C_screen.y + std::sin(needleAngle) * radius);
         draw->AddLine(P_screen, needleTip,
-            IM_COL32(255, 255, 255, (int)(230 * SpeedoOpacity)), SpeedoNeedleWidth);
+            IM_COL32(255, 255, 255, 230), SpeedoNeedleWidth);
     }
 
     // --- Needle texture ---
@@ -699,9 +674,6 @@ void RenderSpeedoWindow()
     SpeedoStop2Pos          = std::fmin(std::fmax(SpeedoStop2Pos, 0.01f), 1.0f);
     SpeedoStop3Pos          = std::fmin(std::fmax(SpeedoStop3Pos, 0.01f), 1.0f);
     SpeedoStop4Pos          = std::fmin(std::fmax(SpeedoStop4Pos, 0.01f), 1.0f);
-    SpeedoTickInterval      = std::fmax(SpeedoTickInterval,      1.0f);
-    SpeedoTickMajorInterval = std::fmax(SpeedoTickMajorInterval, 1.0f);
-    SpeedoTickHeight        = std::fmax(SpeedoTickHeight,        1.0f);
     SpeedoPeakHoldTime      = std::fmax(SpeedoPeakHoldTime,      0.1f);
     SpeedoSpringK           = std::fmax(SpeedoSpringK,           0.1f);
     SpeedoDamping           = std::fmax(SpeedoDamping,           0.1f);
@@ -745,9 +717,10 @@ void RenderSpeedoWindow()
         s_peakT = 0.0f;
     }
 
-    const char* unitLabel = (SpeedUnit == 1) ? ""
-                          : (SpeedUnit == 2) ? ""
-                          : "";
+    const char* unitLabel = !SpeedoShowUnit ? ""
+                          : (SpeedUnit == 1) ? "mph"
+                          : (SpeedUnit == 2) ? "u/s"
+                          : "km/h";
     maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH
                    : (SpeedUnit == 2) ? MAX_SPEED_UPS
                    : MAX_SPEED_KMH;
@@ -757,13 +730,15 @@ void RenderSpeedoWindow()
     {
         ImGui::SetNextWindowPos(ImVec2(10, 200), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowBgAlpha(0.6f);
-        ImGui::SetNextWindowSize(ImVec2(200.0f ,50.0f));
         ImGui::Begin("##speedo", nullptr,
             ImGuiWindowFlags_NoDecoration       |
             ImGuiWindowFlags_AlwaysAutoResize   |
             ImGuiWindowFlags_NoFocusOnAppearing |
             ImGuiWindowFlags_NoNav);
-        ImGui::Text("%.0f %s", speed, unitLabel);
+        if (SpeedoShowUnit)
+            ImGui::Text("%.0f %s", speed, unitLabel);
+        else
+            ImGui::Text("%.0f", speed);
         ImGui::End();
         return;
     }
@@ -783,7 +758,7 @@ void RenderSpeedoWindow()
     {
         arcAngleRad    = std::fmin(SpeedoArcAngle * DEG_TO_RAD, TWO_PI * 0.999f);
         radius         = SpeedoArcLength / arcAngleRad;
-        float maxPDist = std::fmin(200.0f, radius);
+        float maxPDist = std::fmin(500.0f, radius);
         pDist          = radius - std::fmin(SpeedoPDistance, maxPDist);
         arcStart       = axisAngleRad - arcAngleRad * 0.5f;
         arcEnd         = axisAngleRad + arcAngleRad * 0.5f;
@@ -795,8 +770,7 @@ void RenderSpeedoWindow()
         std::sin(axisAngleRad) * pDist);
 
     // Bounding box
-    const float padding   = 8.0f;
-    float       bboxExtra = SpeedoTicksEnabled ? SpeedoTickHeight * 0.5f + 2.0f : 0.0f;
+    const float padding = 8.0f;
 
     float minX =  1e9f, minY =  1e9f;
     float maxX = -1e9f, maxY = -1e9f;
@@ -804,18 +778,17 @@ void RenderSpeedoWindow()
     if (straightLine)
     {
         float perpAngle = axisAngleRad + PI * 0.5f;
-        float halfLen   = SpeedoArcLength * 0.5f + bboxExtra;
-        float tickOff   = SpeedoTicksEnabled ? SpeedoTickHeight * 0.5f : 0.0f;
+        float halfLen   = SpeedoArcLength * 0.5f;
         float cosPerp   = std::cos(perpAngle);
         float sinPerp   = std::sin(perpAngle);
-        minX = std::min({ -std::abs(cosPerp * halfLen), P_local.x, -tickOff });
-        minY = std::min({ -std::abs(sinPerp * halfLen), P_local.y, -tickOff });
-        maxX = std::max({  std::abs(cosPerp * halfLen), P_local.x,  tickOff });
-        maxY = std::max({  std::abs(sinPerp * halfLen), P_local.y,  tickOff });
+        minX = std::min({ -std::abs(cosPerp * halfLen), P_local.x });
+        minY = std::min({ -std::abs(sinPerp * halfLen), P_local.y });
+        maxX = std::max({  std::abs(cosPerp * halfLen), P_local.x });
+        maxY = std::max({  std::abs(sinPerp * halfLen), P_local.y });
     }
     else
     {
-        float bboxRadius = radius + bboxExtra;
+        float bboxRadius = radius;
         int   bboxSegs   = ArcSegments(bboxRadius, 1.0f);
         for (int i = 0; i <= bboxSegs; i++)
         {
@@ -856,13 +829,13 @@ void RenderSpeedoWindow()
     // Speed label — independent window, always on background draw list
     if (SpeedoLabelVisible)
     {
-        DrawSpeedLabel(ImGui::GetBackgroundDrawList(), speed, unitLabel, SpeedoOpacity);
+        DrawSpeedLabel(ImGui::GetBackgroundDrawList(), speed, unitLabel, 1.0f);
 
         if (SpeedoEditMode)
         {
             // Estimate label size for the drag window
             char buf[16];
-            snprintf(buf, sizeof(buf), "%.0f %s", speed, unitLabel);
+            FormatSpeedLabel(buf, sizeof(buf), speed, unitLabel);
             ImFont* font = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
             ImVec2 textSize = font
                 ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
@@ -870,7 +843,7 @@ void RenderSpeedoWindow()
             float lw = std::fmax(textSize.x + 8.0f, 40.0f);
             float lh = std::fmax(textSize.y + 8.0f, 20.0f);
 
-            ImGui::SetNextWindowPos(ImVec2(SpeedoLabelX - lw * 0.5f, SpeedoLabelY - lh * 0.5f), ImGuiCond_Once);
+            ImGui::SetNextWindowPos(ImVec2(SpeedoLabelX - lw, SpeedoLabelY - lh * 0.5f), ImGuiCond_Once);
             ImGui::SetNextWindowSize(ImVec2(lw, lh), ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.3f);
             ImGui::Begin("##speedo_label_drag", nullptr,
@@ -881,9 +854,24 @@ void RenderSpeedoWindow()
                 ImGuiWindowFlags_NoScrollWithMouse  |
                 ImGuiWindowFlags_NoSavedSettings);
 
+            // ImGui only positions the window once (above) and otherwise
+            // leaves its top-left where the user last dragged it — so when
+            // SetNextWindowSize grows the box on its own, ImGui keeps the
+            // left edge fixed and the box grows to the right. To anchor on
+            // the right instead, we detect that width change ourselves and
+            // push the window's left edge left by the same amount, before
+            // anyone reads back its position this frame.
+            float deltaW = (s_prevLabelDragW == 0.0f) ? 0.0f : (lw - s_prevLabelDragW);
+            s_prevLabelDragW = lw;
+            if (deltaW != 0.0f)
+            {
+                ImVec2 cur = ImGui::GetWindowPos();
+                ImGui::SetWindowPos(ImVec2(cur.x - deltaW, cur.y));
+            }
+
             ImVec2 lPos = ImGui::GetWindowPos();
-            float newX = lPos.x + lw * 0.5f;
-            float newY = lPos.y + lh * 0.5f;
+            float  newX = lPos.x + lw;
+            float  newY = lPos.y + lh * 0.5f;
             if (newX != SpeedoLabelX || newY != SpeedoLabelY)
             {
                 SpeedoLabelX = newX;
@@ -922,7 +910,7 @@ void RenderSpeedoWindow()
             float fw = s_faceTexture->Width  * SpeedoFaceScale;
             float fh = s_faceTexture->Height * SpeedoFaceScale;
 
-            ImGui::SetNextWindowPos(ImVec2(SpeedoFaceX, SpeedoFaceY), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(SpeedoFaceX, SpeedoFaceY), ImGuiCond_Once);
             ImGui::SetNextWindowSize(ImVec2(fw, fh), ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.0f);
             ImGui::Begin("##speedo_face_drag", nullptr,

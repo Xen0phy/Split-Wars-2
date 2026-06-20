@@ -107,10 +107,10 @@ SETTING_ARRAY (CrashMode,   CMDigitOverlay,         3,     ARR( 0.9f,  0.0f,  0.
 
 // General
 SETTING(Speedo, ShowSpeedo,          bool,  false)
-SETTING(Speedo, SpeedUnit,           int,   0)  // 0=km/h, 1=mph, 2=u/s, 3=none(km/h scale)
+SETTING(Speedo, SpeedUnit,           int,   0)  // 0=km/h, 1=mph, 2=u/s
 SETTING(Speedo, SpeedoTachometer,    bool,  false)
 SETTING(Speedo, SpeedoEditMode,      bool,  false)
-SETTING(Speedo, SpeedoOpacity,       float, 1.0f)
+SETTING(Speedo, SpeedoOpacity,       float, 1.0f) // Opacity of the background arc/line only
 
 // Geometry
 SETTING(Speedo, SpeedoArcAngle,      float, 60.0f)
@@ -153,14 +153,9 @@ SETTING      (Speedo, SpeedoStop4Thickness, float, 20.0f)
 SETTING(Speedo, SpeedoPeakHoldEnabled, bool,  false)
 SETTING(Speedo, SpeedoPeakHoldTime,    float, 2.0f)
 
-// Tick marks
-SETTING(Speedo, SpeedoTicksEnabled,      bool,  false)
-SETTING(Speedo, SpeedoTickInterval,      float, 10.0f)
-SETTING(Speedo, SpeedoTickMajorInterval, float, 50.0f)
-SETTING(Speedo, SpeedoTickHeight,        float, 8.0f)
-
 // Label
 SETTING(Speedo, SpeedoLabelVisible, bool,   true)
+SETTING(Speedo, SpeedoShowUnit,     bool,   true)
 SETTING_STRING (Speedo, SpeedoFontName, "")
 SETTING(Speedo, SpeedoFontSize,     float,  24.0f)
 SETTING(Speedo, SpeedoLabelX,       float,  100.0f)
