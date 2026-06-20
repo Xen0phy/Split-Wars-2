@@ -6,9 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // Settings are persisted to settings.ini via SaveCurrentSettings().
 
-#include "imgui.h"
 #include "render_shared.h"
-#include "shared.h"
 #include "stream_fonts.h"
 
 // Scoped "disable + dim" helper for ImGui 1.80 (no native BeginDisabled/EndDisabled in this version).
@@ -956,20 +954,37 @@ void AddonOptions()
                             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
 
 						    ImGui::TableSetColumnIndex(1);
-                            ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
-                            
-                            ImGui::TableNextRow();
-						    ImGui::TableSetColumnIndex(0);
-						    ImGui::SetNextItemWidth(90.0f);
-                            ImGui::DragFloat("##needleoffset", &SpeedoNeedleTexAxisOffset, 0.5f, -500.0f, 500.0f, "Shift: %.0f px");
-                            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-                            Tooltip("Shifts the texture along the needle axis. Use this to align the texture's own rotation centre with point P.");
-
-						    ImGui::TableSetColumnIndex(1);
 						    ImGui::SetNextItemWidth(90.0f);
                             ImGui::DragFloat("##needleangle", &SpeedoNeedleTexAngleOffset, 1.0f, -180.0f, 180.0f, "Angle: %.0f°");
                             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                             Tooltip("Rotates the texture relative to the needle angle. Use this to align the tip of your needle image with the drawn needle direction.");
+                            
+                            ImGui::TableNextRow();
+						    ImGui::TableSetColumnIndex(0);
+						    ImGui::SetNextItemWidth(90.0f);
+                            {
+                                float texW = 0.0f, texH = 0.0f;
+                                bool hasTex = GetSpeedoNeedleTexSize(texW, texH);
+                                float pivotXDisplay = (SpeedoNeedleTexPivotX < 0.0f && hasTex)
+                                    ? texW * 0.5f : SpeedoNeedleTexPivotX;
+                                if (ImGui::DragFloat("##needlepivotx", &pivotXDisplay, 0.5f, 0.0f, 4096.0f, "Pivot X: %.0f px"))
+                                    SpeedoNeedleTexPivotX = pivotXDisplay;
+                            }
+                            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                            Tooltip("X position of the needle's pivot point inside the texture, in pixels from the left edge. Read this off your image in any image editor (e.g. GIMP, paint.net). This point gets placed on the drawn needle's pivot P and rotated about.");
+
+						    ImGui::TableSetColumnIndex(1);
+						    ImGui::SetNextItemWidth(90.0f);
+                            {
+                                float texW = 0.0f, texH = 0.0f;
+                                bool hasTex = GetSpeedoNeedleTexSize(texW, texH);
+                                float pivotYDisplay = (SpeedoNeedleTexPivotY < 0.0f && hasTex)
+                                    ? texH * 0.5f : SpeedoNeedleTexPivotY;
+                                if (ImGui::DragFloat("##needlepivoty", &pivotYDisplay, 0.5f, 0.0f, 4096.0f, "Pivot Y: %.0f px"))
+                                    SpeedoNeedleTexPivotY = pivotYDisplay;
+                            }
+                            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                            Tooltip("Y position of the needle's pivot point inside the texture, in pixels from the top edge.");
                         }
 
                         DisabledBlock(!SpeedoNeedleVisible && !SpeedoNeedleTexEnabled)

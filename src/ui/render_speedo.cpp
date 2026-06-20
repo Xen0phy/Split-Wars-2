@@ -27,15 +27,11 @@
 //
 // ────────────────────────────────────────────────────────────────────────────
 
-#include "imgui.h"
 #include "render_shared.h"
-#include "render_speedo.h"
 #include "stream_fonts.h"
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <deque>
-#include <algorithm>
 #include <functional>
 
 // ---------------------------------------------------------------------------
@@ -50,11 +46,6 @@ static std::string s_loadedNeedleTexPath;
 // Cached list of PNG/JPG filenames found in the textures folder.
 static std::vector<std::string> s_textureNames;
 static bool                     s_textureNamesScanned = false;
-
-// Width of the speed-label drag box on the previous frame, used in edit
-// mode to grow the box leftward (keeping its right edge pinned) instead of
-// rightward when the displayed number gains or loses digits.
-static float s_prevLabelDragW = 0.0f;
 
 // Scan (or re-scan) the textures directory and rebuild s_textureNames.
 void ScanTextureFiles()
@@ -82,6 +73,21 @@ const std::vector<std::string>& GetSpeedoTextureNames()
     if (!s_textureNamesScanned)
         ScanTextureFiles();
     return s_textureNames;
+}
+
+// Returns the currently loaded needle texture's native pixel size, or
+// (0,0) if no needle texture is loaded. Used by the options panel to
+// show the image-centre default when SpeedoNeedleTexPivotX/Y == -1.
+bool GetSpeedoNeedleTexSize(float& outW, float& outH)
+{
+    if (!s_needleTexture || !s_needleTexture->Resource)
+    {
+        outW = outH = 0.0f;
+        return false;
+    }
+    outW = (float)s_needleTexture->Width;
+    outH = (float)s_needleTexture->Height;
+    return true;
 }
 
 // Reload textures when filenames change.
@@ -122,31 +128,38 @@ static void UpdateSpeedoTextures()
     }
 }
 
-// Draw a texture centred on (cx,cy), scaled and rotated by angleRad.
+// Draw a texture so that its local pivot point (px,py), in unscaled
+// source-image pixels from the top-left corner, lands at screen position
+// (cx,cy), scaled by `scale` and rotated by angleRad about that pivot.
 // The texture is drawn as a quad with four rotated corners.
 static void DrawRotatedImage(
     ImDrawList* draw,
     ImTextureID texID,
     float       cx, float cy,
-    float       w,  float h,
+    float       texW, float texH,
+    float       scale,
+    float       px, float py,
     float       angleRad)
 {
     float cosA = std::cos(angleRad);
     float sinA = std::sin(angleRad);
 
-    float hw = w * 0.5f;
-    float hh = h * 0.5f;
+    // Corner positions relative to the pivot, in scaled pixels.
+    float left   = -px * scale;
+    float top    = -py * scale;
+    float right  = (texW - px) * scale;
+    float bottom = (texH - py) * scale;
 
-    // Four corners relative to centre, then rotated
+    // Corners relative to pivot, then rotated and placed at (cx,cy).
     auto rot = [&](float lx, float ly) -> ImVec2 {
         return ImVec2(cx + lx * cosA - ly * sinA,
                       cy + lx * sinA + ly * cosA);
     };
 
-    ImVec2 tl = rot(-hw, -hh);
-    ImVec2 tr = rot( hw, -hh);
-    ImVec2 br = rot( hw,  hh);
-    ImVec2 bl = rot(-hw,  hh);
+    ImVec2 tl = rot(left,  top);
+    ImVec2 tr = rot(right, top);
+    ImVec2 br = rot(right, bottom);
+    ImVec2 bl = rot(left,  bottom);
 
     draw->AddImageQuad(texID,
         tl, tr, br, bl,
@@ -611,11 +624,16 @@ static void DrawSpeedoContent(
     }
 
     // --- Needle ---
+    // needleTip is the point on the arc (radius from C) that the needle
+    // points at. The needle is drawn from P to this point, so its actual
+    // on-screen direction is atan2(tip - P), not needleAngle itself —
+    // those two only coincide when P == C.
+    ImVec2 needleTip(
+        C_screen.x + std::cos(needleAngle) * radius,
+        C_screen.y + std::sin(needleAngle) * radius);
+
     if (SpeedoNeedleVisible)
     {
-        ImVec2 needleTip(
-            C_screen.x + std::cos(needleAngle) * radius,
-            C_screen.y + std::sin(needleAngle) * radius);
         draw->AddLine(P_screen, needleTip,
             IM_COL32(255, 255, 255, 230), SpeedoNeedleWidth);
     }
@@ -623,18 +641,28 @@ static void DrawSpeedoContent(
     // --- Needle texture ---
     if (SpeedoNeedleTexEnabled && s_needleTexture && s_needleTexture->Resource)
     {
-        float w = s_needleTexture->Width  * SpeedoNeedleTexScale;
-        float h = s_needleTexture->Height * SpeedoNeedleTexScale;
+        float texW = (float)s_needleTexture->Width;
+        float texH = (float)s_needleTexture->Height;
 
-        // Pivot is P_screen. The texture is offset along the needle axis by
-        // SpeedoNeedleTexAxisOffset so the user can align the texture's own
-        // rotation centre with the drawn pivot point.
-        float cx = P_screen.x + std::cos(needleAngle) * SpeedoNeedleTexAxisOffset;
-        float cy = P_screen.y + std::sin(needleAngle) * SpeedoNeedleTexAxisOffset;
+        // Pivot point inside the texture (source pixels, top-left origin).
+        // -1,-1 is the sentinel for "use the image centre".
+        float px = (SpeedoNeedleTexPivotX < 0.0f) ? texW * 0.5f : SpeedoNeedleTexPivotX;
+        float py = (SpeedoNeedleTexPivotY < 0.0f) ? texH * 0.5f : SpeedoNeedleTexPivotY;
 
+        // Rotate by the needle's true visual direction (P -> tip), not by
+        // needleAngle directly, so the texture tracks the drawn line
+        // exactly even when P != C.
+        float needleVisualAngle = std::atan2(needleTip.y - P_screen.y,
+                                              needleTip.x - P_screen.x);
+
+        // The texture's pivot is placed exactly on P_screen and rotated
+        // about that point — correct at every needle angle, regardless of
+        // where the pivot sits inside the image.
         DrawRotatedImage(draw, (ImTextureID)s_needleTexture->Resource,
-                         cx, cy, w, h,
-                         needleAngle + SpeedoNeedleTexAngleOffset * DEG_TO_RAD);
+                         P_screen.x, P_screen.y,
+                         texW, texH, SpeedoNeedleTexScale,
+                         px, py,
+                         needleVisualAngle + SpeedoNeedleTexAngleOffset * DEG_TO_RAD);
     }
 
     // --- Edit mode markers ---
@@ -731,15 +759,16 @@ void RenderSpeedoWindow()
 
         if (SpeedoEditMode)
         {
-            // Estimate label size for the drag window
-            char buf[16];
-            FormatSpeedLabel(buf, sizeof(buf), speed, unitLabel);
-            ImFont* font = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
-            ImVec2 textSize = font
-                ? font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, buf)
-                : ImGui::CalcTextSize(buf);
-            float lw = std::fmax(textSize.x + 8.0f, 40.0f);
-            float lh = std::fmax(textSize.y + 8.0f, 20.0f);
+            // Fixed-size drag handle, independent of the label text's
+            // actual rendered width. The real label is drawn separately by
+            // DrawSpeedLabel above, anchored at SpeedoLabelX/Y — this window
+            // only exists to give the user something to grab and drag.
+            // (A size derived from the live text used to jitter by a pixel
+            // or two every frame as the digits changed, which fed into the
+            // right-edge anchor correction below and made the window creep
+            // sideways on its own. A fixed size has no such feedback loop.)
+            const float lw = 200.0f;
+            const float lh = 60.0f;
 
             ImGui::SetNextWindowPos(ImVec2(SpeedoLabelX - lw, SpeedoLabelY - lh * 0.5f), ImGuiCond_Once);
             ImGui::SetNextWindowSize(ImVec2(lw, lh), ImGuiCond_Always);
@@ -751,21 +780,6 @@ void RenderSpeedoWindow()
                 ImGuiWindowFlags_NoScrollbar        |
                 ImGuiWindowFlags_NoScrollWithMouse  |
                 ImGuiWindowFlags_NoSavedSettings);
-
-            // ImGui only positions the window once (above) and otherwise
-            // leaves its top-left where the user last dragged it — so when
-            // SetNextWindowSize grows the box on its own, ImGui keeps the
-            // left edge fixed and the box grows to the right. To anchor on
-            // the right instead, we detect that width change ourselves and
-            // push the window's left edge left by the same amount, before
-            // anyone reads back its position this frame.
-            float deltaW = (s_prevLabelDragW == 0.0f) ? 0.0f : (lw - s_prevLabelDragW);
-            s_prevLabelDragW = lw;
-            if (deltaW != 0.0f)
-            {
-                ImVec2 cur = ImGui::GetWindowPos();
-                ImGui::SetWindowPos(ImVec2(cur.x - deltaW, cur.y));
-            }
 
             ImVec2 lPos = ImGui::GetWindowPos();
             float  newX = lPos.x + lw;

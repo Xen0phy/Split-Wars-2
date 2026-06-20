@@ -181,6 +181,12 @@ SETTING       (Speedo, SpeedoFaceScale,    float, 1.0f)
 // Needle texture
 SETTING       (Speedo, SpeedoNeedleTexEnabled,     bool,  false)
 SETTING_STRING(Speedo, SpeedoNeedleTexPath,        "")
-SETTING       (Speedo, SpeedoNeedleTexAxisOffset,  float, 0.0f)
 SETTING       (Speedo, SpeedoNeedleTexScale,       float, 1.0f)
 SETTING       (Speedo, SpeedoNeedleTexAngleOffset, float, 0.0f)
+// Pivot point inside the texture, in unscaled source-image pixels, measured
+// from the image's top-left corner. This is the point that gets placed on
+// the drawn needle's pivot P and rotated around. -1, -1 is a sentinel
+// meaning "use w/2, h/2" (the image centre), since most needle textures
+// are already drawn pivoting around their own centre.
+SETTING       (Speedo, SpeedoNeedleTexPivotX,      float, -1.0f)
+SETTING       (Speedo, SpeedoNeedleTexPivotY,      float, -1.0f)

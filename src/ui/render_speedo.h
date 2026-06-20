@@ -33,3 +33,9 @@ void RenderSpeedoWindow();
 // Call ScanTextureFiles() to refresh after adding new files.
 const std::vector<std::string>& GetSpeedoTextureNames();
 void ScanTextureFiles();
+
+// Returns the currently loaded needle texture's native pixel size via
+// outW/outH, or sets both to 0 and returns false if no needle texture is
+// loaded. Used by the options panel to display the image-centre default
+// when SpeedoNeedleTexPivotX/Y == -1.
+bool GetSpeedoNeedleTexSize(float& outW, float& outH);
