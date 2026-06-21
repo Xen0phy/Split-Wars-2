@@ -1,20 +1,26 @@
 // stream_fonts.h
-// Manages the streamer-mode font atlas.
+// Manages dynamically-resizable streamer-mode / speedo fonts.
 //
-// On startup, scans <AddonDir>/fonts/ for .ttf/.otf files and registers
-// every combination of (file x size) with Nexus, where sizes run from
-// STREAM_FONT_ATLAS_MIN to STREAM_FONT_SIZE_MAX in STREAM_FONT_SIZE_STEP steps.
-// Up to STREAM_FONT_MAX_FILES fonts are loaded.
+// On startup, scans <AddonDir>/fonts/ for .ttf/.otf files (up to
+// STREAM_FONT_MAX_FILES) and remembers their stems + paths. Fonts are NOT
+// pre-baked at a fixed grid of sizes. Instead, each (stem, role) pair gets
+// exactly one Nexus font registration, created lazily on first request and
+// then resized in place via Nexus's Fonts_Resize whenever the caller asks
+// for a different size — so any arbitrary pixel size is supported, the
+// same way Nexus's own UI fonts can be freely resized while staying crisp.
 //
-// The atlas covers 16–48 px so that derived sizes (main size − 4, − 8) are
-// always available even when the user picks the minimum selectable size (24).
-// The user-facing size picker is intentionally restricted to 24–48 px.
+// "Role" exists because a few call sites (the streamer timer) need several
+// independently-sized fonts from the SAME stem at the SAME time every
+// frame (main digits, millis, header, etc.). Keying purely by size doesn't
+// work once size becomes a mutable property instead of a lookup key, since
+// derived sizes (main-4, main-8) shift together as the user changes the
+// main size — a role gives each of those a stable identity to resize.
 //
 // Usage:
-//   InitStreamFonts();              // call once from AddonLoad after APIDefs ready
-//   GetStreamFont(name, size)       // returns ImFont* or nullptr if not ready
-//   GetStreamFontNames()            // sorted list of discovered font name stems
-//   ReleaseStreamFonts();           // call from AddonUnload
+//   InitStreamFonts();                       // call once from AddonLoad after APIDefs ready
+//   GetStreamFont(name, role, size)          // returns ImFont* or nullptr if not ready
+//   GetStreamFontNames()                     // sorted list of discovered font name stems
+//   ReleaseStreamFonts();                    // call from AddonUnload
 
 #pragma once
 
@@ -22,31 +28,44 @@
 #include <string>
 #include <vector>
 
-// Atlas baked range — 16 px gives headroom for the −4/−8 derived sizes
-// used by the streamer timer even at the lowest user-selectable size (24).
-static constexpr float STREAM_FONT_ATLAS_MIN = 16.0f;
+static constexpr int STREAM_FONT_MAX_FILES = 5;
 
-// User-selectable range (shown in the options slider)
-static constexpr float STREAM_FONT_SIZE_MIN  = 24.0f;
-static constexpr float STREAM_FONT_SIZE_MAX  = 48.0f;
-static constexpr float STREAM_FONT_SIZE_STEP =  4.0f;
-static constexpr int   STREAM_FONT_MAX_FILES =  5;
+// Identifies which independently-sized font a caller needs from a given
+// stem. Add new roles here as new callers need their own concurrently-sized
+// slot; each role gets exactly one Nexus registration per stem, resized in
+// place rather than re-registered when its size changes.
+enum class EStreamFontRole
+{
+    StreamerMain,        // streamer timer: running h:m:s
+    StreamerMainMillis,  // streamer timer: running .xxx / comparison h:m:s (shared)
+    StreamerCompMillis,  // streamer timer: comparison .xxx
+    StreamerHeader,      // streamer timer: title bar + buttons
+    SpeedoLabel,         // speedo: numeric speed label
+};
 
-// Scan fonts folder and register all sizes with Nexus.
-// Safe to call multiple times; subsequent calls are no-ops.
+// Scan fonts folder and remember discovered files. Does not register any
+// fonts with Nexus yet — registration happens lazily per (stem, role) the
+// first time GetStreamFont requests it. Safe to call multiple times;
+// subsequent calls are no-ops.
 void InitStreamFonts();
 
 // Release all registered fonts from Nexus.
 void ReleaseStreamFonts();
 
-// Returns the ImFont* for the given font stem name and pixel size.
-// Returns nullptr if not yet received from Nexus or not found.
-ImFont* GetStreamFont(const std::string& name, float size);
+// Returns the ImFont* for the given font stem name, role, and pixel size.
+// If this (stem, role) hasn't been requested before, registers it with
+// Nexus at `size` and returns nullptr until the callback delivers it.
+// If it has been requested before at a different size, resizes it in
+// place via Nexus and keeps returning the previous pointer/size's font
+// until the resize callback delivers the updated one.
+// Returns nullptr if `name` doesn't match any discovered font stem.
+ImFont* GetStreamFont(const std::string& name, EStreamFontRole role, float size);
 
 // Returns the list of discovered font name stems (e.g. "Roboto-Regular").
 // Empty until InitStreamFonts() has been called.
 const std::vector<std::string>& GetStreamFontNames();
 
 // Convenience wrapper used by the renderers -- returns the currently
-// selected font (StreamerFontName / StreamerFontSize from settings).
+// selected font (StreamerFontName / StreamerFontSize from settings) for
+// the StreamerMain role.
 ImFont* GetStreamerFont();

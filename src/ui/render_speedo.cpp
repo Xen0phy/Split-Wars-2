@@ -34,8 +34,6 @@
 #include <deque>
 #include <functional>
 
-namespace fs = std::filesystem;
-
 // ---------------------------------------------------------------------------
 // Texture state — loaded on demand when filenames change, never freed manually
 // (Nexus owns the lifetime).
@@ -55,11 +53,13 @@ void ScanTextureFiles()
     s_textureNames.clear();
     s_textureNamesScanned = true;
 
-    std::string texDir = GetAddonDir() + "\\textures";
+    std::string texDir = std::string(APIDefs->Paths_GetAddonDirectory("Split Wars 2"))
+                         + "\\textures";
 
     std::error_code ec;
-    fs::create_directories(texDir, ec);
-    for (auto& entry : fs::directory_iterator(texDir, ec))
+    std::filesystem::create_directories(texDir, ec);
+
+    for (auto& entry : std::filesystem::directory_iterator(texDir, ec))
     {
         if (!entry.is_regular_file(ec)) continue;
         auto ext = entry.path().extension().string();
@@ -560,7 +560,7 @@ static void DrawSpeedLabel(ImDrawList* draw, float speed,
 {
     char    buf[16];
     FormatSpeedLabel(buf, sizeof(buf), speed, unitLabel);
-    ImFont* font    = GetStreamFont(SpeedoFontName, (float)SpeedoFontSize);
+    ImFont* font    = GetStreamFont(SpeedoFontName, EStreamFontRole::SpeedoLabel, (float)SpeedoFontSize);
     ImU32   textCol = IM_COL32(255, 255, 255, (int)(200 * masterAlpha));
 
     ImVec2 textSize = font
@@ -778,7 +778,7 @@ void RenderSpeedoWindow()
     SpeedoPeakHoldTime      = std::fmax(SpeedoPeakHoldTime,      0.1f);
     SpeedoSpringK           = std::fmax(SpeedoSpringK,           0.1f);
     SpeedoDamping           = std::fmax(SpeedoDamping,           0.1f);
-    SpeedoFontSize          = std::fmin(std::fmax(SpeedoFontSize, 16.0f), 48.0f);
+    SpeedoFontSize          = std::fmin(std::fmax(SpeedoFontSize, 16.0f), 200.0f);
 
     float speed    = SpeedoComputeSpeed();
     float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;

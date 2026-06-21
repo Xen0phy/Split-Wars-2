@@ -1,19 +1,28 @@
 // stream_fonts.cpp
-// Streamer-mode font manager.
+// Streamer-mode / speedo font manager.
 //
-// Scans <AddonDir>/fonts/ on startup, registers every .ttf/.otf file at
-// every size from 16px (STREAM_FONT_ATLAS_MIN) to 48px in 4px steps with
-// Nexus, and caches the resulting ImFont* pointers as Nexus delivers them
-// via callbacks.  The atlas starts at 26px so that derived sizes used by
-// the streamer timer (main − 4, main − 8) are always available even at the
-// minimum user-selectable font size of 24px.
+// Scans <AddonDir>/fonts/ on startup and remembers which .ttf/.otf files
+// are available (up to STREAM_FONT_MAX_FILES), without registering
+// anything with Nexus yet. Each (stem, role) pair is registered with
+// Nexus lazily, the first time GetStreamFont() is asked for it, at
+// whatever size is requested at that moment. If the same (stem, role)
+// is later asked for again at a different size, the existing Nexus
+// registration is resized in place via Fonts_Resize rather than a new
+// one being created — this is the same mechanism Nexus's own UI uses
+// to keep resized fonts crisp at arbitrary pixel sizes.
+//
+// "Role" exists because a few callers (the streamer timer) need several
+// independently-sized fonts from the same stem, all at once, every
+// frame (main digits, millis, header). See EStreamFontRole in the header.
 //
 // Font identifiers registered with Nexus follow the pattern:
-//   "SW2_STREAM_<STEM>_<SIZE>"
-// e.g. "SW2_STREAM_Roboto-Regular_32"
+//   "SW2_STREAM_<STEM>_<ROLE>"
+// e.g. "SW2_STREAM_Roboto-Regular_StreamerMain"
+// The identifier no longer encodes size, since a slot's size now changes
+// in place over its lifetime instead of being baked permanently.
 //
 // GetStreamerFont() returns the font matching the user's current
-// StreamerFontName / StreamerFontSize settings.
+// StreamerFontName / StreamerFontSize settings, role StreamerMain.
 
 #include "stream_fonts.h"
 #include "shared.h"
@@ -27,22 +36,51 @@ namespace fs = std::filesystem;
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
-struct FontSlot
+
+// A discovered font file, found during the startup scan.
+struct FontFile
 {
-    std::string nexusId;  // identifier registered with Nexus
-    std::string stem;     // font file stem, e.g. "Roboto-Regular"
-    float       size;     // pixel size
-    ImFont*     font;     // filled by Nexus callback; nullptr until ready
+    std::string stem; // e.g. "Roboto-Regular"
+    std::string path; // full path on disk
 };
 
+// A single (stem, role) registration with Nexus. Created lazily on first
+// request; resized in place (same nexusId, new size) on subsequent
+// requests with a different size.
+struct FontSlot
+{
+    std::string     nexusId;     // identifier registered with Nexus
+    std::string     stem;        // font file stem, e.g. "Roboto-Regular"
+    EStreamFontRole role;        // which independently-sized slot this is
+    float           currentSize; // size most recently sent to Nexus (Add or Resize)
+    ImFont*         font;        // filled by Nexus callback; nullptr until ready
+};
+
+static std::vector<FontFile>     s_Files;
 static std::vector<FontSlot>     s_Slots;
 static std::vector<std::string>  s_Names;   // unique stems, sorted
 static bool                      s_Initialised = false;
 
+// Role names used only to build stable, human-readable Nexus identifiers.
+// Order must match EStreamFontRole.
+static const char* RoleName(EStreamFontRole role)
+{
+    switch (role)
+    {
+        case EStreamFontRole::StreamerMain:       return "StreamerMain";
+        case EStreamFontRole::StreamerMainMillis: return "StreamerMainMillis";
+        case EStreamFontRole::StreamerCompMillis: return "StreamerCompMillis";
+        case EStreamFontRole::StreamerHeader:     return "StreamerHeader";
+        case EStreamFontRole::SpeedoLabel:        return "SpeedoLabel";
+    }
+    return "Unknown";
+}
+
 // ---------------------------------------------------------------------------
 // Nexus callback
 // Called by Nexus once per registered font when the atlas is ready (or when
-// a re-atlas happens, e.g. when the user changes Nexus UI scale).
+// a re-atlas happens, e.g. when the user changes Nexus UI scale, or after
+// a resize we requested).
 // The identifier lets us find the right slot to update.
 // ---------------------------------------------------------------------------
 static void OnFontReceived(const char* aIdentifier, void* aFont)
@@ -58,6 +96,30 @@ static void OnFontReceived(const char* aIdentifier, void* aFont)
 }
 
 // ---------------------------------------------------------------------------
+// FindFile
+// Looks up a previously-discovered font file by stem.
+// ---------------------------------------------------------------------------
+static const FontFile* FindFile(const std::string& stem)
+{
+    for (auto& f : s_Files)
+        if (f.stem == stem)
+            return &f;
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// FindSlot
+// Looks up an existing (stem, role) registration, if any.
+// ---------------------------------------------------------------------------
+static FontSlot* FindSlot(const std::string& stem, EStreamFontRole role)
+{
+    for (auto& slot : s_Slots)
+        if (slot.stem == stem && slot.role == role)
+            return &slot;
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // InitStreamFonts
 // ---------------------------------------------------------------------------
 void InitStreamFonts()
@@ -66,13 +128,12 @@ void InitStreamFonts()
     if (!APIDefs)      return;
 
     std::string fontsDir = GetAddonDir() + "\\fonts";
-    
-    // Collect font files (up to STREAM_FONT_MAX_FILES)
-    std::vector<fs::path> files;
+
     std::error_code ec;
     fs::create_directories(fontsDir, ec);
     if (fs::exists(fontsDir, ec))
     {
+        std::vector<fs::path> paths;
         for (auto& entry : fs::directory_iterator(fontsDir, ec))
         {
             if (!entry.is_regular_file()) continue;
@@ -81,60 +142,37 @@ void InitStreamFonts()
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             if (ext == ".ttf" || ext == ".otf")
             {
-                files.push_back(entry.path());
-                if ((int)files.size() >= STREAM_FONT_MAX_FILES) break;
+                paths.push_back(entry.path());
+                if ((int)paths.size() >= STREAM_FONT_MAX_FILES) break;
             }
         }
-    }
 
-    if (files.empty())
-    {
-        if (APIDefs)
-            APIDefs->Log(LOGL_WARNING, "Split Wars 2",
-                "StreamFonts: no fonts found in fonts/ folder.");
-        return;
-    }
+        // Sort for deterministic dropdown order
+        std::sort(paths.begin(), paths.end());
 
-    // Sort for deterministic dropdown order
-    std::sort(files.begin(), files.end());
-
-    // Register every file x size combination.
-    // The atlas covers STREAM_FONT_ATLAS_MIN (16px) through STREAM_FONT_SIZE_MAX (48px)
-    // so that derived sizes (main - 4, main - 8) are baked even when the user
-    // selects the minimum user-facing size of 24px.
-    int numSizes = (int)((STREAM_FONT_SIZE_MAX - STREAM_FONT_ATLAS_MIN) / STREAM_FONT_SIZE_STEP) + 1;
-    s_Slots.reserve(files.size() * numSizes);
-
-    for (auto& path : files)
-    {
-        std::string stem = path.stem().string();
-
-        // Track unique stems for the dropdown
-        if (std::find(s_Names.begin(), s_Names.end(), stem) == s_Names.end())
-            s_Names.push_back(stem);
-
-        for (float sz = STREAM_FONT_ATLAS_MIN; sz <= STREAM_FONT_SIZE_MAX + 0.01f; sz += STREAM_FONT_SIZE_STEP)
+        for (auto& path : paths)
         {
-            char id[128];
-            snprintf(id, sizeof(id), "SW2_STREAM_%s_%.0f", stem.c_str(), sz);
-
-            FontSlot slot;
-            slot.nexusId = id;
-            slot.stem    = stem;
-            slot.size    = sz;
-            slot.font    = nullptr;
-            s_Slots.push_back(std::move(slot));
-
-            APIDefs->Fonts_AddFromFile(id, sz, path.string().c_str(), OnFontReceived, nullptr);
+            FontFile file;
+            file.stem = path.stem().string();
+            file.path = path.string();
+            s_Files.push_back(file);
+            s_Names.push_back(file.stem);
         }
     }
 
     std::sort(s_Names.begin(), s_Names.end());
     s_Initialised = true;
 
+    if (s_Files.empty())
+    {
+        APIDefs->Log(LOGL_WARNING, "Split Wars 2",
+            "StreamFonts: no fonts found in fonts/ folder.");
+        return;
+    }
+
     char msg[128];
-    snprintf(msg, sizeof(msg), "StreamFonts: registered %d fonts x %d sizes.",
-             (int)files.size(), numSizes);
+    snprintf(msg, sizeof(msg), "StreamFonts: discovered %d font file(s).",
+             (int)s_Files.size());
     APIDefs->Log(LOGL_INFO, "Split Wars 2", msg);
 }
 
@@ -147,6 +185,7 @@ void ReleaseStreamFonts()
     for (auto& slot : s_Slots)
         APIDefs->Fonts_Release(slot.nexusId.c_str(), OnFontReceived);
     s_Slots.clear();
+    s_Files.clear();
     s_Names.clear();
     s_Initialised = false;
 }
@@ -154,14 +193,45 @@ void ReleaseStreamFonts()
 // ---------------------------------------------------------------------------
 // GetStreamFont
 // ---------------------------------------------------------------------------
-ImFont* GetStreamFont(const std::string& name, float size)
+ImFont* GetStreamFont(const std::string& name, EStreamFontRole role, float size)
 {
-    for (auto& slot : s_Slots)
+    if (!APIDefs) return nullptr;
+
+    const FontFile* file = FindFile(name);
+    if (!file) return nullptr; // unknown stem -- nothing to register
+
+    FontSlot* slot = FindSlot(name, role);
+    if (!slot)
     {
-        if (slot.stem == name && std::abs(slot.size - size) < 0.5f)
-            return slot.font; // may still be nullptr if atlas not yet ready
+        // First time this (stem, role) has been requested: register fresh.
+        char id[160];
+        snprintf(id, sizeof(id), "SW2_STREAM_%s_%s", name.c_str(), RoleName(role));
+
+        FontSlot newSlot;
+        newSlot.nexusId     = id;
+        newSlot.stem        = name;
+        newSlot.role        = role;
+        newSlot.currentSize = size;
+        newSlot.font        = nullptr;
+        s_Slots.push_back(std::move(newSlot));
+        slot = &s_Slots.back();
+
+        APIDefs->Fonts_AddFromFile(id, size, file->path.c_str(), OnFontReceived, nullptr);
+        return nullptr; // not ready yet -- callback will deliver it
     }
-    return nullptr;
+
+    // Already registered. If the size changed, resize in place rather than
+    // re-registering, so we keep one stable identifier per (stem, role)
+    // for its whole lifetime and Nexus can resize the existing atlas entry.
+    if (std::abs(slot->currentSize - size) >= 0.5f)
+    {
+        slot->currentSize = size;
+        APIDefs->Fonts_Resize(slot->nexusId.c_str(), size);
+        // Keep returning the previous font this frame; OnFontReceived will
+        // update slot->font once Nexus delivers the resized version.
+    }
+
+    return slot->font; // may be nullptr if nothing has been delivered yet
 }
 
 // ---------------------------------------------------------------------------
@@ -182,14 +252,15 @@ ImFont* GetStreamerFont()
     // Try the user's selected font first
     if (!StreamerFontName.empty())
     {
-        ImFont* f = GetStreamFont(StreamerFontName, (float)StreamerFontSize);
+        ImFont* f = GetStreamFont(StreamerFontName, EStreamFontRole::StreamerMain, (float)StreamerFontSize);
         if (f) return f;
     }
 
-    // Fallback: first available slot at the requested size
+    // Fallback: any already-delivered slot for this stem, regardless of role,
+    // so the overlay isn't blank while the requested role's font loads.
     for (auto& slot : s_Slots)
     {
-        if (std::abs(slot.size - (float)StreamerFontSize) < 0.5f && slot.font)
+        if (slot.stem == StreamerFontName && slot.font)
             return slot.font;
     }
 

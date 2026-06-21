@@ -225,48 +225,25 @@ void AddonOptions()
                     {
                         DisabledBlock(fontNames.empty())
                         {
-                            static const int fontSizes[] = { 24, 28, 32, 36, 40, 44, 48 };
-                            char preview[8];
-                            snprintf(preview, sizeof(preview), "%d", StreamerFontSize);
                             ImGui::SetNextItemWidth(90.0f);
-                            if (ImGui::BeginCombo("Size##streamer", preview))
+                            if (ImGui::InputInt("Size##streamer", &StreamerFontSize, 1, 1))
                             {
-                                for (int s : fontSizes)
-                                {
-                                    char label[8];
-                                    snprintf(label, sizeof(label), "%d", s);
-                                    if (ImGui::Selectable(label, StreamerFontSize == s))
-                                    {
-                                        StreamerFontSize = s;
-                                        SaveCurrentSettings();
-                                    }
-                                    if (StreamerFontSize == s) ImGui::SetItemDefaultFocus();
-                                }
-                                ImGui::EndCombo();
+                                // Floor of 16, not lower: mainMillis/compMillis derive
+                                // as Size-4 / Size-8, so anything smaller would push
+                                // compMillis to <=8px or non-positive.
+                                StreamerFontSize = std::clamp(StreamerFontSize, 16, 48);
                             }
+                            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                             Tooltip("Pixel size of the main time digits.");
 
                             ImGui::SameLine();
 
-                            static const int headerSizes[] = { 16, 20, 24, 28, 32 };
-                            char headerPreview[8];
-                            snprintf(headerPreview, sizeof(headerPreview), "%d", StreamerHeaderFontSize);
                             ImGui::SetNextItemWidth(90.0f);
-                            if (ImGui::BeginCombo("Header Size##streamer", headerPreview))
+                            if (ImGui::InputInt("Header Size##streamer", &StreamerHeaderFontSize, 1, 1))
                             {
-                                for (int s : headerSizes)
-                                {
-                                    char label[8];
-                                    snprintf(label, sizeof(label), "%d", s);
-                                    if (ImGui::Selectable(label, StreamerHeaderFontSize == s))
-                                    {
-                                        StreamerHeaderFontSize = s;
-                                        SaveCurrentSettings();
-                                    }
-                                    if (StreamerHeaderFontSize == s) ImGui::SetItemDefaultFocus();
-                                }
-                                ImGui::EndCombo();
+                                StreamerHeaderFontSize = std::clamp(StreamerHeaderFontSize, 8, 32);
                             }
+                            if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                             Tooltip("Pixel size of the section title bar labels.");
                         }
                     }
@@ -734,26 +711,13 @@ void AddonOptions()
                         }
                         Tooltip("Font used for the speed label.");
                         ImGui::SameLine();
-                        static const float fontSizes[] = { 16, 20, 24, 28, 32, 36, 40, 44, 48 };
-                        char sizePreview[8];
-                        snprintf(sizePreview, sizeof(sizePreview), "%.0f", SpeedoFontSize);
-                        ImGui::SetNextItemWidth(60.0f);
-                        if (ImGui::BeginCombo("##speedofontsize", sizePreview))
+                        ImGui::SetNextItemWidth(70.0f);
+                        if (ImGui::InputFloat("##speedofontsize", &SpeedoFontSize, 1.0f, 1.0f))
                         {
-                            for (float fs : fontSizes)
-                            {
-                                char lbl[8];
-                                snprintf(lbl, sizeof(lbl), "%.0f", fs);
-                                if (ImGui::Selectable(lbl, SpeedoFontSize == fs))
-                                {
-                                    SpeedoFontSize = fs;
-                                    SaveCurrentSettings();
-                                }
-                                if (SpeedoFontSize == fs) ImGui::SetItemDefaultFocus();
-                            }
-                            ImGui::EndCombo();
+                            SpeedoFontSize = std::clamp(SpeedoFontSize, 6.0f, 200.0f);
                         }
-                        Tooltip("Font size for the speed label.");
+                        if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                        Tooltip("Font size for the speed label. Click and drag, or double-click to type a value.");
                     }
                 }
 
@@ -1218,11 +1182,11 @@ void AddonOptions()
                         }
                 
                         ImGui::SameLine();
-                        ImGui::Checkbox("Smooth##gradientsmooth", &SpeedoGradientSmooth);
+                        ImGui::Checkbox("Smooth##gradient", &SpeedoGradientSmooth);
                         Tooltip("Blend smoothly between stops instead of stepping abruptly at each one.");
 
                         ImGui::SameLine();
-                        ImGui::Checkbox("Speed##gradientspeed", &SpeedoGradientWholeArc);
+                        ImGui::Checkbox("Whole Arc##gradient", &SpeedoGradientWholeArc);
                         Tooltip("Color the entire arc as one solid color matching the current speed,\ninstead of showing each stop's color at its own position along the arc.");
     
                         // Stop rows
