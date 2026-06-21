@@ -616,6 +616,7 @@ void AddonOptions()
 
                 ImGui::TableSetColumnIndex(1);
                 ImGui::Checkbox("Show Label", &SpeedoLabelVisible);
+                Tooltip("Show the numeric speed readout.");
                 ImGui::SameLine();
                 DisabledBlock(!SpeedoLabelVisible || fontNames.empty())
                 {
@@ -625,6 +626,7 @@ void AddonOptions()
                         SpeedoFontSize = 24.0f;
                         SaveCurrentSettings();
                     }
+                    Tooltip("Restore the default font and size for the speed label.");
                 }
 
                 // ── Row 2: Mount combo | Show Label + Reset Font ─────────────────
@@ -730,6 +732,7 @@ void AddonOptions()
                             }
                             ImGui::EndCombo();
                         }
+                        Tooltip("Font used for the speed label.");
                         ImGui::SameLine();
                         static const float fontSizes[] = { 16, 20, 24, 28, 32, 36, 40, 44, 48 };
                         char sizePreview[8];
@@ -750,6 +753,7 @@ void AddonOptions()
                             }
                             ImGui::EndCombo();
                         }
+                        Tooltip("Font size for the speed label.");
                     }
                 }
 
@@ -760,7 +764,7 @@ void AddonOptions()
                 {
                     ImGui::Checkbox("Edit Mode", &SpeedoEditMode);
                     if (!SpeedoTachometer) SpeedoEditMode = false; 
-                    Tooltip("Makes the speedometer window draggable.");
+                    Tooltip("Makes the speedometer windows draggable.");
                 }
     
                 ImGui::TableSetColumnIndex(1);
@@ -787,6 +791,7 @@ void AddonOptions()
     
                         ImVec2 canvasPos = ImGui::GetCursorScreenPos();
                         ImGui::InvisibleButton("##speedogeo", ImVec2(canvasSize, canvasSize));
+                        Tooltip("Drag to set the arc's rotation and sweep angle.");
     
                         float cx = canvasPos.x + canvasR;
                         float cy = canvasPos.y + canvasR;
@@ -801,7 +806,7 @@ void AddonOptions()
     
                             float angleDeg = std::atan2(dy, dx) * 180.0f / IM_PI;
                             if (angleDeg < 0.0f) angleDeg += 360.0f;
-                            SpeedoAngle    = angleDeg;
+                            SpeedoArcRotation    = angleDeg;
                             SpeedoArcAngle = tVal * 359.0f;
     
                             float radius = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
@@ -816,7 +821,7 @@ void AddonOptions()
                         dl->AddLine(ImVec2(canvasPos.x, cy), ImVec2(canvasPos.x + canvasSize, cy), IM_COL32(80, 80, 80, 255));
     
                         float  tVal       = SpeedoArcAngle / 359.0f;
-                        float  handleAngle = SpeedoAngle * IM_PI / 180.0f;
+                        float  handleAngle = SpeedoArcRotation * IM_PI / 180.0f;
                         ImVec2 handle(cx + std::cos(handleAngle) * tVal * canvasR,
                                       cy + std::sin(handleAngle) * tVal * canvasR);
                         if (SpeedoEditMode)
@@ -838,23 +843,27 @@ void AddonOptions()
                         ImGui::SameLine();
                     	if (ImGui::SmallButton("Reset"))
                     	{
-                        	SpeedoAngle     = 270.0f;
+                        	SpeedoArcRotation     = 270.0f;
 	                        SpeedoArcAngle  = 60.0f;
-                        	SpeedoArcLength = 200.0f;
+                        	SpeedoArcLength = 400.0f;
                         	SaveCurrentSettings();
                     	}
+                    	Tooltip("Restore the default arc rotation, sweep, and length.");
 						ImGui::TableSetColumnIndex(1);
                     	ImGui::SetNextItemWidth(90.0f);
-                    	ImGui::DragFloat("##georot",  &SpeedoAngle,    1.0f, 0.0f,   360.0f, "Rot: %.0f°");
+                    	ImGui::DragFloat("##georot",  &SpeedoArcRotation,    1.0f, 0.0f,   360.0f, "Rot: %.0f°");
+                    	Tooltip("Rotation of the whole speedometer.");
                         
                         ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0);
                     	ImGui::SetNextItemWidth(90.0f);
-                    	ImGui::DragFloat("##geoangle", &SpeedoArcAngle, 1.0f, 0.0f,   359.0f, "Ang: %.0f°");
+                    	ImGui::DragFloat("##geoangle", &SpeedoArcAngle, 1.0f, 0.0f,   359.0f, "Angle: %.0f°");
+                    	Tooltip("Total sweep of the arc. Below 1° the speedo draws as a straight line instead.");
 
 						ImGui::TableSetColumnIndex(1);
                     	ImGui::SetNextItemWidth(90.0f);
-                    	ImGui::DragFloat("##geolength", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "Len: %.0f px");
+                    	ImGui::DragFloat("##geolength", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "Size: %.0f px");
+                    	Tooltip("Length of the arc (or line, in straight-line mode) in pixels.");
                         
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
@@ -883,6 +892,7 @@ void AddonOptions()
                         ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0);
                     	ImGui::Checkbox("Draw", &SpeedoNeedleVisible);
+                    	Tooltip("Draw the plain needle line.");
 
 						ImGui::TableSetColumnIndex(1);
                     	DisabledBlock(!SpeedoNeedleVisible)
@@ -936,6 +946,7 @@ void AddonOptions()
                                 	}
                                 	ImGui::EndCombo();
                             	}
+                            	Tooltip("Select the needle image to use.");
 
 								ImGui::TableSetColumnIndex(1);
                             	if (ImGui::SmallButton("Refresh##needletex"))
@@ -952,6 +963,7 @@ void AddonOptions()
                                 SpeedoNeedleTexScale = scalePercent / 100.0f;
                             }
                             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                            Tooltip("Scale the needle texture uniformly.");
 
 						    ImGui::TableSetColumnIndex(1);
 						    ImGui::SetNextItemWidth(90.0f);
@@ -971,7 +983,9 @@ void AddonOptions()
                                     SpeedoNeedleTexPivotX = pivotXDisplay;
                             }
                             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-                            Tooltip("X position of the needle's pivot point inside the texture, in pixels from the left edge. Read this off your image in any image editor (e.g. GIMP, paint.net). This point gets placed on the drawn needle's pivot P and rotated about.");
+                            Tooltip("X position of the needle's pivot point inside the texture, in pixels from the left edge.\n"
+                                    "You can read this off your image in any image editor (e.g. GIMP, paint.net).\n"
+                                    "This point gets placed on the drawn needle's pivot P and rotated about.");
 
 						    ImGui::TableSetColumnIndex(1);
 						    ImGui::SetNextItemWidth(90.0f);
@@ -993,10 +1007,12 @@ void AddonOptions()
                             ImGui::TableSetColumnIndex(0);
                             ImGui::SetNextItemWidth(90.0f);
                             ImGui::DragFloat("##springphys",  &SpeedoSpringK, 0.1f, 0.1f, 50.0f, "Spring: %.1f");
+                            Tooltip("Spring stiffness for the needle's physics-based motion. Higher values snap to the target speed faster.");
 
                             ImGui::TableSetColumnIndex(1);
                             ImGui::SetNextItemWidth(90.0f);
                             ImGui::DragFloat("##dampphys", &SpeedoDamping, 0.1f, 0.1f, 50.0f, "Damp: %.1f");
+                            Tooltip("Damping for the needle's physics-based motion. Higher values reduce overshoot and settle the needle faster.");
                         }
                         ImGui::EndTable();
                     }
@@ -1175,6 +1191,7 @@ void AddonOptions()
                                     }
                                 }
                             }
+                            Tooltip("Add up to four gradient stops.");
                         }
                 
                         ImGui::SameLine();
@@ -1190,10 +1207,12 @@ void AddonOptions()
                                 selectedStop = std::max(0, selectedStop - 1);
                                 SaveCurrentSettings();
                             }
+                            Tooltip("Removes all gradient stops from the selected one to the right.");
                         }
                 
                         ImGui::SameLine();
                         ImGui::Checkbox("Smooth##gradient", &SpeedoGradientSmooth);
+                        Tooltip("Blend smoothly between stops instead of stepping abruptly at each one.");
     
                         // Stop rows
                         for (int s = 0; s < 4; s++)
@@ -1201,7 +1220,13 @@ void AddonOptions()
                             bool active = stopOn[s];
                             DisabledBlock(!active)
                             {
-                    
+                                ImGui::SetNextItemWidth(90.0f);
+                                char thickId[16];
+                                snprintf(thickId, sizeof(thickId), "##thick%d", s);
+                                ImGui::DragFloat(thickId, uiStops[s].thickness, 0.1f, 0.1f, 20.0f, "%.1f px");
+                                Tooltip("Arc thickness at this stop.");
+                                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                                ImGui::SameLine();
                                 char label[32];
                                 snprintf(label, sizeof(label), "Stop %d", s + 1);
                                 ImGui::ColorEdit4(label, uiStops[s].color,
@@ -1209,13 +1234,6 @@ void AddonOptions()
                                     ImGuiColorEditFlags_NoInputs |
                                     ImGuiColorEditFlags_PickerHueWheel);
                                 if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-                                ImGui::SameLine();
-                                ImGui::SetNextItemWidth(90.0f);
-                                char thickId[16];
-                                snprintf(thickId, sizeof(thickId), "##thick%d", s);
-                                ImGui::DragFloat(thickId, uiStops[s].thickness, 0.1f, 0.1f, 20.0f, "%.1f px");
-                                if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-    
                             }
                         }
                     }
@@ -1237,11 +1255,13 @@ void AddonOptions()
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             ImGui::SetNextItemWidth(90.0f);
-                            ImGui::DragFloat("##arcopacity",  &SpeedoOpacity,   0.01f, 0.0f, 1.0f,  "Alpha: %.2f");
+                            ImGui::DragFloat("##arcopacity",  &SpeedoArcBgOpacity,   0.01f, 0.0f, 1.0f,  "Alpha: %.2f");
+                            Tooltip("Opacity of the background (unfilled) arc track.");
                             
                             ImGui::TableSetColumnIndex(1);
                             ImGui::SetNextItemWidth(90.0f);
                             ImGui::DragFloat("##arcwidth", &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "Width: %.1f px");
+                            Tooltip("Thickness of the background arc track.");
 
                             // ── Face Texture ─────────────────────────────────────────────
                             ImGui::TableNextRow();
@@ -1281,6 +1301,7 @@ void AddonOptions()
                                         }
                                         ImGui::EndCombo();
                                     }
+                                    Tooltip("Select the gauge-face image to use.");
                                     ImGui::TableSetColumnIndex(1);
                                     if (ImGui::SmallButton("Refresh##facetex"))
                                         ScanTextureFiles();
@@ -1332,6 +1353,7 @@ void AddonOptions()
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             ImGui::Checkbox("Peak Hold", &SpeedoPeakHoldEnabled);
+                            Tooltip("Briefly hold and display the highest speed reached before it decays back down.");
                             ImGui::TableSetColumnIndex(1);
                             // empty
 
@@ -1341,9 +1363,11 @@ void AddonOptions()
                                 ImGui::TableSetColumnIndex(0);
                                 ImGui::SetNextItemWidth(90.0f);
                                 ImGui::DragFloat("##peaktime", &SpeedoPeakHoldTime, 0.1f, 0.1f, 10.0f, "Time: %.1f s");
+                                Tooltip("How long the peak marker stays before decaying back to the current speed.");
                                 ImGui::TableSetColumnIndex(1);
                                 ImGui::SetNextItemWidth(90.0f);
                                 ImGui::DragFloat("##peaksize", &SpeedoPeakHoldSize, 0.1f, 0.1f, 20.0f, "Size: %.1f px");
+                                Tooltip("Size of the peak-hold marker.");
                             }
                         }
                         ImGui::EndTable();

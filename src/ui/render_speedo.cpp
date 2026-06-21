@@ -3,21 +3,21 @@
 //
 // ─── Tachometer geometry ────────────────────────────────────────────────────
 //
-//   SpeedoArcAngle  — total sweep of the arc in degrees (1-359), 0 = straight line
-//   SpeedoArcLength — total length of the arc/line in pixels
-//   SpeedoAngle     — rotation of the whole speedo (0-360)
-//   SpeedoPDistance — distance of needle origin P from the arc (0=on arc, max 500px)
+//   SpeedoArcAngle    — total sweep of the arc in degrees (1-359), 0 = straight line
+//   SpeedoArcLength   — total length of the arc/line in pixels
+//   SpeedoArcRotation — rotation of the whole speedo (0-360)
+//   SpeedoPDistance   — distance of needle origin P from the arc (0=on arc, max 500px)
 //
 //   Arc mode:
 //     radius   = SpeedoArcLength / (SpeedoArcAngle * DEG_TO_RAD)
 //     pDist    = radius - min(SpeedoPDistance, min(500, radius))
-//     arcMid   = SpeedoAngle axis direction
+//     arcMid   = SpeedoArcRotation axis direction
 //     arcStart = arcMid - ArcAngle/2
 //     arcEnd   = arcMid + ArcAngle/2
 //     needle   = line from P to arc point at current speed
 //
 //   Straight line mode (SpeedoArcAngle < 1):
-//     line runs perpendicular to SpeedoAngle, length = SpeedoArcLength
+//     line runs perpendicular to SpeedoArcRotation, length = SpeedoArcLength
 //     fill grows from lineStart toward lineEnd as speed increases
 //
 // ─── Render modes ───────────────────────────────────────────────────────────
@@ -92,6 +92,24 @@ bool GetSpeedoNeedleTexSize(float& outW, float& outH)
 
 // Reload textures when filenames change.
 // Files are resolved relative to <GW2>/addons/Split Wars 2/textures/.
+//
+// Uses Textures_LoadFromFile (async, callback-driven) rather than
+// Textures_GetOrCreateFromFile. The latter can return a Texture_t* whose
+// Resource is still null while the file decodes/uploads in the background,
+// with no signal telling the caller when it becomes ready — so a naive
+// "mark this path as loaded, never ask again" cache (which is what this
+// function used to do) could get stuck showing nothing until something
+// cleared the cache and re-triggered a fresh request. LoadFromFile instead
+// calls us back exactly once, with the fully-ready texture, whenever it's
+// actually done.
+static void OnSpeedoTextureReceived(const char* aIdentifier, Texture_t* aTexture)
+{
+    if (std::strcmp(aIdentifier, "SW2_SPEEDO_FACE") == 0)
+        s_faceTexture = aTexture;
+    else if (std::strcmp(aIdentifier, "SW2_SPEEDO_NEEDLE") == 0)
+        s_needleTexture = aTexture;
+}
+
 static void UpdateSpeedoTextures()
 {
     // Build base path once — APIDefs->Paths_GetAddonDirectory returns a
@@ -103,9 +121,9 @@ static void UpdateSpeedoTextures()
         SpeedoFacePath != s_loadedFacePath)
     {
         std::string fullPath = texDir + SpeedoFacePath;
-        std::string id       = "SW2_SPEEDO_FACE_" + SpeedoFacePath;
-        s_faceTexture    = APIDefs->Textures_GetOrCreateFromFile(id.c_str(), fullPath.c_str());
+        s_faceTexture    = nullptr; // hide old/mismatched texture while the new one loads
         s_loadedFacePath = SpeedoFacePath;
+        APIDefs->Textures_LoadFromFile("SW2_SPEEDO_FACE", fullPath.c_str(), OnSpeedoTextureReceived);
     }
     if (!SpeedoFaceEnabled)
     {
@@ -117,9 +135,9 @@ static void UpdateSpeedoTextures()
         SpeedoNeedleTexPath != s_loadedNeedleTexPath)
     {
         std::string fullPath = texDir + SpeedoNeedleTexPath;
-        std::string id       = "SW2_SPEEDO_NEEDLE_" + SpeedoNeedleTexPath;
-        s_needleTexture       = APIDefs->Textures_GetOrCreateFromFile(id.c_str(), fullPath.c_str());
+        s_needleTexture       = nullptr; // hide old/mismatched texture while the new one loads
         s_loadedNeedleTexPath = SpeedoNeedleTexPath;
+        APIDefs->Textures_LoadFromFile("SW2_SPEEDO_NEEDLE", fullPath.c_str(), OnSpeedoTextureReceived);
     }
     if (!SpeedoNeedleTexEnabled)
     {
@@ -181,6 +199,13 @@ static constexpr float PI                      = 3.14159265f;
 static constexpr float TWO_PI                  = 6.28318530f;
 static constexpr float STRAIGHT_LINE_THRESHOLD = 1.0f;
 
+// Picks a segment count for AddLine-based arc/line drawing. Finer
+// thickness needs more segments to keep the polyline looking curved
+// rather than faceted, so segment count scales inversely with thickness
+// (half-thickness is used as a rough "pixels per segment" budget).
+// Clamped to [64, 512]: 64 keeps thin/short arcs cheap, 512 caps cost on
+// huge radii or very thin strokes where the raw formula would otherwise
+// explode.
 static int ArcSegments(float radius, float thickness)
 {
     float circ = TWO_PI * radius;
@@ -225,6 +250,12 @@ static int GatherStops(SpeedoStop out[4])
     return n;
 }
 
+// Returns the color/thickness for gradient position p in [0,1], given the
+// active stops (stops[0] is always at pos 0). Before the first interior
+// stop or with only one stop active, returns stop 0 unchanged. Between two
+// stops, either linearly blends (smooth=true) or hard-steps to the next
+// stop's value (smooth=false). Past the last stop, clamps to that stop's
+// value.
 static void SampleStops(const SpeedoStop* stops, int n, float p, bool smooth,
                          float outColor[4], float& outThickness)
 {
@@ -311,13 +342,19 @@ static void DrawArcSegmented(
         }
         else
         {
+            // Color is sampled at the segment midpoint so a hard color step lands
+            // mid-segment rather than at an edge. Thickness instead uses the max of
+            // both endpoint samples (not the midpoint) so a segment never draws
+            // thinner than either side of a thickness step — that would otherwise
+            // leave a visible notch where the stops's thickness changes.
             float color0[4]; float thickness0;
             float color1[4]; float thickness1;
             SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color,  thickness);
             SampleStops(stops, stopCount, t0,                smooth, color0, thickness0);
             SampleStops(stops, stopCount, t1,                smooth, color1, thickness1);
             thickness = std::fmax(thickness0, thickness1);
-            // re-sample mid for color
+            // thickness already set above from fmax(thickness0, thickness1);
+            // color from the midpoint sample on line 334 is used as-is.
             SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, thickness);
             thickness = std::fmax(thickness0, thickness1);
         }
@@ -569,9 +606,9 @@ static void DrawSpeedoContent(
                 sinPerp * halfLen * (p * 2.0f - 1.0f));
         };
 
-        // --- Background line --- (SpeedoOpacity governs only this background element)
+        // --- Background line --- (SpeedoArcBgOpacity governs only this background element)
         DrawLineSegmented(draw, linePoint, SpeedoArcLength, 1.0f,
-                          stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
+                          stops, stopCount, SpeedoGradientSmooth, SpeedoArcBgOpacity, true);
 
         // --- Filled sweep --- (full opacity; per-stop alpha still applies)
         if (t > 0.0f)
@@ -600,9 +637,9 @@ static void DrawSpeedoContent(
     // ARC FORK
     // =========================================================================
 
-    // --- Background arc --- (SpeedoOpacity governs only this background element)
+    // --- Background arc --- (SpeedoArcBgOpacity governs only this background element)
     DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, 1.0f,
-                     stops, stopCount, SpeedoGradientSmooth, SpeedoOpacity, true);
+                     stops, stopCount, SpeedoGradientSmooth, SpeedoArcBgOpacity, true);
 
     // --- Filled sweep arc --- (full opacity; per-stop alpha still applies)
     if (t > 0.0f)
@@ -691,7 +728,7 @@ void RenderSpeedoWindow()
     // Sanitize settings
     SpeedoArcAngle          = std::fmax(SpeedoArcAngle,          0.0f);
     SpeedoArcLength         = std::fmax(SpeedoArcLength,         1.0f);
-    SpeedoOpacity           = std::fmin(std::fmax(SpeedoOpacity,  0.0f), 1.0f);
+    SpeedoArcBgOpacity           = std::fmin(std::fmax(SpeedoArcBgOpacity,  0.0f), 1.0f);
     SpeedoNeedleWidth       = std::fmax(SpeedoNeedleWidth,       0.1f);
     SpeedoArcBgWidth        = std::fmax(SpeedoArcBgWidth,        0.1f);
     SpeedoStop1Thickness    = std::fmax(SpeedoStop1Thickness,    0.1f);
@@ -710,7 +747,13 @@ void RenderSpeedoWindow()
     float maxSpeed = (SpeedUnit == 1) ? MAX_SPEED_MPH : (SpeedUnit == 2) ? MAX_SPEED_UPS : MAX_SPEED_KMH;
     float t        = std::fmin(speed / maxSpeed, 1.0f);
 
-    // Needle spring physics
+    // Critically-damped spring-damper: s_needlePos chases target `t` instead
+    // of snapping to it instantly, so the needle eases and slightly overshoots
+    // like a real gauge. SpeedoSpringK is the spring stiffness (higher = faster
+    // pull toward target), SpeedoDamping resists velocity (higher = less
+    // overshoot/oscillation). `t` is reassigned to the smoothed s_needlePos
+    // afterward so every consumer below (arc fill, needle angle, label) draws
+    // the eased value, not the raw instantaneous speed ratio.
     static float s_needlePos = 0.0f;
     static float s_needleVel = 0.0f;
     {
@@ -802,7 +845,7 @@ void RenderSpeedoWindow()
 
     // Geometry
     bool  straightLine = SpeedoArcAngle < STRAIGHT_LINE_THRESHOLD;
-    float axisAngleRad = SpeedoAngle * DEG_TO_RAD;
+    float axisAngleRad = SpeedoArcRotation * DEG_TO_RAD;
     float arcAngleRad  = 0.0f;
     float radius       = 0.0f;
     float pDist        = 0.0f;
@@ -826,12 +869,20 @@ void RenderSpeedoWindow()
         std::cos(axisAngleRad) * pDist,
         std::sin(axisAngleRad) * pDist);
 
-    // Bounding box
+    // Compute a tight local-space bounding box around the arc/line plus the
+    // needle origin P. This becomes the edit-mode ImGui window's size, so the
+    // window hugs exactly what's drawn instead of using a fixed oversized
+    // canvas. minX/minY/maxX/maxY are in the speedo's local (un-translated)
+    // coordinate space, centered on C (0,0).
     const float padding = 8.0f;
 
     float minX =  1e9f, minY =  1e9f;
     float maxX = -1e9f, maxY = -1e9f;
 
+    // The line is symmetric about the rotation axis, so its extent along each
+    // world axis is always ±|projection| regardless of which way perpAngle
+    // points — hence -abs(...) for the min side instead of the raw signed
+    // value, which would be wrong half the time depending on rotation.
     if (straightLine)
     {
         float perpAngle = axisAngleRad + PI * 0.5f;

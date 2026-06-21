@@ -3,24 +3,58 @@
 //
 // Settings (all persisted via settings_table.h):
 //
+//   General
 //   ShowSpeedo          — toggles the window
-//   SpeedUnitMph        — false = km/h, true = mph
+//   SpeedUnit           — 0=km/h, 1=mph, 2=u/s (game units/sec)
+//   SpeedoShowUnit      — show/hide the unit suffix on the label
 //   SpeedoTachometer    — false = numeric display, true = tachometer
+//   SpeedoMountMask     — bitmask of mounts to show on (-1 = all, 0 = none)
+//
+//   Window / label position (set by dragging, not by a slider)
 //   SpeedoEditMode      — false = click-through, true = moveable with border
+//   SpeedoWindowX/Y     — tachometer window position (-1 = auto-center)
+//   SpeedoLabelX/Y      — speed label position (right-edge anchor)
 //
-//   SpeedoRadius        — distance from C to the arc in px
-//                         below 5px = straight line mode
-//   SpeedoAngle         — orientation of the arc midpoint / straight line (degrees, 0-360)
-//   SpeedoArcLength     — total length of the arc in px
+//   Geometry
+//   SpeedoArcRotation   — rotation of the whole speedo (degrees, 0-360)
+//   SpeedoArcAngle      — arc sweep in degrees (1-359); below 1 = straight line
+//   SpeedoArcLength     — total length of the arc/line in px
+//                         (radius is derived: SpeedoArcLength / SpeedoArcAngle)
+//   SpeedoPDistance     — distance of the needle origin P from the arc
 //
-//   SpeedoNeedleVisible — show/hide the needle
+//   Needle
+//   SpeedoNeedleVisible — show/hide the plain needle line
 //   SpeedoNeedleWidth   — needle line width in px
-//   SpeedoArcWidth      — filled sweep arc width in px
-//   SpeedoArcBgWidth    — background arc width in px
-//
-//   SpeedoLabelVisible  — show/hide the speed number label
+//   SpeedoNeedleTexEnabled        — use a needle image instead of/alongside the line
+//   SpeedoNeedleTexPath           — filename of the needle texture
+//   SpeedoNeedleTexScale          — uniform scale of the needle texture
+//   SpeedoNeedleTexAngleOffset    — rotation offset to align the texture's tip
+//   SpeedoNeedleTexPivotX/Y       — pivot point inside the texture (-1 = image centre)
 //   SpeedoSpringK       — needle spring stiffness
 //   SpeedoDamping       — needle spring damping
+//
+//   Arc rendering
+//   SpeedoOpacity        — opacity of the background (unfilled) arc/line only
+//   SpeedoArcBgWidth     — background arc/line width in px
+//   SpeedoGradientSmooth — blend between gradient stops vs hard step
+//   SpeedoStop1Color/Thickness                  — stop 1, always enabled, fixed at pos 0
+//   SpeedoStop2/3/4 Enabled/Pos/Color/Thickness — up to 3 additional gradient stops
+//
+//   Face texture
+//   SpeedoFaceEnabled   — show a gauge-face image behind the arc
+//   SpeedoFacePath      — filename of the face texture
+//   SpeedoFaceScale     — uniform scale of the face texture
+//   SpeedoFaceX/Y       — top-left position of the face texture
+//
+//   Peak hold
+//   SpeedoPeakHoldEnabled — briefly hold the highest speed reached
+//   SpeedoPeakHoldTime    — how long the peak is held before decaying
+//   SpeedoPeakHoldSize    — size of the peak-hold marker
+//
+//   Label
+//   SpeedoLabelVisible  — show/hide the speed number label
+//   SpeedoFontName      — font used for the label ("" = default)
+//   SpeedoFontSize      — font size for the label
 
 #pragma once
 
