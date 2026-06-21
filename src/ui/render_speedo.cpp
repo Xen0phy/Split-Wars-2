@@ -34,6 +34,8 @@
 #include <deque>
 #include <functional>
 
+namespace fs = std::filesystem;
+
 // ---------------------------------------------------------------------------
 // Texture state — loaded on demand when filenames change, never freed manually
 // (Nexus owns the lifetime).
@@ -53,11 +55,11 @@ void ScanTextureFiles()
     s_textureNames.clear();
     s_textureNamesScanned = true;
 
-    std::string texDir = std::string(APIDefs->Paths_GetAddonDirectory("Split Wars 2"))
-                         + "\\textures";
+    std::string texDir = GetAddonDir() + "\\textures";
 
     std::error_code ec;
-    for (auto& entry : std::filesystem::directory_iterator(texDir, ec))
+    fs::create_directories(texDir, ec);
+    for (auto& entry : fs::directory_iterator(texDir, ec))
     {
         if (!entry.is_regular_file(ec)) continue;
         auto ext = entry.path().extension().string();
@@ -191,7 +193,7 @@ static void DrawRotatedImage(
 static constexpr float MPS_TO_KMH              = 3.6f;
 static constexpr float MPS_TO_MPH              = 2.23694f;
 static constexpr float MPS_TO_UPS              = 1.0f / 0.0254f; // GW2: 1 unit = 1 inch
-static constexpr float MAX_SPEED_KMH           = 200.0f;
+static constexpr float MAX_SPEED_KMH           = 220.0f;
 static constexpr float MAX_SPEED_MPH           = MAX_SPEED_KMH / 1.60934f;
 static constexpr float MAX_SPEED_UPS           = MAX_SPEED_KMH / 3.6f * MPS_TO_UPS;
 static constexpr float DEG_TO_RAD              = 3.14159265f / 180.0f;
@@ -303,6 +305,11 @@ static ImU32 ColorToU32(const float c[4], float masterAlpha)
 // Draws arc with per-segment interpolated color+thickness.
 // arcFill: 0-1 how much of the arc to draw.
 // isBg: use background color/width instead of stops.
+// wholeArc: when true, every segment's COLOR is sampled at arcFill itself
+// (the current speed), so the whole arc is one uniform color that fades/
+// steps together as speed changes, rather than each segment showing the
+// color for its own position. Thickness is unaffected and still varies
+// per-segment by position, same as the position-gradient mode.
 // ---------------------------------------------------------------------------
 static void DrawArcSegmented(
     ImDrawList*       draw,
@@ -314,12 +321,20 @@ static void DrawArcSegmented(
     const SpeedoStop* stops,
     int               stopCount,
     bool              smooth,
+    bool              wholeArc,
     float             masterAlpha,
     bool              isBg)
 {
     int   segs     = ArcSegments(radius, isBg ? SpeedoArcBgWidth : stops[stopCount-1].thickness);
     float arcRange = arcEnd - arcStart;
     float fillEnd  = arcStart + arcRange * arcFill;
+
+    // In whole-arc mode every segment uses this same color all the way
+    // through, so it only needs to be sampled once per draw call rather
+    // than per segment.
+    float wholeArcColor[4]; float wholeArcDummyThickness;
+    if (!isBg && wholeArc)
+        SampleStops(stops, stopCount, arcFill, smooth, wholeArcColor, wholeArcDummyThickness);
 
     for (int i = 0; i < segs; i++)
     {
@@ -342,21 +357,29 @@ static void DrawArcSegmented(
         }
         else
         {
-            // Color is sampled at the segment midpoint so a hard color step lands
-            // mid-segment rather than at an edge. Thickness instead uses the max of
-            // both endpoint samples (not the midpoint) so a segment never draws
-            // thinner than either side of a thickness step — that would otherwise
-            // leave a visible notch where the stops's thickness changes.
+            // Thickness uses the max of both endpoint samples (not the midpoint)
+            // so a segment never draws thinner than either side of a thickness
+            // step — that would otherwise leave a visible notch where the
+            // stop's thickness changes. This still samples by position even
+            // in whole-arc mode, since thickness is unaffected by that flag.
             float color0[4]; float thickness0;
             float color1[4]; float thickness1;
-            SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color,  thickness);
-            SampleStops(stops, stopCount, t0,                smooth, color0, thickness0);
-            SampleStops(stops, stopCount, t1,                smooth, color1, thickness1);
+            SampleStops(stops, stopCount, t0, smooth, color0, thickness0);
+            SampleStops(stops, stopCount, t1, smooth, color1, thickness1);
             thickness = std::fmax(thickness0, thickness1);
-            // thickness already set above from fmax(thickness0, thickness1);
-            // color from the midpoint sample on line 334 is used as-is.
-            SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, thickness);
-            thickness = std::fmax(thickness0, thickness1);
+
+            if (wholeArc)
+            {
+                // Color is sampled once at arcFill itself.
+                for (int j = 0; j < 4; j++) color[j] = wholeArcColor[j];
+            }
+            else
+            {
+                // Color is sampled at the segment midpoint so a hard color step
+                // lands mid-segment rather than at an edge.
+                float dummyThickness;
+                SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, dummyThickness);
+            }
         }
 
         // Extend slightly to prevent gaps
@@ -375,12 +398,14 @@ static void DrawArcSegmented(
     }
 }
 
+
 // ---------------------------------------------------------------------------
 // DrawLineSegmented
 // Mirrors DrawArcSegmented but for a straight line.
 // linePoint(t) converts 0-1 position to screen coords.
 // lineFill: 0-1 how much of the line to draw.
 // isBg: use background color/width instead of stops.
+// wholeArc: see DrawArcSegmented — uniform color sampled at lineFill itself.
 // ---------------------------------------------------------------------------
 static void DrawLineSegmented(
     ImDrawList*                         draw,
@@ -390,10 +415,15 @@ static void DrawLineSegmented(
     const SpeedoStop*                   stops,
     int                                 stopCount,
     bool                                smooth,
+    bool                                wholeArc,
     float                               masterAlpha,
     bool                                isBg)
 {
     int segs = LineSegments(length, isBg ? SpeedoArcBgWidth : stops[stopCount-1].thickness);
+
+    float wholeArcColor[4]; float wholeArcDummyThickness;
+    if (!isBg && wholeArc)
+        SampleStops(stops, stopCount, lineFill, smooth, wholeArcColor, wholeArcDummyThickness);
 
     for (int i = 0; i < segs; i++)
     {
@@ -411,15 +441,22 @@ static void DrawLineSegmented(
         }
         else
         {
+            // use max thickness of endpoints to prevent gaps, same in both modes
             float color0[4]; float thickness0;
             float color1[4]; float thickness1;
-            SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color,  thickness);
-            SampleStops(stops, stopCount, t0,                smooth, color0, thickness0);
-            SampleStops(stops, stopCount, t1,                smooth, color1, thickness1);
-            // use max thickness of endpoints to prevent gaps
+            SampleStops(stops, stopCount, t0, smooth, color0, thickness0);
+            SampleStops(stops, stopCount, t1, smooth, color1, thickness1);
             thickness = std::fmax(thickness0, thickness1);
-            // re-sample mid for color only
-            float dummy; SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, dummy);
+
+            if (wholeArc)
+            {
+                for (int j = 0; j < 4; j++) color[j] = wholeArcColor[j];
+            }
+            else
+            {
+                // re-sample mid for color only
+                float dummy; SampleStops(stops, stopCount, (t0 + t1) * 0.5f, smooth, color, dummy);
+            }
         }
 
         ImVec2 p0 = linePoint(t0);
@@ -608,12 +645,12 @@ static void DrawSpeedoContent(
 
         // --- Background line --- (SpeedoArcBgOpacity governs only this background element)
         DrawLineSegmented(draw, linePoint, SpeedoArcLength, 1.0f,
-                          stops, stopCount, SpeedoGradientSmooth, SpeedoArcBgOpacity, true);
+                          stops, stopCount, SpeedoGradientSmooth, SpeedoGradientWholeArc, SpeedoArcBgOpacity, true);
 
         // --- Filled sweep --- (full opacity; per-stop alpha still applies)
         if (t > 0.0f)
             DrawLineSegmented(draw, linePoint, SpeedoArcLength, t,
-                              stops, stopCount, SpeedoGradientSmooth, 1.0f, false);
+                              stops, stopCount, SpeedoGradientSmooth, SpeedoGradientWholeArc, 1.0f, false);
 
         // --- Peak hold marker ---
         if (SpeedoPeakHoldEnabled && peakT > 0.0f)
@@ -639,12 +676,12 @@ static void DrawSpeedoContent(
 
     // --- Background arc --- (SpeedoArcBgOpacity governs only this background element)
     DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, 1.0f,
-                     stops, stopCount, SpeedoGradientSmooth, SpeedoArcBgOpacity, true);
+                     stops, stopCount, SpeedoGradientSmooth, SpeedoGradientWholeArc, SpeedoArcBgOpacity, true);
 
     // --- Filled sweep arc --- (full opacity; per-stop alpha still applies)
     if (t > 0.0f)
         DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, t,
-                         stops, stopCount, SpeedoGradientSmooth, 1.0f, false);
+                         stops, stopCount, SpeedoGradientSmooth, SpeedoGradientWholeArc, 1.0f, false);
 
     // --- Peak hold marker ---
     if (SpeedoPeakHoldEnabled && peakT > 0.0f)

@@ -154,6 +154,11 @@ SETTING_ARRAY  (SpeedoArc,    SpeedoStop4Color,           4,      ARR(1.0f, 0.0f
 SETTING        (SpeedoArc,    SpeedoStop4Thickness,       float,  20.0f)
 
 SETTING        (SpeedoArc,    SpeedoGradientSmooth,       bool,   true)
+// When true, the whole arc/line is drawn as a single color sampled at the
+// current fill fraction (t), fading/stepping all at once as speed changes,
+// instead of each point along the arc showing the color for its own
+// position. SpeedoGradientSmooth still controls fade-vs-step in either mode.
+SETTING        (SpeedoArc,    SpeedoGradientWholeArc,     bool,   false)
 
 // Arc rendering (background arc)
 SETTING        (SpeedoArc,    SpeedoArcBgOpacity,         float,  1.0f) // Opacity of the background arc/line only

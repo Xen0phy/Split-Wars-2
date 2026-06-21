@@ -1093,6 +1093,13 @@ void AddonOptions()
     
                             drawnColor:
                             {
+                                // In whole-arc mode the live speedo shows one uniform
+                                // color for the entire fill, matching the color this
+                                // pixel's own position would sample — so painting
+                                // each pixel with its own col[] here already previews
+                                // "if current speed were p, the whole arc would look
+                                // like this column." Thickness still follows position
+                                // either way, per the live render.
                                 float halfH = (thick / maxThick) * (barH * 0.5f);
                                 float midY  = barPos.y + barH * 0.5f;
                                 float top   = midY - halfH;
@@ -1211,8 +1218,12 @@ void AddonOptions()
                         }
                 
                         ImGui::SameLine();
-                        ImGui::Checkbox("Smooth##gradient", &SpeedoGradientSmooth);
+                        ImGui::Checkbox("Smooth##gradientsmooth", &SpeedoGradientSmooth);
                         Tooltip("Blend smoothly between stops instead of stepping abruptly at each one.");
+
+                        ImGui::SameLine();
+                        ImGui::Checkbox("Speed##gradientspeed", &SpeedoGradientWholeArc);
+                        Tooltip("Color the entire arc as one solid color matching the current speed,\ninstead of showing each stop's color at its own position along the arc.");
     
                         // Stop rows
                         for (int s = 0; s < 4; s++)

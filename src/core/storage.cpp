@@ -646,7 +646,7 @@ static std::string HistoryPathFromJsonPath(const std::string& jsonPath)
 // ---------------------------------------------------------------------------
 // Recursively scans a directory and returns a RouteFolder node containing:
 //   SubFolders — one child RouteFolder per sub-directory (recursive),
-//                excluding the "fonts" folder which contains streamer fonts
+//                excluding the "fonts" and "textures" folders.
 //   Routes     — one RouteFile per .json file
 //
 // Entries are sorted: directories first (alphabetical), then files
@@ -682,7 +682,8 @@ static RouteFolder BuildFolderNode(const fs::path& dir, const fs::path& rootDir)
         {
             if (entry.is_directory())
             {
-                if (entry.path().filename() == "fonts") continue; // Ignore the fonts folder
+                if (entry.path().filename() == "fonts" ||
+                    entry.path().filename() == "textures") continue; // Ignore the fonts and texture folders
                 node.SubFolders.push_back(BuildFolderNode(entry.path(), rootDir));
             }
             else if (entry.is_regular_file() &&
