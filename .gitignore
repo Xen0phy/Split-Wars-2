@@ -11,3 +11,5 @@ stuff/
 *.gz
 *.tar
 *.tar.gz
+Layout.txt
+Layout.cpp

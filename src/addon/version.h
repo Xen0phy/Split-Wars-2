@@ -1,12 +1,16 @@
 const int Maj = 1;
-const int Min = 3;
-const int Bld = 0;
-const int Rev = 2;
+const int Min = 4;
+const int Bld = 4;
+const int Rev = 1;
 
 static constexpr const char* VersionNotice =
     "Welcome! If you're new, I hope you enjoy Split Wars 2.\n\n"
-    "If you've updated from a previous version: I changed how settings are saved. "
-    "You'll need to set them once more, I'll try not to let it happen again. "
-    "You can also delete \"Settings.json\" in the Split Wars 2 folder as it is "
-    "replaced by \"Settings.ini\". Sorry for the inconvenience.\n\n"
-    "Questions or ideas? Mail Xenophy.2716 in-game.";
+    "New Features with 1.4.4.1:\n"
+    "  * Speedometer overlay\n"
+    "    * fully customizable in-game speedometer drawn with ImGui\n"
+    "    * supports custom needle and gauge-face textures\n"
+    "      * place textures in \"Split Wars 2\\textures\" folder\n"
+    "    * per-mount visibility filtering\n"
+    "  * Fractal Rota\n"
+    "    * Compares your current Fractal run against your best time from a previous run on the same 15-day rotation slot, if one exists in your kept run history.\n"
+    "    * Accessible from the Hotbar right-click menu.";

@@ -11,7 +11,6 @@
 //   - Migration notice popup (shown once after settings format change)
 
 #include "render_shared.h"
-#include "shared.h"
 #include "version.h"
 #include "worldrender.h"
 
@@ -266,6 +265,60 @@ static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
 }
 
 // ---------------------------------------------------------------------------
+// DrawIndentedNotice
+// Renders a plain "\n"-separated string from version.h as a bulleted,
+// indented list. Indentation depth is inferred from each line's leading
+// spaces (4 spaces = one level), since ImGui::TextWrapped() does not
+// preserve leading whitespace itself -- it reflows text at the window's
+// width. Lines with no leading spaces or no leading '*' are drawn as
+// plain wrapped text (used for the intro paragraph and blank lines).
+// Keeps version.h itself free of any ImGui dependency: edit the plain
+// string there, this function is the only place that needs to change if
+// the formatting convention ever changes.
+// ---------------------------------------------------------------------------
+static void DrawIndentedNotice(const char* text)
+{
+    std::string remaining = text;
+    size_t pos = 0;
+
+    while (pos <= remaining.size())
+    {
+        size_t nl = remaining.find('\n', pos);
+        std::string line = (nl == std::string::npos)
+            ? remaining.substr(pos)
+            : remaining.substr(pos, nl - pos);
+
+        // Count leading spaces, 4 spaces = one indent level.
+        size_t leading = 0;
+        while (leading < line.size() && line[leading] == ' ') leading++;
+        int indentLevel = (int)(leading / 2);
+
+        std::string content = line.substr(leading);
+
+        if (content.empty())
+        {
+            ImGui::Spacing();
+        }
+        else if (!content.empty() && content[0] == '*')
+        {
+            // Strip the leading "* " marker -- ImGui::Bullet() draws its own.
+            std::string text2 = content.substr(content.find_first_not_of("* "));
+            for (int i = 0; i < indentLevel; i++) ImGui::Indent();
+            ImGui::Bullet();
+            ImGui::TextWrapped("%s", text2.c_str());
+            for (int i = 0; i < indentLevel; i++) ImGui::Unindent();
+        }
+        else
+        {
+            ImGui::TextWrapped("%s", content.c_str());
+        }
+
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // AddonRender
 // ---------------------------------------------------------------------------
 // Called every frame by Nexus. Handles loading screen detection, all
@@ -301,7 +354,7 @@ void AddonRender()
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
-            ImGui::TextWrapped("%s", VersionNotice);
+            DrawIndentedNotice(VersionNotice);
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -1024,4 +1077,5 @@ void AddonRender()
     RenderHistoryWindow();
     RenderRouteBrowserWindow();
     RenderDebugWindow();
+    RenderSpeedoWindow();
 }

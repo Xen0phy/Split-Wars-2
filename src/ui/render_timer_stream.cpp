@@ -452,6 +452,10 @@ void RenderTimerOverlayStream()
 
     // Build the four-font set for this frame.
     // mainFont (S) is the user's chosen size; others derive from it in -4 steps.
+    // Each role is a stable Nexus registration that gets resized in place
+    // when its derived size changes, rather than looked up from a fixed
+    // pre-baked grid -- so any size S the user picks works, not just
+    // sizes that happen to land on a baked step.
     // GetStreamFont() returns nullptr if the atlas hasn't delivered yet -- all
     // drawing helpers fall back gracefully to ImGui's current font in that case.
     SFontSet fonts;
@@ -460,11 +464,11 @@ void RenderTimerOverlayStream()
         float S  = (float)StreamerFontSize;        // e.g. 36
         float S2 = S - 4.0f;                       // e.g. 32  (running millis + comp hms)
         float S4 = S - 8.0f;                       // e.g. 28  (comp millis)
-        fonts.main       = name.empty() ? nullptr : GetStreamFont(name, S);
-        fonts.mainMillis = name.empty() ? nullptr : GetStreamFont(name, S2);
+        fonts.main       = name.empty() ? nullptr : GetStreamFont(name, EStreamFontRole::StreamerMain,       S);
+        fonts.mainMillis = name.empty() ? nullptr : GetStreamFont(name, EStreamFontRole::StreamerMainMillis, S2);
         fonts.comp       = fonts.mainMillis;        // running millis == comp hms
-        fonts.compMillis = name.empty() ? nullptr : GetStreamFont(name, S4);
-        fonts.header     = name.empty() ? nullptr : GetStreamFont(name, (float)StreamerHeaderFontSize);
+        fonts.compMillis = name.empty() ? nullptr : GetStreamFont(name, EStreamFontRole::StreamerCompMillis, S4);
+        fonts.header     = name.empty() ? nullptr : GetStreamFont(name, EStreamFontRole::StreamerHeader,     (float)StreamerHeaderFontSize);
 
         // Fallback chain: if a specific size isn't ready yet, use the nearest
         // available slot from GetStreamerFont() so the overlay is never blank.

@@ -205,6 +205,7 @@ void LoadRouteFile(const RouteFile& rf)
     BestRunIndex = -1;
     LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
     RecalcSegments(HistoryRuns, SegmentRecords);
+    ApplyFractalRota();
 
     FullReset();
     CurrentRoute.IsValid = true;

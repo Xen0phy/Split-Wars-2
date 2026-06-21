@@ -538,8 +538,11 @@ void RenderConfigWindow()
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##angle_%d", i);
-                ImGui::DragFloat(l, &point.PlaneAngle, 0.1f, -360.0f, 360.0f, "%.1f");
-                point.PlaneAngle = std::clamp(point.PlaneAngle, -360.0f, 360.0f);
+                if (ImGui::DragFloat("##PlaneAngle", &point.PlaneAngle, 1.0f, 0.0f, 0.0f))
+                {
+                    point.PlaneAngle = std::fmod(point.PlaneAngle, 360.0f);
+                    if (point.PlaneAngle < 0.0f) point.PlaneAngle += 360.0f;
+                }
             }
             else if (point.TriggerType == ETriggerType::MapChange)
             {
