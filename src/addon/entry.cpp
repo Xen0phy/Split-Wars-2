@@ -14,6 +14,7 @@
 #include "arcdps_events.h"
 #include "hotbar_icon.h"
 #include "imgui.h"
+#include "render_shared.h"
 #include "shared.h"
 #include "stream_fonts.h"
 #include "version.h"
@@ -99,15 +100,42 @@ void SaveCurrentSettings()
 // ---------------------------------------------------------------------------
 static void AddonQuickAccessMenu()
 {
-    if (ImGui::MenuItem("Timer",         nullptr, &ShowTimer))        {}
+    if (ImGui::BeginMenu("Timer"))
+    {
+        ImGui::MenuItem("Show Timer",    nullptr, &ShowTimer);
+        ImGui::Separator();
+        ImGui::MenuItem("Streamer Mode", nullptr, &StreamerMode);
+        ImGui::MenuItem("Crash Mode",    nullptr, &CrashMode);
+        ImGui::EndMenu();
+    }
     ImGui::Separator();
-    if (ImGui::MenuItem("Route Config",  nullptr, &ShowConfig))       {}
-    if (ImGui::MenuItem("History",       nullptr, &ShowHistory))      {}
-    if (ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser)) {}
+    if (ImGui::BeginMenu("Windows"))
+    {
+        ImGui::MenuItem("Route Config",  nullptr, &ShowConfig);
+        ImGui::MenuItem("History",       nullptr, &ShowHistory);
+        ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser);
+        ImGui::EndMenu();
+    }
     ImGui::Separator();
-    if (ImGui::MenuItem("Checkpoints",   nullptr, &ShowZones))        {}
+    ImGui::MenuItem("Checkpoints", nullptr, &ShowZones);
     ImGui::Separator();
-    if (ImGui::MenuItem("Fractal Rota",   nullptr, &FractalRota))        {}
+    if (ImGui::BeginMenu("Speedometer"))
+    {
+        ImGui::MenuItem("Show Speedo", nullptr, &ShowSpeedo);
+        ImGui::Separator();
+        ImGui::MenuItem("Tachometer",  nullptr, &SpeedoTachometer);
+        ImGui::MenuItem("Label",       nullptr, &SpeedoLabelVisible);
+        ImGui::MenuItem("Units",       nullptr, &SpeedoShowUnit);
+        ImGui::EndMenu();
+    }
+    ImGui::Separator();
+    ImGui::MenuItem("Fractal Rota", nullptr, &FractalRota);
+    Tooltip("For frequent fractal runners: today's set of active fractals\n"
+        "repeats on a 15-day rotation, so it matches 15, 30, 45...\n"
+        "days ago. This compares against your best time from any past\n"
+        "run on the same rotation day, found within your kept history\n"
+        "(Max History Runs) -- so it only kicks in once your history\n"
+        "reaches back far enough.");
 }
 
 // ---------------------------------------------------------------------------

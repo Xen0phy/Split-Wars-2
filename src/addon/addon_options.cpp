@@ -226,7 +226,7 @@ void AddonOptions()
                         DisabledBlock(fontNames.empty())
                         {
                             ImGui::SetNextItemWidth(90.0f);
-                            if (ImGui::InputInt("Size##streamer", &StreamerFontSize, 1, 1))
+                            if (ImGui::InputInt("Size##streamer", &StreamerFontSize, 0, 0))
                             {
                                 // Floor of 16, not lower: mainMillis/compMillis derive
                                 // as Size-4 / Size-8, so anything smaller would push
@@ -239,7 +239,7 @@ void AddonOptions()
                             ImGui::SameLine();
 
                             ImGui::SetNextItemWidth(90.0f);
-                            if (ImGui::InputInt("Header Size##streamer", &StreamerHeaderFontSize, 1, 1))
+                            if (ImGui::InputInt("Header Size##streamer", &StreamerHeaderFontSize, 0, 0))
                             {
                                 StreamerHeaderFontSize = std::clamp(StreamerHeaderFontSize, 8, 32);
                             }
@@ -712,12 +712,12 @@ void AddonOptions()
                         Tooltip("Font used for the speed label.");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(70.0f);
-                        if (ImGui::InputFloat("##speedofontsize", &SpeedoFontSize, 1.0f, 1.0f))
+                        if (ImGui::InputFloat("##speedofontsize", &SpeedoFontSize, 0.0f, 0.0f,"%.0f"))
                         {
                             SpeedoFontSize = std::clamp(SpeedoFontSize, 6.0f, 200.0f);
                         }
                         if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
-                        Tooltip("Font size for the speed label. Click and drag, or double-click to type a value.");
+                        Tooltip("Font size for the speed label.");
                     }
                 }
 
@@ -727,7 +727,6 @@ void AddonOptions()
                 DisabledBlock(!SpeedoTachometer)
                 {
                     ImGui::Checkbox("Edit Mode", &SpeedoEditMode);
-                    if (!SpeedoTachometer) SpeedoEditMode = false; 
                     Tooltip("Makes the speedometer windows draggable.");
                 }
     
