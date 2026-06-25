@@ -98,20 +98,58 @@ void RenderHistoryWindow()
                 if (ImGui::BeginTable("history", 3,
                     ImGuiTableFlags_Borders |
                     ImGuiTableFlags_RowBg   |
-                    ImGuiTableFlags_ScrollY,
+                    ImGuiTableFlags_ScrollY |
+                    ImGuiTableFlags_Sortable,
                     ImVec2(0.0f, -40.0f)))
                 {
-                    ImGui::TableSetupColumn("#",    ImGuiTableColumnFlags_WidthFixed,   30.0f);
+                    ImGui::TableSetupColumn("#",    ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 30.0f);
                     ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_WidthFixed,  140.0f);
                     ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableHeadersRow();
+
+                    // -------------------------------------------------------------------------
+                    // Display order — HistoryRuns itself is never reordered (BestRunIndex,
+                    // removeIndex, and every popup/selectable ID below are real indices into
+                    // HistoryRuns and must stay valid regardless of what the player sorts by).
+                    // Instead we sort a separate index array and iterate through that; "i"
+                    // below always means "real index into HistoryRuns", "n" means "display
+                    // position", matching the existing variable meaning everywhere else in
+                    // this file.
+                    // -------------------------------------------------------------------------
+                    std::vector<int> order(HistoryRuns.size());
+                    for (int n = 0; n < (int)order.size(); n++) order[n] = n;
+
+                    if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs())
+                    {
+                        if (sortSpecs->SpecsCount > 0)
+                        {
+                            const ImGuiTableColumnSortSpecs& spec = sortSpecs->Specs[0];
+                            bool ascending = (spec.SortDirection == ImGuiSortDirection_Ascending);
+                            if (spec.ColumnIndex == 1) // Date column
+                            {
+                                std::sort(order.begin(), order.end(), [&](int a, int b) {
+                                    return ascending ? HistoryRuns[a].Date < HistoryRuns[b].Date
+                                                      : HistoryRuns[a].Date > HistoryRuns[b].Date;
+                                });
+                            }
+                            else if (spec.ColumnIndex == 2) // Time column
+                            {
+                                std::sort(order.begin(), order.end(), [&](int a, int b) {
+                                    return ascending ? HistoryRuns[a].TotalTime < HistoryRuns[b].TotalTime
+                                                      : HistoryRuns[a].TotalTime > HistoryRuns[b].TotalTime;
+                                });
+                            }
+                            sortSpecs->SpecsDirty = false;
+                        }
+                    }
 
                     char buf[32];
                     int removeIndex = -1; // Set when the player chooses "Delete Run" in the context menu
                     int hoveredRow  = -1; // Set to the row index the cursor is over; -1 = none
 
-                    for (int i = 0; i < (int)HistoryRuns.size(); i++)
+                    for (int n = 0; n < (int)order.size(); n++)
                     {
+                        int i = order[n];
                         const HistoricalRun& run = HistoryRuns[i];
 
                         bool isFastest = std::abs(run.TotalTime - fastestTime) < 0.001;
@@ -138,10 +176,17 @@ void RenderHistoryWindow()
 
                         // Draw cell contents on top of the selectable.
                         ImGui::SameLine();
-                        ImGui::Text("%d", i + 1);
+                        ImGui::Text("%d", n + 1);
 
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text("%s", run.Date.c_str());
+                        if (RunIsTainted(run))
+                        {
+                            ImGui::SameLine();
+                            ImGui::TextColored(
+                                ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f),
+                                "[!]");
+                        }
 
                         ImGui::TableSetColumnIndex(2);
                         FormatTime(buf, sizeof(buf), run.TotalTime);
@@ -235,13 +280,26 @@ void RenderHistoryWindow()
                     // LiveSplit mode falls back to Segment display in the tooltip.
                     // The final "Goal" split added by the AllCheckpoints goal type is
                     // hidden because it carries no meaningful time of its own.
+                    //
+                    // When a best run is set, a "Diff" column shows how each split in
+                    // the hovered run compares to BestRun — same comparison the live
+                    // timer already does (see render_timer.cpp), so a historical run's
+                    // tooltip and the live splits view always agree on what "ahead" or
+                    // "behind" means. Like the live timer, this compares by split index,
+                    // not name — if a route's splits were renamed/reordered after
+                    // BestRun was captured, the diff can silently compare mismatched
+                    // splits. Pre-existing limitation, not introduced by this change.
                     // -----------------------------------------------------------------
                     if (hoveredRow >= 0)
                     {
                         const HistoricalRun& run = HistoryRuns[hoveredRow];
+                        bool hasBest = !BestRun.empty();
                         ImGui::BeginTooltip();
-                        if (ImGui::BeginTable("tooltip_splits", 2, ImGuiTableFlags_None))
+                        int tooltipCols = hasBest ? 3 : 2;
+                        if (ImGui::BeginTable("tooltip_splits", tooltipCols, ImGuiTableFlags_None))
                         {
+                            if (hasBest)
+                                ImGui::TableSetupColumn("Diff", ImGuiTableColumnFlags_WidthFixed, 70.0f);
                             ImGui::TableSetupColumn("Time",  ImGuiTableColumnFlags_WidthFixed, 100.0f);
                             ImGui::TableSetupColumn("Split", ImGuiTableColumnFlags_WidthStretch);
 
@@ -262,13 +320,52 @@ void RenderHistoryWindow()
                                     : (s == 0 ? run.Splits[s].Timestamp
                                         : run.Splits[s].Timestamp - run.Splits[s-1].Timestamp);
 
+                                // Resolve the best-run reference values for this split index —
+                                // identical logic to the live timer's splits table.
+                                double bestSplitTime = 0.0;
+                                if (hasBest && s < (int)BestRun.size())
+                                {
+                                    bestSplitTime = (TimerDisplayMode == TimerMode::Segment)
+                                        ? (s == 0 ? BestRun[s].Timestamp : BestRun[s].Timestamp - BestRun[s-1].Timestamp)
+                                        : BestRun[s].Timestamp;
+                                }
+
+                                // LiveSplit mode: segment times displayed, but diffs are
+                                // cumulative — matches the live timer's behavior.
+                                double diffCurrent = (TimerDisplayMode == TimerMode::LiveSplit)
+                                    ? run.Splits[s].Timestamp
+                                    : splitTime;
+                                double diffBest = (TimerDisplayMode == TimerMode::LiveSplit)
+                                    ? (hasBest && s < (int)BestRun.size() ? BestRun[s].Timestamp : 0.0)
+                                    : bestSplitTime;
+                                double diff = (hasBest && s < (int)BestRun.size())
+                                    ? diffCurrent - diffBest : 0.0;
+
                                 ImGui::TableNextRow();
-                                ImGui::TableSetColumnIndex(0);
+
+                                if (hasBest)
+                                {
+                                    ImGui::TableSetColumnIndex(0);
+                                    if (s < (int)BestRun.size() && std::abs(diff) > 0.0005)
+                                    {
+                                        char diffBuf[32];
+                                        if (FormatDiff(diffBuf, sizeof(diffBuf), diff, true, true))
+                                        {
+                                            float diffWidth = ImGui::CalcTextSize(diffBuf).x;
+                                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - diffWidth);
+                                            ImGui::TextColored(diff < 0
+                                                ? ImVec4(ColorAhead[0],  ColorAhead[1],  ColorAhead[2],  1.0f)
+                                                : ImVec4(ColorBehind[0], ColorBehind[1], ColorBehind[2], 1.0f), "%s", diffBuf);
+                                        }
+                                    }
+                                }
+
+                                ImGui::TableSetColumnIndex(hasBest ? 1 : 0);
                                 FormatTime(buf, sizeof(buf), splitTime);
                                 float textWidth = ImGui::CalcTextSize(buf).x;
                                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - textWidth);
                                 ImGui::Text("%s", buf);
-                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TableSetColumnIndex(hasBest ? 2 : 1);
                                 ImGui::Text("%s", run.Splits[s].Name);
                             }
                             ImGui::EndTable();
@@ -311,6 +408,25 @@ void RenderHistoryWindow()
                         if (!CurrentHistoryPath.empty())
                             SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
                     }
+                }
+
+                // -------------------------------------------------------------------------
+                // Average run time — across all runs currently in history (no fixed
+                // window; respects whatever the configured history limit has trimmed
+                // down to). Gives a rough "how long does a session of this route cost
+                // me" sense, distinct from the PB highlighted above. Lives in the strip
+                // reserved below the table for future controls.
+                // -------------------------------------------------------------------------
+                if (!HistoryRuns.empty())
+                {
+                    double sumTime = 0.0;
+                    for (const auto& r : HistoryRuns)
+                        sumTime += r.TotalTime;
+                    double avgTime = sumTime / (double)HistoryRuns.size();
+
+                    char avgBuf[32];
+                    FormatTime(avgBuf, sizeof(avgBuf), avgTime);
+                    ImGui::Text("Average: %s across %d runs", avgBuf, (int)HistoryRuns.size());
                 }
             } // end else (HistoryRuns not empty)
         ImGui::EndTabItem();
@@ -358,7 +474,8 @@ void RenderHistoryWindow()
                 if (ImGui::BeginTable("segments", 3,
                     ImGuiTableFlags_Borders |
                     ImGuiTableFlags_RowBg   |
-                    ImGuiTableFlags_ScrollY,
+                    ImGuiTableFlags_ScrollY |
+                    ImGuiTableFlags_Sortable,
                     ImVec2(0.0f, -40.0f)))
                 {
                     ImGui::TableSetupColumn("Segment", ImGuiTableColumnFlags_WidthStretch);
@@ -366,11 +483,49 @@ void RenderHistoryWindow()
                     ImGui::TableSetupColumn("Date",    ImGuiTableColumnFlags_WidthFixed, 140.0f);
                     ImGui::TableHeadersRow();
 
+                    // Display order — SegmentRecords itself is never reordered, since
+                    // removeSegIndex below is a real index into it. Same approach as the
+                    // Runs table above: sort a separate index array, not the data itself.
+                    std::vector<int> segOrder(SegmentRecords.size());
+                    for (int n = 0; n < (int)segOrder.size(); n++) segOrder[n] = n;
+
+                    if (ImGuiTableSortSpecs* segSortSpecs = ImGui::TableGetSortSpecs())
+                    {
+                        if (segSortSpecs->SpecsCount > 0)
+                        {
+                            const ImGuiTableColumnSortSpecs& spec = segSortSpecs->Specs[0];
+                            bool ascending = (spec.SortDirection == ImGuiSortDirection_Ascending);
+                            if (spec.ColumnIndex == 0) // Segment name
+                            {
+                                std::sort(segOrder.begin(), segOrder.end(), [&](int a, int b) {
+                                    return ascending ? SegmentRecords[a].name < SegmentRecords[b].name
+                                                      : SegmentRecords[a].name > SegmentRecords[b].name;
+                                });
+                            }
+                            else if (spec.ColumnIndex == 1) // Best time
+                            {
+                                std::sort(segOrder.begin(), segOrder.end(), [&](int a, int b) {
+                                    return ascending ? SegmentRecords[a].bestTime < SegmentRecords[b].bestTime
+                                                      : SegmentRecords[a].bestTime > SegmentRecords[b].bestTime;
+                                });
+                            }
+                            else if (spec.ColumnIndex == 2) // Date
+                            {
+                                std::sort(segOrder.begin(), segOrder.end(), [&](int a, int b) {
+                                    return ascending ? SegmentRecords[a].bestDate < SegmentRecords[b].bestDate
+                                                      : SegmentRecords[a].bestDate > SegmentRecords[b].bestDate;
+                                });
+                            }
+                            segSortSpecs->SpecsDirty = false;
+                        }
+                    }
+
                     char buf[32];
                     int removeSegIndex = -1; // Set when "Delete Segment" is chosen
 
-                    for (int i = 0; i < (int)SegmentRecords.size(); i++)
+                    for (int n = 0; n < (int)segOrder.size(); n++)
                     {
+                        int i = segOrder[n];
                         const SegmentRecord& seg = SegmentRecords[i];
 
                         ImGui::TableNextRow();

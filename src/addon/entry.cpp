@@ -133,9 +133,23 @@ static void AddonQuickAccessMenu()
     {
         FractalRota = !FractalRota;
         if (FractalRota)
+        {
+            // Apply immediately so toggling this on mid-session takes effect
+            // right away, instead of waiting for the next route load (the
+            // only place this used to run before this fix).
             ApplyFractalRota();
+        }
         else if (!CurrentHistoryPath.empty())
+        {
+            // Rota's best-run swap is intentionally never saved to disk (see
+            // ApplyFractalRota in shared.cpp), so the persisted BestRunIndex
+            // on disk always reflects the last real choice — either from the
+            // last route load, or a manual "Set as best" in the history
+            // table, even one made while Rota was active. Reloading from
+            // disk here restores exactly that, with no separate state to
+            // track or keep in sync.
             LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+        }
     }
     Tooltip("For frequent fractal runners: today's set of active fractals\n"
         "repeats on a 15-day rotation, so it matches 15, 30, 45...\n"
