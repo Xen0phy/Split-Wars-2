@@ -129,7 +129,14 @@ static void AddonQuickAccessMenu()
         ImGui::EndMenu();
     }
     ImGui::Separator();
-    ImGui::MenuItem("Fractal Rota", nullptr, &FractalRota);
+    if (ImGui::MenuItem("Fractal Rota", nullptr, FractalRota))
+    {
+        FractalRota = !FractalRota;
+        if (FractalRota)
+            ApplyFractalRota();
+        else if (!CurrentHistoryPath.empty())
+            LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+    }
     Tooltip("For frequent fractal runners: today's set of active fractals\n"
         "repeats on a 15-day rotation, so it matches 15, 30, 45...\n"
         "days ago. This compares against your best time from any past\n"

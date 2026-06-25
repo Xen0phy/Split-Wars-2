@@ -1,4 +1,3 @@
-#pragma once
 // ---------------------------------------------------------------------------
 // arcdps_events.h
 // ---------------------------------------------------------------------------
@@ -6,6 +5,8 @@
 // Subscribe/unsubscribe via ArcDPS_Subscribe / ArcDPS_Unsubscribe.
 // Raw event data is stored in shared globals for the debug dump.
 // ---------------------------------------------------------------------------
+
+#pragma once
 
 void ArcDPS_Subscribe();
 void ArcDPS_Unsubscribe();

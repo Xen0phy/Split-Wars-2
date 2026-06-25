@@ -1,15 +1,7 @@
-backups/
+backup/
 build/
 stuff/
-*.o
-*.obj
-*.pdb
-*.ilk
-*.exp
-*.lib
+.backup-excludes
 .clangd
 *.gz
 *.tar
-*.tar.gz
-Layout.txt
-Layout.cpp

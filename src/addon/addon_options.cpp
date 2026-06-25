@@ -6,6 +6,7 @@
 // variables declared in shared.h. Settings are persisted to disk via
 // Settings are persisted to settings.ini via SaveCurrentSettings().
 
+#include "build_info.h"
 #include "render_shared.h"
 #include "stream_fonts.h"
 
@@ -42,6 +43,10 @@ struct ImGuiScopedDisabled
 // ---------------------------------------------------------------------------
 void AddonOptions()
 {
+    // ---------------------------------------------------------------------------
+    // Build Info
+    // ---------------------------------------------------------------------------
+    ImGui::TextDisabled("Release: %s", DateAndTime.c_str());
     
     // ---------------------------------------------------------------------------
     // Save Settings

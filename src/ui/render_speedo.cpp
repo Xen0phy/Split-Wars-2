@@ -752,6 +752,7 @@ void RenderSpeedoWindow()
     if (!ShowSpeedo) return;
     if (!MumbleLink) return;
     if (MumbleLink->UITick == 0) return;
+    if (!GS.IsMapOpen) return;
 
     UpdateSpeedoTextures();
 
@@ -874,11 +875,8 @@ void RenderSpeedoWindow()
         }
     }
 
-    // Numeric mode
-    if (!SpeedoTachometer)
-    {
-        return;
-    }
+    // Hide Tachometer if not selected
+    if (!SpeedoTachometer) return;
 
     // Geometry
     bool  straightLine = SpeedoArcAngle < STRAIGHT_LINE_THRESHOLD;
