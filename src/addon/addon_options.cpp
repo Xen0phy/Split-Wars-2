@@ -167,23 +167,8 @@ void AddonOptions()
                     SaveCurrentSettings();
                 }
             
-                // Row 5 — Fractal Rota
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                if (ImGui::Checkbox("Fractal Rota", &FractalRota))
-                    SaveCurrentSettings();
-                Tooltip("When enabled, sets the comparison run to the run from exactly\n"
-                        "15 days ago on route load, matching GW2's fractal daily rotation.\n"
-                        "If the history has no run from 15 days ago, no comparison is made.\n"
-                        "Requires at least one run older than 15 days in history.\n");
-                ImGui::Separator();
-
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
-                ImGui::Separator();
-    
                 // --- Streamer section ---
-                // Row 6
+                // Row 5
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Checkbox("Streamer Mode", &StreamerMode);
@@ -221,7 +206,7 @@ void AddonOptions()
                         }
                     }
     
-                    // Row 7
+                    // Row 6
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     // empty
@@ -255,7 +240,7 @@ void AddonOptions()
     
                 }
 
-                //Row 8
+                //Row 7
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Separator();
@@ -265,7 +250,7 @@ void AddonOptions()
                 // --- Crash Mode section ---
                 bool crashDisabled = !StreamerMode || !CrashMode  || fontNames.empty();
     
-                // Row 9 — checkbox + shadow color
+                // Row 8 — checkbox + shadow color
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 // Crash checkbox only needs streamer enabled
@@ -282,7 +267,7 @@ void AddonOptions()
                 {
                     ImGui::Text("Crash Mode Colors:");
     
-                    // Row 10 — offset box + fill/base/overlay colors
+                    // Row 9 — offset box + fill/base/overlay colors
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     {

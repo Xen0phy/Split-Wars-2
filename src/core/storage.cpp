@@ -608,16 +608,42 @@ bool LoadSettings(const std::string& addonDir)
                     arr[i] = std::stof(tok);
             };
 
-            if (false) {}
-            #define SETTING(S, Key, Type, Default)              else if (key == #Key) Key = parse<Type>(val);
-            #define SETTING_ARRAY(S, Key, Size, Defaults)       else if (key == #Key) ra(Key, Size);
-            #define SETTING_ENUM(S, Key, EnumType, ST, Default) else if (key == #Key) Key = (EnumType)std::stoi(val);
-            #define SETTING_STRING(S, Key, Default)             else if (key == #Key) Key = val;
-            #include "settings_table.h"
-            #undef SETTING
-            #undef SETTING_ARRAY
-            #undef SETTING_ENUM
-            #undef SETTING_STRING
+            // A single malformed value (corrupted file, bad manual edit, partial
+            // write from a crash, etc.) must not abort the whole load — that
+            // would silently leave every setting *after* this line in the file
+            // at its compiled-in default, with no warning. So each line gets
+            // its own try/catch: skip just the bad line, keep going, and log
+            // a warning naming exactly which key/value failed.
+            auto logParseWarning = [&]()
+            {
+                std::string msg = "settings.ini: failed to parse \"" + key + "=" + val +
+                    "\" — kept its current/default value.";
+                APIDefs->Log(LOGL_WARNING, "Split Wars 2", msg.c_str());
+            };
+
+            try
+            {
+                if (false) {}
+                #define SETTING(S, Key, Type, Default)              else if (key == #Key) Key = parse<Type>(val);
+                #define SETTING_ARRAY(S, Key, Size, Defaults)       else if (key == #Key) ra(Key, Size);
+                #define SETTING_ENUM(S, Key, EnumType, ST, Default) else if (key == #Key) Key = (EnumType)std::stoi(val);
+                #define SETTING_STRING(S, Key, Default)             else if (key == #Key) Key = val;
+                #include "settings_table.h"
+                #undef SETTING
+                #undef SETTING_ARRAY
+                #undef SETTING_ENUM
+                #undef SETTING_STRING
+            }
+            catch (const std::exception& e)
+            {
+                logParseWarning();
+                if (ShowDebug)
+                    APIDefs->Log(LOGL_DEBUG, "Split Wars 2", e.what()); // Full technical error in debug mode
+            }
+            catch (...)
+            {
+                logParseWarning(); // Non-std::exception throw — no e.what() available
+            }
         }
         return true;
     }

@@ -42,7 +42,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name         = "Split Wars 2";
     AddonDef.Version      = {Maj, Min,Bld,Rev};
     AddonDef.Author       = "Xenophy.2716";
-    AddonDef.Description  = "A speedrun timer with coordinate-based triggers.";
+    AddonDef.Description  = "A customizable speedrun timer and speedometer.";
     AddonDef.Load         = AddonLoad;            // Called once when the addon is loaded
     AddonDef.Unload       = AddonUnload;          // Called once when the addon is unloaded
     AddonDef.Flags        = AF_None;
@@ -243,7 +243,10 @@ void AddonLoad(AddonAPI_t* aApi)
     // Subscribe to identity updates so we can keep CameraFOV in sync.
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
 
-    ArcDPS_Subscribe();
+    // ArcDPS combat-event collection is NOT started here. It is purely an
+    // on-demand research toggle in the ArcDPS Dump debug tab — see
+    // arcdps_events.h — and stays off for the entire session unless the
+    // checkbox there is used.
 
     // Load hotbar icon textures from embedded memory and register QuickAccess shortcut.
     // The icon images are baked into hotbar_icon.h as byte arrays at compile time.
