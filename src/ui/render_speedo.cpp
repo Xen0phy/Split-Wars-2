@@ -752,7 +752,7 @@ void RenderSpeedoWindow()
     if (!ShowSpeedo) return;
     if (!MumbleLink) return;
     if (MumbleLink->UITick == 0) return;
-    if (!GS.IsMapOpen) return;
+    if (GS.IsMapOpen) return;
 
     UpdateSpeedoTextures();
 
