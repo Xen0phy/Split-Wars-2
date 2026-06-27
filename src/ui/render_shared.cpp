@@ -225,4 +225,5 @@ void LoadRouteFile(const RouteFile& rf)
 
     FullReset();
     CurrentRoute.IsValid = true;
+    MovementStartArmed = true;
 }

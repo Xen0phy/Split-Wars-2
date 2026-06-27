@@ -51,6 +51,7 @@ enum class ETriggerType : unsigned char
     AllCheckpoints  = 5,
     NullCircle      = 6,  // Decorative only — renders like Circle but never triggers
     NullPlane       = 7,  // Decorative only — renders like Plane but never triggers
+    MovementStart   = 8,  // Start only — fires when the player moves after a load screen or route activation
 };
 
 // ---------------------------------------------------------------------------

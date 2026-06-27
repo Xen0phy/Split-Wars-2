@@ -21,12 +21,13 @@ static const struct { ETriggerType type; const char* label; } TriggerTypeOrder[]
 {
     { ETriggerType::Circle,         "Circle"          },
     { ETriggerType::Plane,          "Plane"           },
+    { ETriggerType::MovementStart,  "Movement"        },
     { ETriggerType::MapChange,      "Map Change"      },
     { ETriggerType::CircleInteract, "Interact"        },
     { ETriggerType::CombatArena,    "Combat (Native)" },
+    { ETriggerType::AllCheckpoints, "All Checkpoints" },
     { ETriggerType::NullCircle,     "Null (Circle)"   },
     { ETriggerType::NullPlane,      "Null (Plane)"    },
-    { ETriggerType::AllCheckpoints, "All Checkpoints" },
 };
 static const int TriggerTypeCount = (int)std::size(TriggerTypeOrder);
 
@@ -316,6 +317,7 @@ void RenderConfigWindow()
             bool isAllCheckpoints = point.TriggerType == ETriggerType::AllCheckpoints;
             bool isNullCircle     = point.TriggerType == ETriggerType::NullCircle;
             bool isNullPlane      = point.TriggerType == ETriggerType::NullPlane;
+            bool isMovementStart  = point.TriggerType == ETriggerType::MovementStart;
             bool isNull           = isNullCircle || isNullPlane;
 
             // --- Name ---
@@ -347,7 +349,8 @@ void RenderConfigWindow()
                         cp.IsStart = false; // AllCheckpoints is goal-only, never start
                     else if (t == ETriggerType::MapChange      ||
                              t == ETriggerType::CircleInteract ||
-                             t == ETriggerType::Plane)
+                             t == ETriggerType::Plane          ||
+                             t == ETriggerType::MovementStart)
                         cp.IsGoal = false; // Can't have both — setting start clears goal
                 }
             }
@@ -430,7 +433,7 @@ void RenderConfigWindow()
             // Hidden for Map Change (position is irrelevant — only the map ID matters)
             // and for All Checkpoints (no spatial component at all).
             ImGui::TableSetColumnIndex(5);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##x_%d", i);
@@ -438,7 +441,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(6);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##y_%d", i);
@@ -446,7 +449,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(7);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##z_%d", i);
@@ -458,7 +461,7 @@ void RenderConfigWindow()
             // trigger plane perpendicular to its facing angle).
             // For all other spatial triggers it shows the circle Radius.
             ImGui::TableSetColumnIndex(8);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 ImGui::SetNextItemWidth(-1);
                 char l[32]; snprintf(l, sizeof(l), "##r_%d", i);
@@ -471,7 +474,7 @@ void RenderConfigWindow()
             // Higher values produce denser coverage; lower values are sparser.
             // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(9);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 char l[32]; snprintf(l, sizeof(l), "##dotDensity_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -487,7 +490,7 @@ void RenderConfigWindow()
             //   BandDown   — degrees below centre where dot alpha fades to 0.
             // Hidden for MapChange and AllCheckpoints trigger types.
             ImGui::TableSetColumnIndex(10);
-            if (!isMapChange && !isAllCheckpoints && point.TriggerType != ETriggerType::Plane)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart && point.TriggerType != ETriggerType::Plane)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandCenter_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -496,7 +499,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(11);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandUp_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -505,7 +508,7 @@ void RenderConfigWindow()
             }
 
             ImGui::TableSetColumnIndex(12);
-            if (!isMapChange && !isAllCheckpoints)
+            if (!isMapChange && !isAllCheckpoints && !isMovementStart)
             {
                 char l[32]; snprintf(l, sizeof(l), "##bandDown_%d", i);
                 ImGui::SetNextItemWidth(-1);
@@ -836,6 +839,7 @@ void RenderConfigWindow()
     {
         CurrentRoute.IsValid = true;
         FullReset();
+        MovementStartArmed = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Timer"))
