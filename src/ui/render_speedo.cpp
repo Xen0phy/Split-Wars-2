@@ -793,12 +793,9 @@ void RenderSpeedoWindow()
     // afterward so every consumer below (arc fill, needle angle, label) draws
     // the eased value, not the raw instantaneous speed ratio.
     static float s_needlePos = 0.0f;
-    static float s_needleVel = 0.0f;
     {
         float dt_needle = ImGui::GetIO().DeltaTime;
-        float force     = (t - s_needlePos) * SpeedoSpringK - s_needleVel * SpeedoDamping;
-        s_needleVel    += force * dt_needle;
-        s_needlePos    += s_needleVel * dt_needle;
+        s_needlePos     = s_needlePos + (t - s_needlePos) * std::fmin(SpeedoSpringK * dt_needle, 1.0f);
         s_needlePos     = std::fmax(0.0f, std::fmin(s_needlePos, 1.0f));
         t               = s_needlePos;
     }
