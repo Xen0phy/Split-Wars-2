@@ -165,6 +165,7 @@ extern bool   RunFinished;         // Set when a goal trigger fires; cleared by 
 extern double DisplayedGrandTotal; // Grand total shown in the overlay; frozen at goal for MapChange runs
 extern bool   PendingStart;        // Queued MapChange start; fires once the load screen clears
 extern double PendingGrandStop;    // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
+extern bool   MovementStartArmed;  // Set when a MovementStart trigger is waiting for the player to move
 
 // ---------------------------------------------------------------------------
 // Thread-safety

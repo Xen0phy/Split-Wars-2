@@ -170,6 +170,22 @@ ImVec4 TimeColor(double current, double best, bool running)
 }
 
 // ---------------------------------------------------------------------------
+// RunIsTainted
+// ---------------------------------------------------------------------------
+// Scans the run's splits for the "__TAINTED__" sentinel. This is purely a
+// linear scan over a small vector (a run rarely has more than a handful of
+// splits), so it's cheap enough to call per-row, per-frame in the history
+// table the same way the fastest-time scan already is.
+// ---------------------------------------------------------------------------
+bool RunIsTainted(const HistoricalRun& run)
+{
+    for (const Split& s : run.Splits)
+        if (strcmp(s.Name, "__TAINTED__") == 0)
+            return true;
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // LoadRouteFile
 // ---------------------------------------------------------------------------
 // Loads a route from disk, replaces the active route and history in global
@@ -209,4 +225,5 @@ void LoadRouteFile(const RouteFile& rf)
 
     FullReset();
     CurrentRoute.IsValid = true;
+    MovementStartArmed = true;
 }

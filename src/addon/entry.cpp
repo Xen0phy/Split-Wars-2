@@ -42,7 +42,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef()
     AddonDef.Name         = "Split Wars 2";
     AddonDef.Version      = {Maj, Min,Bld,Rev};
     AddonDef.Author       = "Xenophy.2716";
-    AddonDef.Description  = "A speedrun timer with coordinate-based triggers.";
+    AddonDef.Description  = "A customizable speedrun timer and speedometer.";
     AddonDef.Load         = AddonLoad;            // Called once when the addon is loaded
     AddonDef.Unload       = AddonUnload;          // Called once when the addon is unloaded
     AddonDef.Flags        = AF_None;
@@ -129,7 +129,28 @@ static void AddonQuickAccessMenu()
         ImGui::EndMenu();
     }
     ImGui::Separator();
-    ImGui::MenuItem("Fractal Rota", nullptr, &FractalRota);
+    if (ImGui::MenuItem("Fractal Rota", nullptr, FractalRota))
+    {
+        FractalRota = !FractalRota;
+        if (FractalRota)
+        {
+            // Apply immediately so toggling this on mid-session takes effect
+            // right away, instead of waiting for the next route load (the
+            // only place this used to run before this fix).
+            ApplyFractalRota();
+        }
+        else if (!CurrentHistoryPath.empty())
+        {
+            // Rota's best-run swap is intentionally never saved to disk (see
+            // ApplyFractalRota in shared.cpp), so the persisted BestRunIndex
+            // on disk always reflects the last real choice — either from the
+            // last route load, or a manual "Set as best" in the history
+            // table, even one made while Rota was active. Reloading from
+            // disk here restores exactly that, with no separate state to
+            // track or keep in sync.
+            LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+        }
+    }
     Tooltip("For frequent fractal runners: today's set of active fractals\n"
         "repeats on a 15-day rotation, so it matches 15, 30, 45...\n"
         "days ago. This compares against your best time from any past\n"
@@ -222,7 +243,10 @@ void AddonLoad(AddonAPI_t* aApi)
     // Subscribe to identity updates so we can keep CameraFOV in sync.
     APIDefs->Events_Subscribe("EV_MUMBLE_IDENTITY_UPDATED", HandleIdentityUpdate);
 
-    ArcDPS_Subscribe();
+    // ArcDPS combat-event collection is NOT started here. It is purely an
+    // on-demand research toggle in the ArcDPS Dump debug tab — see
+    // arcdps_events.h — and stays off for the entire session unless the
+    // checkbox there is used.
 
     // Load hotbar icon textures from embedded memory and register QuickAccess shortcut.
     // The icon images are baked into hotbar_icon.h as byte arrays at compile time.

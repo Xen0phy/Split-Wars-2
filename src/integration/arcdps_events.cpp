@@ -235,14 +235,24 @@ static void OnCombatEventSquad(void* aEventArgs)
 // ---------------------------------------------------------------------------
 // ArcDPS_Subscribe / ArcDPS_Unsubscribe
 // ---------------------------------------------------------------------------
+// Idempotent: ArcDPSCollectionEnabled doubles as both the public on/off
+// state shown by the checkbox and the guard against double-subscribing or
+// unsubscribing-without-subscribing, since nothing else calls these.
+// ---------------------------------------------------------------------------
+bool ArcDPSCollectionEnabled = false;
+
 void ArcDPS_Subscribe()
 {
+    if (ArcDPSCollectionEnabled) return;
     APIDefs->Events_Subscribe("EV_ARCDPS_COMBATEVENT_LOCAL_RAW", OnCombatEventLocal);
     APIDefs->Events_Subscribe("EV_ARCDPS_COMBATEVENT_SQUAD_RAW", OnCombatEventSquad);
+    ArcDPSCollectionEnabled = true;
 }
 
 void ArcDPS_Unsubscribe()
 {
+    if (!ArcDPSCollectionEnabled) return;
     APIDefs->Events_Unsubscribe("EV_ARCDPS_COMBATEVENT_LOCAL_RAW", OnCombatEventLocal);
     APIDefs->Events_Unsubscribe("EV_ARCDPS_COMBATEVENT_SQUAD_RAW", OnCombatEventSquad);
+    ArcDPSCollectionEnabled = false;
 }

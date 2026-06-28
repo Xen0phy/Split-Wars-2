@@ -135,6 +135,7 @@ bool   RunFinished         = false;
 double DisplayedGrandTotal = 0.0;
 bool   PendingStart        = false;
 double PendingGrandStop    = -1.0; // GrandTimer snapshot at MapChange goal detection; -1.0 = none pending
+bool   MovementStartArmed  = false;
 
 // ---------------------------------------------------------------------------
 // Thread-safety
@@ -171,6 +172,7 @@ void FullReset()
     PendingGrandStop    = -1.0;
     RunFinished         = false;
     PendingStart        = false;
+    MovementStartArmed  = false;
 
     // Rebuild CheckpointStates from the current route, zeroing all runtime fields.
     // If the route hasn't changed this is equivalent to calling ResetRuntime() on

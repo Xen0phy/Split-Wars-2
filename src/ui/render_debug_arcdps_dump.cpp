@@ -17,6 +17,7 @@
 //   • Static reference tables for every enum defined in ArcDPS.h, useful
 //     when decoding raw values arriving in combat-event callbacks.
 
+#include "arcdps_events.h"
 #include "render_shared.h" // IWYU pragma: keep
 #include <unordered_map>
 #include <windows.h>
@@ -212,6 +213,40 @@ static const char* ContentLocalName(ArcDPS::EContentLocal cl)
 // ---------------------------------------------------------------------------
 void RenderArcDPSDump()
 {
+    // -------------------------------------------------------------------------
+    // Collection toggle — off by default every session, never persisted.
+    // Everything below this line only ever has data when this is on: it
+    // feeds the "Killing Blows" and event-frequency panels further down,
+    // never the real timer/route/taint logic (that all runs on Mumble/RTAPI
+    // instead). Collection runs for as long as this is on, independent of
+    // whether this tab is open or closed — so this checkbox, not closing
+    // the tab, is what actually stops it.
+    //
+    // Note: this intentionally does NOT use ImGui::Checkbox's bound-bool
+    // form. ArcDPS_Subscribe/Unsubscribe both read-and-flip
+    // ArcDPSCollectionEnabled themselves as an idempotency guard; if ImGui
+    // flipped it first, the guard would see the new value and immediately
+    // no-op instead of actually (un)subscribing. So a plain local bool
+    // drives the checkbox, and the real bool is only ever touched inside
+    // Subscribe/Unsubscribe.
+    // -------------------------------------------------------------------------
+    bool collectionToggle = ArcDPSCollectionEnabled;
+    if (ImGui::Checkbox("Collect ArcDPS Events", &collectionToggle))
+    {
+        if (collectionToggle)
+            ArcDPS_Subscribe();
+        else
+            ArcDPS_Unsubscribe();
+    }
+    Tooltip("Subscribes to every combat event ArcDPS reports for your group.\n"
+            "Only used for the panels below -- never the timer, route, or\n"
+            "taint detection, which use Mumble/RTAPI instead. Runs for as\n"
+            "long as this is on, even while this tab is closed. Resets to\n"
+            "off every time the addon loads -- this is never saved.");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
     // -------------------------------------------------------------------------
     // Availability — check whether arcdps.dll is present in the process.
     // GetModuleHandleW does not increment the reference count, so no

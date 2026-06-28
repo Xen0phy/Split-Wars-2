@@ -646,6 +646,9 @@ void AddonRender()
                 // triggers (Plane) can't fire due to a phantom crossing on the first frame.
                 prevPos = currPos;
 
+                if (!SpeedrunTimer.IsFinished())
+                    MovementStartArmed = true;
+
                 SpeedrunTimer.Resume();
 
                 // If we didn't actually leave the goal map (e.g. a mid-run load
@@ -697,6 +700,35 @@ void AddonRender()
                     pt.TriggerType == ETriggerType::NullPlane)
                 {
                     cs.wasInCircle = false;
+                    continue;
+                }
+
+                // MovementStart — fires when the player moves after a load screen or route activation.
+                if (pt.TriggerType == ETriggerType::MovementStart)
+                {
+                    if (MovementStartArmed)
+                    {
+                        float dx = currPos.X - prevPos.X;
+                        float dy = currPos.Y - prevPos.Y;
+                        float dz = currPos.Z - prevPos.Z;
+                        float distSq = dx*dx + dy*dy + dz*dz;
+                        bool onCorrectMap = pt.MapID == 0 || currMapID == pt.MapID;
+                        if (distSq > 0.0025f && onCorrectMap)
+                        {
+                            MovementStartArmed = false;
+                            if (cs.IsStart && !SpeedrunTimer.IsRunning() && !SpeedrunTimer.IsFinished())
+                            {
+                                FullReset();
+                                SpeedrunTimer.Start();
+                                GrandTimer.Start();
+                            }
+                            else if (!cs.IsStart && SpeedrunTimer.IsRunning() && !cs.triggered)
+                            {
+                                SpeedrunTimer.AddSplit(cs.Name);
+                                cs.triggered = true;
+                            }
+                        }
+                    }
                     continue;
                 }
 

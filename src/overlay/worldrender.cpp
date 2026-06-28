@@ -559,7 +559,8 @@ void RenderZones()
         if (!RoutePointIsSet(p))                     return false;
         if (p.MapID == 0)                                   return true;
         
-        if (p.TriggerType == ETriggerType::AllCheckpoints)  return false;
+        if (p.TriggerType == ETriggerType::AllCheckpoints ||
+            p.TriggerType == ETriggerType::MovementStart)  return false;
         // MapChange zones render on any map when MapID == 0, or on their configured map only.
         if (p.TriggerType == ETriggerType::MapChange)       return p.MapID == 0 || currMapID == p.MapID;
         return currMapID == p.MapID;

@@ -57,6 +57,12 @@ ImVec4 TimeColor(double current, double best, bool running);
 // (CurrentRoute, history, file paths, timer reset).
 void LoadRouteFile(const RouteFile& rf);
 
+// Returns true if any split in the run is the "__TAINTED__" sentinel
+// injected by Combat (Native) death detection. Used purely as a visual
+// marker in the history table — taint never disqualifies a run from being
+// the fastest/best run, only from segment PB matching (see UpdateSegments).
+bool RunIsTainted(const HistoricalRun& run);
+
 // ---------------------------------------------------------------------------
 // Tooltip  (inline helper)
 // ---------------------------------------------------------------------------
