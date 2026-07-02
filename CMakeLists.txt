@@ -32,6 +32,7 @@ add_library(SplitWars2 SHARED
     src/ui/render_debug_mumble_dump.cpp
     src/ui/render_debug_rtapi_dump.cpp
     src/ui/render_debug.cpp
+    src/ui/render_evaluation.cpp
     src/ui/render_history.cpp
     src/ui/render_shared.cpp
     src/ui/render_speedo.cpp

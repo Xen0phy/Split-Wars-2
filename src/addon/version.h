@@ -1,9 +1,9 @@
 #pragma once
 
 constexpr int Maj = 1;
-constexpr int Min = 4;
-constexpr int Bld = 6;
-constexpr int Rev = 1;
+constexpr int Min = 5;
+constexpr int Bld = 0;
+constexpr int Rev = 0;
 
 static constexpr const char* VersionNotice =
     "Welcome! If you're new, I hope you enjoy Split Wars 2.\n\n"

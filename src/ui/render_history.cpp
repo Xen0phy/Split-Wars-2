@@ -30,6 +30,17 @@ void RenderHistoryWindow()
     HistoryWindowH = sz.y;
 
     ImGui::Text("Route: %s", CurrentRouteName.c_str());
+
+    // "Evaluation" opens the stacked run-chart window (render_evaluation.cpp)
+    // for whatever history file is currently loaded. Only shown once a file
+    // is actually loaded, since there's nothing to evaluate otherwise.
+    if (!CurrentHistoryPath.empty())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Evaluation"))
+            ShowEvaluation = true;
+    }
+
     ImGui::Separator();
 
     if (ImGui::BeginTabBar("##historytabs"))

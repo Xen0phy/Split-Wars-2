@@ -1110,4 +1110,5 @@ void AddonRender()
     RenderRouteBrowserWindow();
     RenderDebugWindow();
     RenderSpeedoWindow();
+    RenderEvaluationWindow();
 }
