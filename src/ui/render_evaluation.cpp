@@ -585,6 +585,12 @@ struct EvalState
     std::string hoverName;
     int hoverAnchorOrigIdx = -1;
 
+    // set once when a stretch starts (or switches target) and left alone for
+    // the rest of that stretch's lifetime -- mirrors applyStretch() only ever
+    // reading anchorElement at click time, never re-deriving it from
+    // whatever's under the cursor on a later hover.
+    int stretchAnchorOrigIdx = -1;
+
     std::string pendingFlashDate;
     double flashStartTime = -1.0;
     float flashX = 0, flashTop = 0, flashBottom = 0;
@@ -790,7 +796,7 @@ static void DrawChart(EvalState& cs)
     // like the browser hit-tests whatever's actually painted right now, even
     // mid-transition. ----
     std::string hitName;
-    const BarGroupVis* hitGroup = nullptr;
+
     const BarBlockVis* hitBlock = nullptr;
     int hitGroupIdx = -1;
 
@@ -810,7 +816,6 @@ static void DrawChart(EvalState& cs)
                 if (mouseLocal.x >= rx && mouseLocal.x <= rx + BAR_W && mouseLocal.y >= ry && mouseLocal.y <= ry + rh)
                 {
                     hitName = b.name;
-                    hitGroup = &g;
                     hitBlock = &b;
                     hitGroupIdx = gi;
                     goto hitDone;
@@ -827,6 +832,7 @@ hitDone:
     if (rightClicked && !cs.stretchedName.empty())
     {
         cs.stretchedName.clear();
+        cs.stretchAnchorOrigIdx = -1;
     }
     else if (leftClicked)
     {
@@ -834,19 +840,21 @@ hitDone:
         {
             if (!cs.stretchedName.empty())
             {
-                if (cs.stretchedName == hitName) cs.stretchedName.clear();
-                else cs.stretchedName = hitName;
+                if (cs.stretchedName == hitName) { cs.stretchedName.clear(); cs.stretchAnchorOrigIdx = -1; }
+                else { cs.stretchedName = hitName; cs.stretchAnchorOrigIdx = hitGroupIdx; }
             }
             // (when nothing is stretched yet, a plain click also starts one --
             // matches "click a block to persistently enlarge every occurrence")
             else
             {
                 cs.stretchedName = hitName;
+                cs.stretchAnchorOrigIdx = hitGroupIdx;
             }
         }
         else if (!cs.stretchedName.empty())
         {
             cs.stretchedName.clear();
+            cs.stretchAnchorOrigIdx = -1;
         }
     }
 
@@ -856,16 +864,35 @@ hitDone:
     // tooltip on the stretched fractal's own blocks -- matches onHover()'s
     // early-return behavior.
     std::string effectiveHoverName;
-    if (!stretched && !hitName.empty())
+    if (!stretched)
     {
-        effectiveHoverName = hitName;
-        if (cs.hoverName != hitName)
+        if (!hitName.empty())
         {
-            cs.hoverName = hitName;
-            cs.hoverAnchorOrigIdx = hitGroupIdx;
+            // moved onto a (possibly different) bar-block -- update, same as
+            // onMove() calling onHover() whenever evt.target is a bar-block.
+            effectiveHoverName = hitName;
+            if (cs.hoverName != hitName)
+            {
+                cs.hoverName = hitName;
+                cs.hoverAnchorOrigIdx = hitGroupIdx;
+            }
+        }
+        else if (!canvasHovered)
+        {
+            // genuinely left the chart -- matches onLeave()'s clearHover().
+            cs.hoverName.clear();
+            cs.hoverAnchorOrigIdx = -1;
+        }
+        else
+        {
+            // over the canvas but not over any bar-block (a gap between
+            // bars, or between segments) -- onMove() is a no-op here in the
+            // HTML (it only acts when evt.target is a bar-block), so freeze
+            // whatever hover was already active instead of snapping back.
+            effectiveHoverName = cs.hoverName;
         }
     }
-    else if (!stretched)
+    else
     {
         cs.hoverName.clear();
         cs.hoverAnchorOrigIdx = -1;
@@ -877,7 +904,7 @@ hitDone:
     for (int i = 0; i < (int)groups.size(); i++) slotOfOrig[i] = i;
 
     std::string clusterName = stretched ? cs.stretchedName : effectiveHoverName;
-    int clusterAnchor = stretched ? -1 : cs.hoverAnchorOrigIdx;
+    int clusterAnchor = stretched ? cs.stretchAnchorOrigIdx : cs.hoverAnchorOrigIdx;
 
     if (!clusterName.empty())
     {
@@ -886,8 +913,13 @@ hitDone:
             for (auto& b : groups[gi].blocks)
                 if (b.name == clusterName) { matchIdxs.push_back(gi); break; }
 
-        if (stretched && !matchIdxs.empty())
-            clusterAnchor = hitGroupIdx != -1 ? hitGroupIdx : matchIdxs[0];
+        // fixed at click time for a stretch (see stretchAnchorOrigIdx) --
+        // deliberately NOT re-derived from whatever's under the cursor on a
+        // later hover, so hovering a disabled (non-matching) block while
+        // stretched can't reshuffle the layout. Only falls back to the
+        // first match if a stretch somehow started with no valid anchor.
+        if (clusterAnchor == -1 && !matchIdxs.empty())
+            clusterAnchor = matchIdxs[0];
 
         if (matchIdxs.size() > 1 && clusterAnchor != -1)
         {
@@ -1033,7 +1065,7 @@ hitDone:
                 baseG = dg + (lg - dg) * b.fillT;
                 baseB = db + (lb - db) * b.fillT;
             }
-            bool isFocused = (stretched && b.name == cs.stretchedName && hitBlock && hitGroup == &g) ||
+            bool isFocused = (stretched && b.name == cs.stretchedName && hitName == cs.stretchedName) ||
                               (!stretched && !effectiveHoverName.empty() && b.name == effectiveHoverName);
             float fr, fg, fb;
             if (isFocused) HexToRGB(FOCUS, fr, fg, fb); else { fr = baseR; fg = baseG; fb = baseB; }
