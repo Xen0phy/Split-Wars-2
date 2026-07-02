@@ -9,14 +9,13 @@
 // each frame exactly like the JS recomputes target attributes on every
 // render()/onHover() call and lets CSS ease toward them.
 //
-// Only GetAddonDir() is assumed to already exist elsewhere in the codebase.
-// Everything else needed to load and interpret a .history file (JSON
-// parsing, the Start/End span parser, all-time stats) is self-contained
-// below so this file compiles on its own.
-//
-// NOTE: adjust this include to wherever ShowEvaluation / RenderEvaluationWindow
-// are actually declared in the rest of the addon (per the prompt, alongside
-// ShowDebug) -- named "Shared.h" here as a placeholder.
+// Data comes straight from what render_history.cpp already has in memory --
+// HistoryRuns (parsed from whatever file CurrentHistoryPath points at) --
+// rather than this file re-reading and re-parsing the .history file itself.
+// Only the Start/End span parser (turning each run's flat Splits list into
+// stacked blocks, including nested children for the split-open reveal) and
+// the all-time-stats rollup are still done here, since neither exists
+// upstream in that shape.
 #include "render_shared.h"
 
 #include "imgui.h"
@@ -24,227 +23,33 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <fstream>
 #include <set>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-extern std::string GetAddonDir();
-
-// Definition for the flag declared extern in Shared.h.
+// Definition for the flag declared extern in render_shared.h.
 bool ShowEvaluation = false;
 
 namespace EvalTool
 {
 
-// ---------------------------------------------------------------------
-// Minimal, self-contained JSON reader. Just enough to walk a .history file
-// (objects, arrays, strings, numbers, bool/null) -- not a general-purpose
-// validator.
-// ---------------------------------------------------------------------
-namespace Json
-{
-    struct Value
-    {
-        enum class Type { Null, Bool, Number, String, Array, Object } type = Type::Null;
-        bool b = false;
-        double num = 0.0;
-        std::string str;
-        std::vector<Value> arr;
-        std::vector<std::pair<std::string, Value>> obj;
-
-        const Value* Find(const std::string& key) const
-        {
-            for (auto& kv : obj)
-                if (kv.first == key)
-                    return &kv.second;
-            return nullptr;
-        }
-    };
-
-    class Parser
-    {
-    public:
-        explicit Parser(const std::string& s) : s_(s), i_(0) {}
-
-        bool Parse(Value& out)
-        {
-            SkipWs();
-            return ParseValue(out);
-        }
-
-    private:
-        const std::string& s_;
-        size_t i_;
-
-        void SkipWs()
-        {
-            while (i_ < s_.size() && (unsigned char)s_[i_] <= ' ')
-                i_++;
-        }
-
-        bool ParseValue(Value& v)
-        {
-            SkipWs();
-            if (i_ >= s_.size())
-                return false;
-            char c = s_[i_];
-            if (c == '{') return ParseObject(v);
-            if (c == '[') return ParseArray(v);
-            if (c == '"') return ParseString(v);
-            if (c == 't' || c == 'f') return ParseBool(v);
-            if (c == 'n') { i_ += 4; v.type = Value::Type::Null; return true; }
-            return ParseNumber(v);
-        }
-
-        bool ParseObject(Value& v)
-        {
-            v.type = Value::Type::Object;
-            i_++; // {
-            SkipWs();
-            if (i_ < s_.size() && s_[i_] == '}') { i_++; return true; }
-            while (true)
-            {
-                SkipWs();
-                Value key;
-                if (i_ >= s_.size() || s_[i_] != '"' || !ParseString(key))
-                    return false;
-                SkipWs();
-                if (i_ >= s_.size() || s_[i_] != ':')
-                    return false;
-                i_++;
-                Value val;
-                if (!ParseValue(val))
-                    return false;
-                v.obj.emplace_back(std::move(key.str), std::move(val));
-                SkipWs();
-                if (i_ < s_.size() && s_[i_] == ',') { i_++; continue; }
-                if (i_ < s_.size() && s_[i_] == '}') { i_++; break; }
-                return false;
-            }
-            return true;
-        }
-
-        bool ParseArray(Value& v)
-        {
-            v.type = Value::Type::Array;
-            i_++; // [
-            SkipWs();
-            if (i_ < s_.size() && s_[i_] == ']') { i_++; return true; }
-            while (true)
-            {
-                Value val;
-                if (!ParseValue(val))
-                    return false;
-                v.arr.push_back(std::move(val));
-                SkipWs();
-                if (i_ < s_.size() && s_[i_] == ',') { i_++; continue; }
-                if (i_ < s_.size() && s_[i_] == ']') { i_++; break; }
-                return false;
-            }
-            return true;
-        }
-
-        bool ParseString(Value& v)
-        {
-            v.type = Value::Type::String;
-            if (i_ >= s_.size() || s_[i_] != '"')
-                return false;
-            i_++;
-            std::string out;
-            while (i_ < s_.size() && s_[i_] != '"')
-            {
-                char c = s_[i_];
-                if (c == '\\')
-                {
-                    i_++;
-                    if (i_ >= s_.size()) return false;
-                    char e = s_[i_];
-                    switch (e)
-                    {
-                        case 'n': out += '\n'; break;
-                        case 't': out += '\t'; break;
-                        case 'r': out += '\r'; break;
-                        case 'b': out += '\b'; break;
-                        case 'f': out += '\f'; break;
-                        case '"': out += '"'; break;
-                        case '\\': out += '\\'; break;
-                        case '/': out += '/'; break;
-                        case 'u':
-                        {
-                            if (i_ + 4 < s_.size())
-                            {
-                                std::string hex = s_.substr(i_ + 1, 4);
-                                unsigned int cp = (unsigned int)strtoul(hex.c_str(), nullptr, 16);
-                                i_ += 4;
-                                if (cp < 0x80) out += (char)cp;
-                                else if (cp < 0x800)
-                                {
-                                    out += (char)(0xC0 | (cp >> 6));
-                                    out += (char)(0x80 | (cp & 0x3F));
-                                }
-                                else
-                                {
-                                    out += (char)(0xE0 | (cp >> 12));
-                                    out += (char)(0x80 | ((cp >> 6) & 0x3F));
-                                    out += (char)(0x80 | (cp & 0x3F));
-                                }
-                            }
-                            break;
-                        }
-                        default: out += e; break;
-                    }
-                    i_++;
-                }
-                else
-                {
-                    out += c;
-                    i_++;
-                }
-            }
-            if (i_ < s_.size()) i_++; // closing quote
-            v.str = std::move(out);
-            return true;
-        }
-
-        bool ParseBool(Value& v)
-        {
-            v.type = Value::Type::Bool;
-            if (s_.compare(i_, 4, "true") == 0) { v.b = true; i_ += 4; return true; }
-            if (s_.compare(i_, 5, "false") == 0) { v.b = false; i_ += 5; return true; }
-            return false;
-        }
-
-        bool ParseNumber(Value& v)
-        {
-            size_t start = i_;
-            if (i_ < s_.size() && (s_[i_] == '-' || s_[i_] == '+')) i_++;
-            while (i_ < s_.size() &&
-                   (isdigit((unsigned char)s_[i_]) || s_[i_] == '.' || s_[i_] == 'e' ||
-                    s_[i_] == 'E' || s_[i_] == '+' || s_[i_] == '-'))
-                i_++;
-            if (i_ == start) return false;
-            v.type = Value::Type::Number;
-            v.num = strtod(s_.substr(start, i_ - start).c_str(), nullptr);
-            return true;
-        }
-    };
-}
 
 // ---------------------------------------------------------------------
-// Data model (mirrors the flat shape parseHistoryFile() produces in the
-// HTML: per-run list of top-level blocks in real chronological/play order).
-// Nested "children" (the stretch-then-split-open sub-view) are collapsed
-// away here -- only the top-level block durations they contribute to are
-// kept, matching what the normal (non-split) chart view ever shows.
+// Data model -- mirrors the flat shape parseHistoryFile() produces in the
+// HTML: per-run list of top-level blocks in real chronological/play order,
+// each optionally carrying nested "children" (a Start/End container's own
+// sub-splits) for the click-to-stretch "split open" reveal.
 // ---------------------------------------------------------------------
 struct EvalBlock
 {
     std::string name;
     double dur = 0.0;
+    // Nested Start/End sub-pairs and the bare-checkpoint gap segments between
+    // them -- not shown in the normal chart view, only revealed by the
+    // click-to-stretch "split open" interaction. Empty for a block with
+    // nothing meaningful inside it (see ParseSpan's ">1 child" rule below).
+    std::vector<EvalBlock> children;
 };
 
 struct EvalRun
@@ -305,119 +110,96 @@ static void ParseSpan(const std::vector<HistorySplitPoint>& splits, int startIdx
             if (endFound == -1)
             {
                 if (prev.valid)
-                    outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp) });
+                    outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
                 prev = { sp.name, sp.timestamp, true };
                 i += 1;
                 continue;
             }
 
             if (prev.valid)
-                outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp) });
+                outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
 
             double nestedStart = sp.timestamp;
             double nestedEnd = splits[endFound].timestamp;
-            std::vector<EvalBlock> discardedChildren;
+            std::vector<EvalBlock> nestedChildren;
             BoundaryPt innerOpen{ sp.name, nestedStart, true };
             BoundaryPt innerClose{ splits[endFound].name, nestedEnd, true };
-            ParseSpan(splits, i + 1, endFound, innerOpen, &innerClose, discardedChildren);
+            ParseSpan(splits, i + 1, endFound, innerOpen, &innerClose, nestedChildren);
 
-            outBlocks.push_back({ base, Round2(nestedEnd - nestedStart) });
+            EvalBlock nestedBlock;
+            nestedBlock.name = base;
+            nestedBlock.dur = Round2(nestedEnd - nestedStart);
+            // a container with nothing real inside it still produces exactly
+            // one trivial child spanning its whole duration -- not meaningful
+            // to reveal via splitting, so only keep children when there's
+            // more than that single trivial one.
+            if (nestedChildren.size() > 1)
+                nestedBlock.children = std::move(nestedChildren);
+            outBlocks.push_back(std::move(nestedBlock));
             prev = { splits[endFound].name, nestedEnd, true };
             i = endFound + 1;
         }
         else
         {
             if (prev.valid)
-                outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp) });
+                outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
             prev = { sp.name, sp.timestamp, true };
             i += 1;
         }
     }
 
     if (closing && prev.valid)
-        outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + closing->name, Round2(closing->timestamp - prev.timestamp) });
+        outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + closing->name, Round2(closing->timestamp - prev.timestamp), {} });
 }
 
-static bool LoadHistoryFile(const std::string& path, std::vector<EvalRun>& outRuns, std::string& err)
+// Converts one of the addon's own already-parsed runs (HistoricalRun, as
+// found in the global HistoryRuns -- see render_shared.h) into our stacked-
+// block shape. This is the only place that needs to know HistoricalRun's
+// field names; everything downstream works in EvalRun/EvalBlock terms.
+static EvalRun ConvertHistoricalRun(const HistoricalRun& run)
 {
-    std::ifstream f(path, std::ios::binary);
-    if (!f)
-    {
-        err = "Could not open history file: " + path;
-        return false;
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    std::string content = ss.str();
+    EvalRun er;
+    er.date = run.Date;
+    er.total_time = Round2(run.TotalTime);
 
-    Json::Value root;
-    Json::Parser parser(content);
-    if (!parser.Parse(root) || root.type != Json::Value::Type::Object)
+    std::vector<HistorySplitPoint> splits;
+    splits.reserve(run.Splits.size());
+    for (auto& s : run.Splits)
     {
-        err = "That file isn't valid JSON -- is it really a .history file?";
-        return false;
+        HistorySplitPoint pt;
+        pt.name = s.Name; // const char* / fixed buffer -> std::string, either way
+        pt.timestamp = s.Timestamp;
+        splits.push_back(std::move(pt));
     }
 
-    const Json::Value* history = root.Find("history");
-    if (!history || history->type != Json::Value::Type::Array)
-    {
-        err = "Not a recognized .history file (missing \"history\" array).";
-        return false;
-    }
+    BoundaryPt none;
+    ParseSpan(splits, 0, (int)splits.size(), none, nullptr, er.blocks);
+    return er;
+}
 
-    outRuns.clear();
-    outRuns.reserve(history->arr.size());
-    for (auto& runVal : history->arr)
+static void VisitBlocksForStats(const std::vector<EvalBlock>& blocks, const std::string& date,
+                                 std::unordered_map<std::string, EvalStat>& stats)
+{
+    for (auto& b : blocks)
     {
-        EvalRun run;
-        if (auto* d = runVal.Find("date")) run.date = d->str;
-        double totalTime = 0.0;
-        if (auto* t = runVal.Find("total_time")) totalTime = t->num;
-        run.total_time = Round2(totalTime);
-
-        std::vector<HistorySplitPoint> splits;
-        if (auto* sp = runVal.Find("splits"))
+        auto& s = stats[b.name];
+        s.count += 1;
+        s.totalDur += b.dur;
+        if (s.count == 1 || b.dur < s.bestDur)
         {
-            splits.reserve(sp->arr.size());
-            for (auto& s : sp->arr)
-            {
-                HistorySplitPoint pt;
-                if (auto* n = s.Find("name")) pt.name = n->str;
-                if (auto* ts = s.Find("timestamp")) pt.timestamp = ts->num;
-                splits.push_back(std::move(pt));
-            }
+            s.bestDur = b.dur;
+            s.bestDate = date;
         }
-
-        BoundaryPt none;
-        ParseSpan(splits, 0, (int)splits.size(), none, nullptr, run.blocks);
-        outRuns.push_back(std::move(run));
+        if (!b.children.empty())
+            VisitBlocksForStats(b.children, date, stats);
     }
-
-    if (outRuns.empty())
-    {
-        err = "That file parsed fine but contains no runs.";
-        return false;
-    }
-    return true;
 }
 
 static std::unordered_map<std::string, EvalStat> ComputeAllTimeStats(const std::vector<EvalRun>& runs)
 {
     std::unordered_map<std::string, EvalStat> stats;
     for (auto& run : runs)
-    {
-        for (auto& b : run.blocks)
-        {
-            auto& s = stats[b.name];
-            s.count += 1;
-            s.totalDur += b.dur;
-            if (s.count == 1 || b.dur < s.bestDur)
-            {
-                s.bestDur = b.dur;
-                s.bestDate = run.date;
-            }
-        }
-    }
+        VisitBlocksForStats(run.blocks, run.date, stats);
     return stats;
 }
 
@@ -440,6 +222,10 @@ static const float FILL_DUR = 0.15f;   // matches fill-color transition duration
 static const float STRETCH_HEADROOM = 0.92f;
 static const float FLASH_IN = 0.30f;
 static const float FLASH_OUT_END = 0.65f;
+// clean two-stage motion: children only reveal AFTER the stretch's own grow
+// animation (ANIM_DUR = 0.32s) has settled, matching splitOpenChildren()'s
+// 340ms setTimeout in the original.
+static const float SPLIT_OPEN_DELAY = 0.34f;
 
 static ImU32 HexColor(unsigned int hex, float a = 1.0f)
 {
@@ -461,6 +247,12 @@ static const unsigned int CORE_LIGHT = 0x6fb3e8;
 static const unsigned int ROT_DARK = 0x6e3d0a;
 static const unsigned int ROT_LIGHT = 0xf0a84e;
 static const unsigned int FOCUS = 0xff4fb0;
+// children of a Start/End container (revealed by stretch-then-split-open)
+// get their own purple ramp -- visually distinct from core-blue/rotating-
+// amber, signaling "this is a subdivision of one fractal's own time," not
+// another fractal in its own right.
+static const unsigned int CHILD_DARK = 0x4a1f5e;
+static const unsigned int CHILD_LIGHT = 0xb87fd9;
 static const unsigned int BAND_BG = 0x0c0d10;
 static const unsigned int BAND_STROKE = 0x2a2e35;
 static const unsigned int TEXT_DIM = 0x8a8f98;
@@ -560,6 +352,7 @@ struct BarBlockVis
     float baseX = 0, baseY = 0, baseH = 0;
     bool isCore = false;
     float fillT = 0.0f;
+    const EvalBlock* src = nullptr; // stable pointer into cs.allRunsChronological; gives access to .children
 };
 
 struct BarGroupVis
@@ -575,9 +368,15 @@ struct EvalState
     std::vector<EvalRun> allRunsChronological;
     std::unordered_map<std::string, EvalStat> allTimeStats;
     int windowStart = 0;
-    bool loaded = false;
-    bool loadError = false;
-    std::string errorMessage;
+
+    // Tracks what the chart was last built from, so we only redo the
+    // ParseSpan/stats work when the underlying data actually changed --
+    // either a different route/file (loadedPath changed) or the same file
+    // with a different run list (a run added/deleted, history cleared;
+    // loadedSignature changed). See RenderEvaluationWindow().
+    bool everBuilt = false;
+    std::string loadedPath;
+    std::string loadedSignature;
 
     std::set<std::string> pinnedDates;
     std::string stretchedName;
@@ -590,6 +389,11 @@ struct EvalState
     // reading anchorElement at click time, never re-deriving it from
     // whatever's under the cursor on a later hover.
     int stretchAnchorOrigIdx = -1;
+
+    // ImGui::GetTime() at the moment the current stretch started/switched --
+    // children (if any) reveal SPLIT_OPEN_DELAY seconds after this, mirroring
+    // the setTimeout(splitOpenChildren, 340) in applyStretch().
+    double stretchAnimStart = -1.0;
 
     std::string pendingFlashDate;
     double flashStartTime = -1.0;
@@ -777,6 +581,7 @@ static void DrawChart(EvalState& cs)
             bv.baseH = h;
             bv.isCore = isCore;
             bv.fillT = t;
+            bv.src = &b;
             groups[ri].blocks.push_back(bv);
         }
     }
@@ -799,6 +604,10 @@ static void DrawChart(EvalState& cs)
 
     const BarBlockVis* hitBlock = nullptr;
     int hitGroupIdx = -1;
+    bool hitIsChild = false;
+    double hitChildDur = 0.0;
+
+    bool stretchedNow = !cs.stretchedName.empty();
 
     if (canvasHovered)
     {
@@ -808,6 +617,40 @@ static void DrawChart(EvalState& cs)
             for (int bi = (int)g.blocks.size() - 1; bi >= 0; bi--)
             {
                 auto& b = g.blocks[bi];
+
+                bool splitOpen = stretchedNow && b.name == cs.stretchedName && b.src &&
+                                  !b.src->children.empty() && (now - cs.stretchAnimStart) >= SPLIT_OPEN_DELAY;
+                if (splitOpen)
+                {
+                    // parent rect is hidden while split open (pointer-events:
+                    // none in the HTML) -- test its revealed children instead,
+                    // subdividing the parent's own previous-frame geometry.
+                    std::string parentKey = AnimKey(g.run->date, b.name);
+                    auto itp = cs.anim.find(parentKey);
+                    float px = itp != cs.anim.end() && itp->second.x.init ? itp->second.x.cur : b.baseX;
+                    float py = itp != cs.anim.end() && itp->second.y.init ? itp->second.y.cur : b.baseY;
+                    float ph = itp != cs.anim.end() && itp->second.h.init ? itp->second.h.cur : b.baseH;
+
+                    double totalDur = 0.0;
+                    for (auto& c : b.src->children) totalDur += c.dur;
+                    float pxPerSec = totalDur > 0.0 ? ph / (float)totalDur : 0.0f;
+                    float cy = py + ph;
+                    for (auto& c : b.src->children)
+                    {
+                        float ch = (float)(c.dur * pxPerSec);
+                        cy -= ch;
+                        if (mouseLocal.x >= px && mouseLocal.x <= px + BAR_W && mouseLocal.y >= cy && mouseLocal.y <= cy + ch)
+                        {
+                            hitName = c.name;
+                            hitGroupIdx = gi;
+                            hitIsChild = true;
+                            hitChildDur = c.dur;
+                            goto hitDone;
+                        }
+                    }
+                    continue; // no child under the cursor in this bar -- try the next block/bar
+                }
+
                 std::string key = AnimKey(g.run->date, b.name);
                 auto it = cs.anim.find(key);
                 float rx = it != cs.anim.end() && it->second.x.init ? it->second.x.cur : b.baseX;
@@ -836,12 +679,25 @@ hitDone:
     }
     else if (leftClicked)
     {
-        if (!hitName.empty())
+        if (hitIsChild)
+        {
+            // a click on a revealed CHILD of the currently-stretched fractal
+            // can't be turned into a further stretch -- children only exist
+            // as a temporary reveal of the stretched parent, not their own
+            // trackable top-level segment. Treat it like clicking empty
+            // chart space instead: just exit the zoom.
+            if (!cs.stretchedName.empty())
+            {
+                cs.stretchedName.clear();
+                cs.stretchAnchorOrigIdx = -1;
+            }
+        }
+        else if (!hitName.empty())
         {
             if (!cs.stretchedName.empty())
             {
                 if (cs.stretchedName == hitName) { cs.stretchedName.clear(); cs.stretchAnchorOrigIdx = -1; }
-                else { cs.stretchedName = hitName; cs.stretchAnchorOrigIdx = hitGroupIdx; }
+                else { cs.stretchedName = hitName; cs.stretchAnchorOrigIdx = hitGroupIdx; cs.stretchAnimStart = now; }
             }
             // (when nothing is stretched yet, a plain click also starts one --
             // matches "click a block to persistently enlarge every occurrence")
@@ -849,6 +705,7 @@ hitDone:
             {
                 cs.stretchedName = hitName;
                 cs.stretchAnchorOrigIdx = hitGroupIdx;
+                cs.stretchAnimStart = now;
             }
         }
         else if (!cs.stretchedName.empty())
@@ -866,7 +723,7 @@ hitDone:
     std::string effectiveHoverName;
     if (!stretched)
     {
-        if (!hitName.empty())
+        if (!hitName.empty() && !hitIsChild)
         {
             // moved onto a (possibly different) bar-block -- update, same as
             // onMove() calling onHover() whenever evt.target is a bar-block.
@@ -1033,6 +890,25 @@ hitDone:
             std::string key = AnimKey(g.run->date, b.name);
             auto& a = cs.anim[key];
 
+            bool hasChildren = b.src && !b.src->children.empty();
+            bool isStretchTarget = stretched && b.name == cs.stretchedName;
+            bool splitOpen = isStretchTarget && hasChildren && (now - cs.stretchAnimStart) >= SPLIT_OPEN_DELAY;
+
+            if (!splitOpen && hasChildren)
+            {
+                // not currently revealed -- make sure each child's fade-in
+                // starts from 0 again next time this reopens, same as
+                // closeChildren() resetting opacity so re-splitting is a
+                // real fade, not an instant pop.
+                for (auto& c : b.src->children)
+                {
+                    std::string ckey = AnimKey(g.run->date, b.name + "\x1f>" + c.name);
+                    auto cit = cs.anim.find(ckey);
+                    if (cit != cs.anim.end())
+                        cit->second.opacity.from = cit->second.opacity.cur = cit->second.opacity.to = 0.0f;
+                }
+            }
+
             float tx = targetX;
             float ty = !std::isnan(yOverride[bi]) ? yOverride[bi] : b.baseY;
             float th = !std::isnan(hOverride[bi]) ? hOverride[bi] : b.baseH;
@@ -1074,11 +950,64 @@ hitDone:
             a.colR.SetTarget(fr, now); a.colG.SetTarget(fg, now); a.colB.SetTarget(fb, now);
             a.colR.Update(now); a.colG.Update(now); a.colB.Update(now);
 
-            ImVec2 p0(origin.x + a.x.cur, origin.y + a.y.cur);
-            ImVec2 p1(p0.x + BAR_W, p0.y + a.h.cur);
-            ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(a.colR.cur, a.colG.cur, a.colB.cur, a.opacity.cur));
-            dl->AddRectFilled(p0, p1, col);
-            dl->AddRect(p0, p1, HexColor(0x14161a, a.opacity.cur));
+            if (!splitOpen)
+            {
+                ImVec2 p0(origin.x + a.x.cur, origin.y + a.y.cur);
+                ImVec2 p1(p0.x + BAR_W, p0.y + a.h.cur);
+                ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(a.colR.cur, a.colG.cur, a.colB.cur, a.opacity.cur));
+                dl->AddRectFilled(p0, p1, col);
+                dl->AddRect(p0, p1, HexColor(0x14161a, a.opacity.cur));
+                continue;
+            }
+
+            // ---- split-open: parent rect itself is hidden; draw its
+            // children instead, subdividing the parent's CURRENT (already
+            // fully-stretched) span, purple ramp, fading in from 0 opacity. ----
+            double totalDur = 0.0;
+            for (auto& c : b.src->children) totalDur += c.dur;
+            float pxPerSec = totalDur > 0.0 ? a.h.cur / (float)totalDur : 0.0f;
+            float cy = a.y.cur + a.h.cur;
+            int n = (int)b.src->children.size();
+            for (int ci = 0; ci < n; ci++)
+            {
+                const EvalBlock& child = b.src->children[ci];
+                float ch = (float)(child.dur * pxPerSec);
+                cy -= ch;
+
+                std::string ckey = AnimKey(g.run->date, b.name + "\x1f>" + child.name);
+                bool isNewChild = cs.anim.find(ckey) == cs.anim.end();
+                auto& ca = cs.anim[ckey];
+                ca.x.dur = ANIM_DUR; ca.y.dur = ANIM_DUR; ca.h.dur = ANIM_DUR; ca.opacity.dur = FADE_DUR;
+                if (isNewChild)
+                {
+                    ca.opacity.from = ca.opacity.cur = ca.opacity.to = 0.0f;
+                    ca.opacity.init = true;
+                }
+                ca.x.SetTarget(a.x.cur, now);
+                ca.y.SetTarget(cy, now);
+                ca.h.SetTarget(ch, now);
+                ca.opacity.SetTarget(1.0f, now);
+                ca.x.Update(now); ca.y.Update(now); ca.h.Update(now); ca.opacity.Update(now);
+
+                float t = n > 1 ? (float)ci / (float)(n - 1) : 0.0f;
+                float dr, dg, db, lr, lg, lb;
+                HexToRGB(CHILD_DARK, dr, dg, db);
+                HexToRGB(CHILD_LIGHT, lr, lg, lb);
+                bool childFocused = hitIsChild && hitName == child.name;
+                float rr, gg, bb;
+                if (childFocused) HexToRGB(FOCUS, rr, gg, bb);
+                else { rr = dr + (lr - dr) * t; gg = dg + (lg - dg) * t; bb = db + (lb - db) * t; }
+
+                ca.colR.dur = FILL_DUR; ca.colG.dur = FILL_DUR; ca.colB.dur = FILL_DUR;
+                ca.colR.SetTarget(rr, now); ca.colG.SetTarget(gg, now); ca.colB.SetTarget(bb, now);
+                ca.colR.Update(now); ca.colG.Update(now); ca.colB.Update(now);
+
+                ImVec2 cp0(origin.x + ca.x.cur, origin.y + ca.y.cur);
+                ImVec2 cp1(cp0.x + BAR_W, cp0.y + ca.h.cur);
+                ImU32 ccol = ImGui::ColorConvertFloat4ToU32(ImVec4(ca.colR.cur, ca.colG.cur, ca.colB.cur, ca.opacity.cur));
+                dl->AddRectFilled(cp0, cp1, ccol);
+                dl->AddRect(cp0, cp1, HexColor(0x14161a, ca.opacity.cur));
+            }
         }
     }
 
@@ -1215,11 +1144,13 @@ hitDone:
     }
 
     // ---- tooltip ----
-    if (!hitName.empty() && hitBlock)
+    if (!hitName.empty() && (hitBlock || hitIsChild))
     {
-        bool allowedWhileStretched = !stretched || hitName == cs.stretchedName;
+        bool allowedWhileStretched = !stretched || hitIsChild || hitName == cs.stretchedName;
         if (allowedWhileStretched)
         {
+            double hitDur = hitIsChild ? hitChildDur : hitBlock->dur;
+
             ImGui::BeginTooltip();
             ImGui::PushStyleColor(ImGuiCol_Text, HexColor(FOCUS));
             ImGui::TextUnformatted(hitName.c_str());
@@ -1231,9 +1162,9 @@ hitDone:
                 const EvalStat& s = statIt->second;
                 ImGui::Text("%d occurrence%s in database", s.count, s.count > 1 ? "s" : "");
                 ImGui::Separator();
-                ImGui::Text("This time: %s", FormatSegmentTime(hitBlock->dur).c_str());
+                ImGui::Text("This time: %s", FormatSegmentTime(hitDur).c_str());
                 std::string diff;
-                if (FormatDiff(hitBlock->dur, s.bestDur, diff))
+                if (FormatDiff(hitDur, s.bestDur, diff))
                 {
                     ImGui::Text("Best: %s (%s)", FormatSegmentTime(s.bestDur).c_str(), diff.c_str());
                     ImGui::Text("Best run: %s", s.bestDate.c_str());
@@ -1349,27 +1280,59 @@ void RenderEvaluationWindow()
     using namespace EvalTool;
     EvalState& cs = GetState();
 
-    if (!cs.loaded && !cs.loadError)
+    // A cheap fingerprint of "what's currently loaded" -- cheaper than
+    // diffing the whole run list every frame, and good enough to notice a
+    // run being added, deleted, or the whole history cleared. Combined with
+    // CurrentHistoryPath this also distinguishes "same file, run count
+    // happens to match" from an actual no-op (extremely unlikely in
+    // practice, and harmless even if it did happen to collide for one
+    // frame).
+    std::string signature = std::to_string(HistoryRuns.size());
+    if (!HistoryRuns.empty())
     {
-        std::string err;
+        signature += '|';
+        signature += HistoryRuns.front().Date;
+        signature += '|';
+        signature += HistoryRuns.back().Date;
+    }
 
-        std::string addonDir = GetAddonDir();
-        // TODO: swap this path out once real data wiring is available -- for
-        // now this is hardcoded to the sample history file per current instructions.
-        std::string historyPath = addonDir + "/Fractals_Fake.history";
+    bool pathChanged = (cs.loadedPath != CurrentHistoryPath);
+    if (!cs.everBuilt || pathChanged || signature != cs.loadedSignature)
+    {
+        cs.allRunsChronological.clear();
+        cs.allRunsChronological.reserve(HistoryRuns.size());
+        for (auto& r : HistoryRuns)
+            cs.allRunsChronological.push_back(ConvertHistoricalRun(r));
+        // HistoryRuns is stored newest-first (same order as the .history
+        // file on disk); reverse to chronological, matching every layout/
+        // paging assumption in DrawChart (oldest at windowStart, newest at
+        // the end).
+        std::reverse(cs.allRunsChronological.begin(), cs.allRunsChronological.end());
+        cs.allTimeStats = ComputeAllTimeStats(cs.allRunsChronological);
 
-        if (LoadHistoryFile(historyPath, cs.allRunsChronological, err))
+        if (!cs.everBuilt || pathChanged)
         {
-            std::reverse(cs.allRunsChronological.begin(), cs.allRunsChronological.end());
-            cs.allTimeStats = ComputeAllTimeStats(cs.allRunsChronological);
+            // Switched to a different route/file (or this is the first
+            // build) -- start fresh, same as a brand-new load.
             cs.windowStart = std::max(0, (int)cs.allRunsChronological.size() - WINDOW_SIZE);
-            cs.loaded = true;
+            cs.pinnedDates.clear();
+            cs.stretchedName.clear();
+            cs.stretchAnchorOrigIdx = -1;
+            cs.stretchAnimStart = -1.0;
+            cs.hoverName.clear();
+            cs.hoverAnchorOrigIdx = -1;
+            cs.anim.clear();
+            cs.groupAnim.clear();
         }
-        else
-        {
-            cs.loadError = true;
-            cs.errorMessage = err;
-        }
+        // else: same file, just a different run count (a run was added
+        // while this window was open, one got deleted, etc.) -- leave
+        // paging/pins/stretch alone. DrawChart already clamps windowStart
+        // to whatever's valid, and a pinned date that no longer exists
+        // simply won't be found when the pinned-run list is rebuilt.
+
+        cs.everBuilt = true;
+        cs.loadedPath = CurrentHistoryPath;
+        cs.loadedSignature = signature;
     }
 
     ImGui::SetNextWindowSize(ImVec2(920, 640), ImGuiCond_FirstUseEver);
@@ -1379,21 +1342,9 @@ void RenderEvaluationWindow()
         return;
     }
 
-    if (cs.loadError)
-    {
-        ImGui::TextColored(ImVec4(0.94f, 0.5f, 0.5f, 1.0f), "%s", cs.errorMessage.c_str());
-        ImGui::End();
-        return;
-    }
-    if (!cs.loaded)
-    {
-        ImGui::TextDisabled("Loading...");
-        ImGui::End();
-        return;
-    }
     if (cs.allRunsChronological.empty())
     {
-        ImGui::TextDisabled("That file parsed fine but contains no runs.");
+        ImGui::TextDisabled("No runs recorded yet for this route.");
         ImGui::End();
         return;
     }
