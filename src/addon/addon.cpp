@@ -607,9 +607,14 @@ void AddonRender()
     // -------------------------------------------------------------------------
     bool isLoading = GS.IsLoading;
 
-    // Convenience pointers to the designated start and goal checkpoints.
+    // Convenience pointers to the designated start checkpoint and the
+    // MapChange-typed goal (if any) — used below for the load-screen grand-
+    // total snapshot. Looked up by type rather than GetGoal() (which only
+    // ever returns the first IsGoal checkpoint) because a route can have
+    // multiple goals of different types, and this logic only applies when
+    // the goal actually being run is a MapChange one.
     CheckpointState* startCp = GetStart(CurrentRoute);
-    CheckpointState* goalCp  = GetGoal(CurrentRoute);
+    CheckpointState* mapChangeGoalCp = GetGoalOfType(CurrentRoute, ETriggerType::MapChange);
 
     // -------------------------------------------------------------------------
     // Main logic — held under KeybindMutex so timer calls here and in keybind
@@ -625,10 +630,9 @@ void AddonRender()
                 // Special case for MapChange goals: if the goal fires on the map
                 // transition itself, snapshot the GrandTimer now (before the map
                 // actually changes) so load-screen time is excluded from the grand total.
-                if (SpeedrunTimer.IsRunning() && goalCp &&
-                    goalCp->Point.TriggerType == ETriggerType::MapChange &&
-                    goalCp->Point.MapID != 0 &&
-                    currMapID == goalCp->Point.MapID)
+                if (SpeedrunTimer.IsRunning() && mapChangeGoalCp &&
+                    mapChangeGoalCp->Point.MapID != 0 &&
+                    currMapID == mapChangeGoalCp->Point.MapID)
                 {
                     PendingGrandStop = GrandTimer.GetElapsedSeconds();
                 }
@@ -653,7 +657,7 @@ void AddonRender()
 
                 // If we didn't actually leave the goal map (e.g. a mid-run load
                 // screen on the same map), discard the snapshot.
-                if (PendingGrandStop >= 0.0 && goalCp && currMapID == goalCp->Point.MapID)
+                if (PendingGrandStop >= 0.0 && mapChangeGoalCp && currMapID == mapChangeGoalCp->Point.MapID)
                     PendingGrandStop = -1.0;
 
                 if (ShowDebug)
@@ -802,10 +806,11 @@ void AddonRender()
 
                         // Detect whether this start and the goal share the exact same zone
                         // (single-arena run).  If so the goal's combat tracker must be armed
-                        // at the same time as the start's.
-                        CheckpointState* goalCs = GetGoal(CurrentRoute);
+                        // at the same time as the start's. Looked up by type (not GetGoal(),
+                        // which only returns the first IsGoal checkpoint) since a route can
+                        // have multiple goals and this only applies to the CombatArena one.
+                        CheckpointState* goalCs = GetGoalOfType(CurrentRoute, ETriggerType::CombatArena);
                         bool sameArea = goalCs &&
-                            goalCs->Point.TriggerType == ETriggerType::CombatArena &&
                             goalCs->Point.MapID       == pt.MapID  &&
                             goalCs->Point.X           == pt.X      &&
                             goalCs->Point.Y           == pt.Y      &&

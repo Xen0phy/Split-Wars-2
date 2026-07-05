@@ -233,10 +233,10 @@ void RenderHistoryWindow()
                             if (ImGui::MenuItem("Copy to clipboard"))
                             {
                                 // Suppress the AllCheckpoints synthetic Goal split,
-                                // same logic as the hover tooltip.
-                                const CheckpointState* goalCp = GetGoal(CurrentRoute);
-                                bool goalIsAllCheckpoints = goalCp &&
-                                    goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
+                                // same logic as the hover tooltip. Looked up by type
+                                // (not GetGoal()) since a route can have multiple goals.
+                                const CheckpointState* goalCp = GetGoalOfType(CurrentRoute, ETriggerType::AllCheckpoints);
+                                bool goalIsAllCheckpoints = goalCp != nullptr;
                                 int splitsToShow = (int)run.Splits.size();
                                 if (goalIsAllCheckpoints && splitsToShow > 0 && goalCp &&
                                     strcmp(run.Splits.back().Name, goalCp->Name) == 0)
@@ -316,9 +316,10 @@ void RenderHistoryWindow()
 
                             // Suppress the synthetic "Goal" split that AllCheckpoints
                             // goals append — it's redundant with the Total line below.
-                            const CheckpointState* tooltipGoalCp = GetGoal(CurrentRoute);
-                            bool tooltipGoalIsAllCheckpoints = tooltipGoalCp &&
-                                tooltipGoalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
+                            // Looked up by type (not GetGoal()) since a route can have
+                            // multiple goals.
+                            const CheckpointState* tooltipGoalCp = GetGoalOfType(CurrentRoute, ETriggerType::AllCheckpoints);
+                            bool tooltipGoalIsAllCheckpoints = tooltipGoalCp != nullptr;
                             int splitsToShow = (int)run.Splits.size();
                             if (tooltipGoalIsAllCheckpoints && splitsToShow > 0 && tooltipGoalCp &&
                                 strcmp(run.Splits.back().Name, tooltipGoalCp->Name) == 0)

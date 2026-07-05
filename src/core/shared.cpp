@@ -184,7 +184,7 @@ void FullReset()
         CheckpointStates[i].Point   = src.Point;
         CheckpointStates[i].IsStart = src.IsStart;
         CheckpointStates[i].IsGoal  = src.IsGoal;
-        strncpy(CheckpointStates[i].Name, src.Name, sizeof(CheckpointStates[i].Name));
+        strncpy(CheckpointStates[i].Name, src.Name, sizeof(CheckpointStates[i].Name) - 1);
         CheckpointStates[i].ResetRuntime();
     }
 }

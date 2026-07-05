@@ -236,6 +236,18 @@ inline CheckpointState* GetGoal(Route& route)
     return nullptr;
 }
 
+// Returns the goal checkpoint of a specific trigger type, or nullptr if the
+// route has no goal of that type. Use this instead of GetGoal() whenever the
+// caller cares about a particular trigger type (e.g. MapChange-specific
+// timing logic) — with multiple goals, GetGoal() only ever returns the first
+// one in Checkpoints, which may not be the type-specific goal you need.
+inline CheckpointState* GetGoalOfType(Route& route, ETriggerType type)
+{
+    for (auto& cp : route.Checkpoints)
+        if (cp.IsGoal && cp.Point.TriggerType == type) return &cp;
+    return nullptr;
+}
+
 // ---------------------------------------------------------------------------
 // Spatial query functions (implemented in route.cpp)
 // ---------------------------------------------------------------------------

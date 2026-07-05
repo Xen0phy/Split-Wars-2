@@ -41,13 +41,18 @@ bool IsWithinRange(const Vector3& playerPos, const RoutePoint& point)
 // Returns true when the player's movement between prevPos and currPos crossed
 // a finite trigger plane defined by the RoutePoint.
 //
-// The plane is described by three values stored on the point:
-//   X, Z        — the centre of the plane in world space (Y is ignored)
-//   PlaneAngle  — the compass heading the plane faces, in degrees.
-//                 0° = east (+X axis), 90° = north (+Z axis).
-//                 Captured automatically by the config window capture button.
-//   RadiusWidth — the total width of the active segment of the plane.
-//                 Only crossings within ±RadiusWidth/2 of the centre fire.
+// The plane is described by four values stored on the point:
+//   X, Z          — the centre of the plane in world space, on the
+//                   horizontal axes.
+//   PlaneAngle    — the compass heading the plane faces, in degrees.
+//                   0° = east (+X axis), 90° = north (+Z axis).
+//                   Captured automatically by the config window capture
+//                   button.
+//   RadiusWidth   — the total width of the active segment of the plane.
+//                   Only crossings within ±RadiusWidth/2 of the centre fire.
+//   Y, bandUpInput/bandDownInput — the plane also has a finite vertical
+//                   extent: it only fires within bandUpInput metres above
+//                   and bandDownInput metres below Y.
 //
 // How it works:
 //   1. Convert PlaneAngle to a normal vector (nx, nz) perpendicular to the
@@ -55,7 +60,9 @@ bool IsWithinRange(const Vector3& playerPos, const RoutePoint& point)
 //   2. Derive the along-plane direction (px, pz) by rotating the normal 90°.
 //   3. Check that the player's current position is within the half-width of
 //      the plane along its surface direction (the width gate).
-//   4. Compute the signed dot product of (prevPos - centre) and (currPos - centre)
+//   4. Check that the player's current position is within the plane's
+//      vertical band (the height gate).
+//   5. Compute the signed dot product of (prevPos - centre) and (currPos - centre)
 //      against the normal.  If the signs differ the player crossed the plane
 //      this frame, regardless of direction (triggers in both directions).
 // ---------------------------------------------------------------------------
@@ -77,7 +84,7 @@ bool HasCrossedPlane(const Vector3& prevPos, const Vector3& currPos, const Route
     float alongPlane = dx * px + dz * pz;
     if (std::abs(alongPlane) > point.RadiusWidth * 0.5f) return false;
 
-    // Step 3b — height gate: reject if player is outside the vertical band.
+    // Step 4 — height gate: reject if player is outside the vertical band.
     // Band is centred on point.Y; bandUpInput extends upward, bandDownInput downward.
     // The 0.1m tolerance prevents floating-point edge cases from missing a crossing
     // exactly at the band boundary.
@@ -85,7 +92,7 @@ bool HasCrossedPlane(const Vector3& prevPos, const Vector3& currPos, const Route
     if (dy >  point.bandUpInput + 0.1)   return false;
     if (dy < -point.bandDownInput - 0.1) return false;
 
-    // Step 4 — sign-change test: project both positions onto the normal.
+    // Step 5 — sign-change test: project both positions onto the normal.
     // A sign change means the player moved from one side of the plane to the other.
     float prevDx  = prevPos.X - point.X;
     float prevDz  = prevPos.Z - point.Z;
