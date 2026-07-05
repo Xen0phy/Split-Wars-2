@@ -70,6 +70,12 @@ SETTING_ARRAY  (Colors,       ColorAhead,             3,     ARR( 0.2f,  1.0f,  
 SETTING_ARRAY  (Colors,       ColorBehind,            3,     ARR( 1.0f,  0.3f,  0.3f))
 SETTING_ARRAY  (Colors,       ColorBestRow,           3,     ARR( 0.2f,  0.5f,  0.2f))
 
+// Evalutaion Colors
+SETTING        (Colors,       CoreColorHue,           float, 0.573f)
+SETTING        (Colors,       RotatingColorHue,       float, 0.093f)
+SETTING        (Colors,       ChildColorHue,          float, 0.772f)
+SETTING_ARRAY  (Colors,       HoverColor,             3,     ARR(1.000f, 0.310f, 0.690f))
+
 // ---------------------------------------------------------------------------
 // [Windows]
 // ---------------------------------------------------------------------------

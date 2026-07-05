@@ -26,15 +26,27 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 // Definition for the flag declared extern in render_shared.h.
 bool ShowEvaluation = false;
 
+// Core/rotating/child/hover colors are user-adjustable settings (see the
+// SETTING/SETTING_ARRAY entries and defaults noted alongside this file)
+// rather than fixed constants. Core/rotating/child are each a single Hue
+// (0..1); the bottom-to-top gradient each bar uses is derived from that hue
+// at render time (see DeriveGradientFromHue below) rather than being stored
+// directly, so the user only ever picks one dial per category and still
+// gets a consistent dark-and-saturated-to-light-and-pale ramp. HoverColor is
+// the one exception -- a single flat highlight color, not a gradient -- so
+// it's still stored directly as an {r,g,b} triple. All declared at global
+// scope like every other addon-wide global (ShowEvaluation, HistoryRuns,
+// etc.); defined and persisted wherever the rest of settings_table.h's
+// X-macro table lives.
+
 namespace EvalTool
 {
-
-
 // ---------------------------------------------------------------------
 // Data model -- mirrors the flat shape parseHistoryFile() produces in the
 // HTML: per-run list of top-level blocks in real chronological/play order,
@@ -110,14 +122,14 @@ static void ParseSpan(const std::vector<HistorySplitPoint>& splits, int startIdx
             if (endFound == -1)
             {
                 if (prev.valid)
-                    outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
+                    outBlocks.push_back({ prev.name + " -> " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
                 prev = { sp.name, sp.timestamp, true };
                 i += 1;
                 continue;
             }
 
             if (prev.valid)
-                outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
+                outBlocks.push_back({ prev.name + " -> " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
 
             double nestedStart = sp.timestamp;
             double nestedEnd = splits[endFound].timestamp;
@@ -142,14 +154,14 @@ static void ParseSpan(const std::vector<HistorySplitPoint>& splits, int startIdx
         else
         {
             if (prev.valid)
-                outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
+                outBlocks.push_back({ prev.name + " -> " + sp.name, Round2(sp.timestamp - prev.timestamp), {} });
             prev = { sp.name, sp.timestamp, true };
             i += 1;
         }
     }
 
     if (closing && prev.valid)
-        outBlocks.push_back({ prev.name + " \xE2\x86\x92 " + closing->name, Round2(closing->timestamp - prev.timestamp), {} });
+        outBlocks.push_back({ prev.name + " -> " + closing->name, Round2(closing->timestamp - prev.timestamp), {} });
 }
 
 // Converts one of the addon's own already-parsed runs (HistoricalRun, as
@@ -215,7 +227,7 @@ static const float PIN_ROW_GAP = 4.0f;
 static const float BOTTOM_PAD = 34.0f + PIN_ROW_GAP + PIN_ROW_H;
 static const float CHART_H = 460.0f + PIN_ROW_GAP + PIN_ROW_H;
 static const float PLOT_H = CHART_H - TOP_PAD - BOTTOM_PAD;
-static const int WINDOW_SIZE = 15;
+static const int   WINDOW_SIZE = 15;
 static const float ANIM_DUR = 0.32f;   // matches .bar-block's transition duration
 static const float FADE_DUR = 0.25f;   // matches opacity transition duration
 static const float FILL_DUR = 0.15f;   // matches fill-color transition duration
@@ -235,24 +247,30 @@ static ImU32 HexColor(unsigned int hex, float a = 1.0f)
     return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a));
 }
 
-static void HexToRGB(unsigned int hex, float& r, float& g, float& b)
+// Core/rotating/child/hover color settings are declared at global scope
+// above (see extern float CoreColorHue etc. near the top of the file).
+
+static ImU32 RGBColor(const float c[3], float a = 1.0f)
 {
-    r = ((hex >> 16) & 0xFF) / 255.0f;
-    g = ((hex >> 8) & 0xFF) / 255.0f;
-    b = (hex & 0xFF) / 255.0f;
+    return ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], a));
 }
 
-static const unsigned int CORE_DARK = 0x14365e;
-static const unsigned int CORE_LIGHT = 0x6fb3e8;
-static const unsigned int ROT_DARK = 0x6e3d0a;
-static const unsigned int ROT_LIGHT = 0xf0a84e;
-static const unsigned int FOCUS = 0xff4fb0;
-// children of a Start/End container (revealed by stretch-then-split-open)
-// get their own purple ramp -- visually distinct from core-blue/rotating-
-// amber, signaling "this is a subdivision of one fractal's own time," not
-// another fractal in its own right.
-static const unsigned int CHILD_DARK = 0x4a1f5e;
-static const unsigned int CHILD_LIGHT = 0xb87fd9;
+// Turns a single user-picked Hue into the dark/light pair a bar's gradient
+// lerps across: saturated-and-dark at the bottom (S=1.0, V=90/255) fading to
+// pale-and-bright at the top (S=90/255, V=1.0). Same curated-palette shape
+// for every hue the user could pick, so "just a hue slider" always produces
+// something that reads clearly against the dark chart background.
+static void DeriveGradientFromHue(float hue, float outStart[3], float outEnd[3])
+{
+    ImGui::ColorConvertHSVtoRGB(hue, 1.0f, 90.0f / 255.0f, outStart[0], outStart[1], outStart[2]);
+    ImGui::ColorConvertHSVtoRGB(hue, 90.0f / 255.0f, 1.0f, outEnd[0], outEnd[1], outEnd[2]);
+}
+
+static void DerivePureFromHue(float hue, float outPure[3])
+{
+    ImGui::ColorConvertHSVtoRGB(hue, 172.0f / 255.0f, 172.0f / 255.0f, outPure[0], outPure[1], outPure[2]);
+}
+
 static const unsigned int BAND_BG = 0x0c0d10;
 static const unsigned int BAND_STROKE = 0x2a2e35;
 static const unsigned int TEXT_DIM = 0x8a8f98;
@@ -395,6 +413,15 @@ struct EvalState
     // the setTimeout(splitOpenChildren, 340) in applyStretch().
     double stretchAnimStart = -1.0;
 
+    // While split open, hovering one revealed child snaps every same-named
+    // child (across every bar showing that stretched fractal) onto a shared
+    // bottom line, same idea as top-level hover -- these track that the same
+    // way hoverName/hoverAnchorOrigIdx do for top-level blocks. Not part of
+    // the original HTML; added since it's a natural extension once children
+    // exist at all.
+    std::string childHoverName;
+    int childHoverAnchorGroupIdx = -1;
+
     std::string pendingFlashDate;
     double flashStartTime = -1.0;
     float flashX = 0, flashTop = 0, flashBottom = 0;
@@ -492,6 +519,11 @@ static void DrawChart(EvalState& cs)
     float dt = ImGui::GetIO().DeltaTime;
     (void)dt;
 
+    float coreStart[3], coreEnd[3], rotStart[3], rotEnd[3], childStart[3], childEnd[3];
+    DeriveGradientFromHue(CoreColorHue, coreStart, coreEnd);
+    DeriveGradientFromHue(RotatingColorHue, rotStart, rotEnd);
+    DeriveGradientFromHue(ChildColorHue, childStart, childEnd);
+
     // ---- windowed + pinned run selection (mirrors render()'s dataset math) ----
     std::vector<const EvalRun*> nonPinned, pinnedRuns;
     for (auto& r : cs.allRunsChronological)
@@ -507,6 +539,15 @@ static void DrawChart(EvalState& cs)
     for (int i = cs.windowStart; i < std::min((int)nonPinned.size(), cs.windowStart + availableSlots); i++)
         runs.push_back(nonPinned[i]);
     for (auto* p : pinnedRuns) runs.push_back(p);
+
+    // ---- paging button availability (disabled at either end / while every
+    // slot is pinned) -- computed up front so the Prev button can be drawn
+    // to the chart's left before the canvas itself, instead of both arrows
+    // being stacked together on the right where they left the whole chart
+    // flush against the window's left edge. ----
+    bool pagingLocked = availableSlots <= 0;
+    bool prevDisabled = pagingLocked || cs.windowStart <= 0;
+    bool nextDisabled = pagingLocked || (cs.windowStart + availableSlots >= (int)nonPinned.size());
 
     // ---- core = intersection of block-name sets across the visible runs ----
     std::set<std::string> core;
@@ -588,7 +629,20 @@ static void DrawChart(EvalState& cs)
 
     // ---- canvas setup ----
     float chartW = runs.empty() ? BAR_GAP : (float)runs.size() * (BAR_W + BAR_GAP) + BAR_GAP;
-    ImGui::BeginChild("##fractal_chart_canvas", ImVec2(std::min(chartW, ImGui::GetContentRegionAvail().x), CHART_H + 8.0f),
+
+    float pageBtnW = 24.0f;
+    float pageBtnVPad = std::max(0.0f, (CHART_H - ImGui::GetFrameHeight()) / 2.0f);
+
+    ImGui::BeginGroup();
+    ImGui::Dummy(ImVec2(pageBtnW, pageBtnVPad));
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, prevDisabled ? 0.4f : 1.0f);
+    if (ImGui::Button("<##prevPage", ImVec2(pageBtnW, 0)) && !prevDisabled)
+        PageBy(cs, ImGui::GetIO().KeyShift ? -WINDOW_SIZE : -1);
+    ImGui::PopStyleVar();
+    ImGui::EndGroup();
+    ImGui::SameLine();
+
+    ImGui::BeginChild("##fractal_chart_canvas", ImVec2(std::min(chartW, ImGui::GetContentRegionAvail().x - pageBtnW - ImGui::GetStyle().ItemSpacing.x), CHART_H + 8.0f),
                        false, ImGuiWindowFlags_HorizontalScrollbar);
 
     ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -671,11 +725,17 @@ hitDone:
     bool leftClicked = canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     bool rightClicked = canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
+    auto clearStretch = [&]() {
+        cs.stretchedName.clear();
+        cs.stretchAnchorOrigIdx = -1;
+        cs.childHoverName.clear();
+        cs.childHoverAnchorGroupIdx = -1;
+    };
+
     // ---- click-to-stretch state transitions ----
     if (rightClicked && !cs.stretchedName.empty())
     {
-        cs.stretchedName.clear();
-        cs.stretchAnchorOrigIdx = -1;
+        clearStretch();
     }
     else if (leftClicked)
     {
@@ -687,17 +747,23 @@ hitDone:
             // trackable top-level segment. Treat it like clicking empty
             // chart space instead: just exit the zoom.
             if (!cs.stretchedName.empty())
-            {
-                cs.stretchedName.clear();
-                cs.stretchAnchorOrigIdx = -1;
-            }
+                clearStretch();
         }
         else if (!hitName.empty())
         {
             if (!cs.stretchedName.empty())
             {
-                if (cs.stretchedName == hitName) { cs.stretchedName.clear(); cs.stretchAnchorOrigIdx = -1; }
-                else { cs.stretchedName = hitName; cs.stretchAnchorOrigIdx = hitGroupIdx; cs.stretchAnimStart = now; }
+                if (cs.stretchedName == hitName)
+                {
+                    clearStretch();
+                }
+                else
+                {
+                    clearStretch();
+                    cs.stretchedName = hitName;
+                    cs.stretchAnchorOrigIdx = hitGroupIdx;
+                    cs.stretchAnimStart = now;
+                }
             }
             // (when nothing is stretched yet, a plain click also starts one --
             // matches "click a block to persistently enlarge every occurrence")
@@ -710,8 +776,7 @@ hitDone:
         }
         else if (!cs.stretchedName.empty())
         {
-            cs.stretchedName.clear();
-            cs.stretchAnchorOrigIdx = -1;
+            clearStretch();
         }
     }
 
@@ -755,6 +820,41 @@ hitDone:
         cs.hoverAnchorOrigIdx = -1;
     }
 
+    // While split open, hovering a revealed child should snap every same-
+    // named child (in every bar currently showing this stretched fractal)
+    // onto a shared bottom line -- same "only react when the cursor is
+    // directly over the target, otherwise freeze" rule as top-level hover.
+    std::string effectiveChildHoverName;
+    if (stretched)
+    {
+        if (hitIsChild)
+        {
+            effectiveChildHoverName = hitName; // hitName holds the child's own name here
+            if (cs.childHoverName != hitName)
+            {
+                cs.childHoverName = hitName;
+                cs.childHoverAnchorGroupIdx = hitGroupIdx;
+            }
+        }
+        else if (!canvasHovered)
+        {
+            cs.childHoverName.clear();
+            cs.childHoverAnchorGroupIdx = -1;
+        }
+        else
+        {
+            // a gap, the split-open delay hasn't elapsed yet, or hovering a
+            // different (disabled) top-level block -- freeze instead of
+            // snapping back, same reasoning as the top-level case.
+            effectiveChildHoverName = cs.childHoverName;
+        }
+    }
+    else
+    {
+        cs.childHoverName.clear();
+        cs.childHoverAnchorGroupIdx = -1;
+    }
+
     // ---- compute per-block targets ----
     // slot index per group after any clustering reorder (defaults to identity)
     std::vector<int> slotOfOrig((int)groups.size());
@@ -786,6 +886,42 @@ hitDone:
         }
     }
 
+    // ---- precompute each group's base (un-hovered) child layout for the
+    // currently-stretched fractal, if it has children -- computed from the
+    // parent's own last-known animated span (same source hit-testing uses),
+    // independent of anything hover-related, so the cascade below always has
+    // a stable "where would this child be without any hover" to work from,
+    // same role BarBlockVis's baseY/baseH play for top-level cascades. ----
+    std::vector<std::unordered_map<std::string, std::pair<float, float>>> childBase(groups.size());
+    if (stretched)
+    {
+        for (int gi = 0; gi < (int)groups.size(); gi++)
+        {
+            auto& g = groups[gi];
+            for (auto& b : g.blocks)
+            {
+                if (b.name != cs.stretchedName || !b.src || b.src->children.empty())
+                    continue;
+                std::string parentKey = AnimKey(g.run->date, b.name);
+                auto itp = cs.anim.find(parentKey);
+                float py = itp != cs.anim.end() && itp->second.y.init ? itp->second.y.cur : b.baseY;
+                float ph = itp != cs.anim.end() && itp->second.h.init ? itp->second.h.cur : b.baseH;
+
+                double totalDur = 0.0;
+                for (auto& c : b.src->children) totalDur += c.dur;
+                float pxPerSec = totalDur > 0.0 ? ph / (float)totalDur : 0.0f;
+                float cy = py + ph;
+                for (auto& c : b.src->children)
+                {
+                    float ch = (float)(c.dur * pxPerSec);
+                    cy -= ch;
+                    childBase[gi][c.name] = { cy, ch };
+                }
+                break;
+            }
+        }
+    }
+
     for (int gi = 0; gi < (int)groups.size(); gi++)
     {
         auto& g = groups[gi];
@@ -805,7 +941,8 @@ hitDone:
         std::vector<float> yOverride(g.blocks.size(), NAN), hOverride(g.blocks.size(), NAN);
         if (!stretched && !effectiveHoverName.empty() && groupHasHoverMatch)
         {
-            int anchorGroupIdx = cs.hoverAnchorOrigIdx >= 0 ? cs.hoverAnchorOrigIdx : gi;
+            int anchorGroupIdx = (cs.hoverAnchorOrigIdx >= 0 && cs.hoverAnchorOrigIdx < (int)groups.size())
+                                     ? cs.hoverAnchorOrigIdx : gi;
             auto& anchorGroup = groups[anchorGroupIdx];
             float targetBottom = 0.0f;
             for (auto& b : anchorGroup.blocks)
@@ -866,7 +1003,44 @@ hitDone:
             yOverride[stretchIdx] = newY;
             hOverride[stretchIdx] = newH;
 
-            float yCursor = newY + newH;
+            // If this bar's revealed children are currently being pulled up
+            // or down to align with a hovered child in another bar (see
+            // childBase/effectiveChildHoverName below), that shift only ever
+            // moves the children themselves -- it doesn't touch this block's
+            // own yOverride/hOverride above, since the (invisible, while
+            // split open) parent rect shouldn't visually jump around. But
+            // the bar's OTHER top-level blocks (the ones stacked directly
+            // above/below it, dimmed to 0.25 opacity) still cascade from
+            // this block's *un-shifted* newY/newH by default, which is
+            // exactly the mismatch that let the shifted children poke into
+            // whichever neighbor sits on the overflow side. Folding the same
+            // delta into the cascade's start points keeps everything
+            // contiguous again.
+            float childDelta = 0.0f;
+            const EvalBlock* stretchSrc = g.blocks[stretchIdx].src;
+            bool hasChildrenHere = stretchSrc && !stretchSrc->children.empty();
+            bool splitOpenHere = hasChildrenHere && (now - cs.stretchAnimStart) >= SPLIT_OPEN_DELAY;
+            if (splitOpenHere && !effectiveChildHoverName.empty())
+            {
+                auto ownIt = childBase[gi].find(effectiveChildHoverName);
+                if (ownIt != childBase[gi].end())
+                {
+                    int anchorGi = (cs.childHoverAnchorGroupIdx >= 0 && cs.childHoverAnchorGroupIdx < (int)groups.size())
+                                       ? cs.childHoverAnchorGroupIdx : gi;
+                    auto anchorIt = childBase[anchorGi].find(effectiveChildHoverName);
+                    if (anchorIt != childBase[anchorGi].end())
+                    {
+                        float naturalBottom = ownIt->second.first + ownIt->second.second;
+                        float targetBottom = anchorIt->second.first + anchorIt->second.second;
+                        childDelta = targetBottom - naturalBottom;
+                    }
+                }
+            }
+
+            float cascadeTop = newY + childDelta;
+            float cascadeBottom = newY + newH + childDelta;
+
+            float yCursor = cascadeBottom;
             for (int i = stretchIdx - 1; i >= 0; i--)
             {
                 float h = g.blocks[i].baseH;
@@ -874,7 +1048,7 @@ hitDone:
                 hOverride[i] = h;
                 yCursor += h;
             }
-            yCursor = newY;
+            yCursor = cascadeTop;
             for (int i = stretchIdx + 1; i < (int)g.blocks.size(); i++)
             {
                 float h = g.blocks[i].baseH;
@@ -930,21 +1104,16 @@ hitDone:
             a.opacity.SetTarget(topacity, now);
             a.x.Update(now); a.y.Update(now); a.h.Update(now); a.opacity.Update(now);
 
-            unsigned int darkC = b.isCore ? CORE_DARK : ROT_DARK;
-            unsigned int lightC = b.isCore ? CORE_LIGHT : ROT_LIGHT;
-            float baseR, baseG, baseB;
-            {
-                float dr, dg, db, lr, lg, lb;
-                HexToRGB(darkC, dr, dg, db);
-                HexToRGB(lightC, lr, lg, lb);
-                baseR = dr + (lr - dr) * b.fillT;
-                baseG = dg + (lg - dg) * b.fillT;
-                baseB = db + (lb - db) * b.fillT;
-            }
+            const float* darkC = b.isCore ? coreStart : rotStart;
+            const float* lightC = b.isCore ? coreEnd : rotEnd;
+            float baseR = darkC[0] + (lightC[0] - darkC[0]) * b.fillT;
+            float baseG = darkC[1] + (lightC[1] - darkC[1]) * b.fillT;
+            float baseB = darkC[2] + (lightC[2] - darkC[2]) * b.fillT;
             bool isFocused = (stretched && b.name == cs.stretchedName && hitName == cs.stretchedName) ||
                               (!stretched && !effectiveHoverName.empty() && b.name == effectiveHoverName);
             float fr, fg, fb;
-            if (isFocused) HexToRGB(FOCUS, fr, fg, fb); else { fr = baseR; fg = baseG; fb = baseB; }
+            if (isFocused) { fr = HoverColor[0]; fg = HoverColor[1]; fb = HoverColor[2]; }
+            else { fr = baseR; fg = baseG; fb = baseB; }
 
             a.colR.dur = FILL_DUR; a.colG.dur = FILL_DUR; a.colB.dur = FILL_DUR;
             a.colR.SetTarget(fr, now); a.colG.SetTarget(fg, now); a.colB.SetTarget(fb, now);
@@ -962,17 +1131,71 @@ hitDone:
 
             // ---- split-open: parent rect itself is hidden; draw its
             // children instead, subdividing the parent's CURRENT (already
-            // fully-stretched) span, purple ramp, fading in from 0 opacity. ----
-            double totalDur = 0.0;
-            for (auto& c : b.src->children) totalDur += c.dur;
-            float pxPerSec = totalDur > 0.0 ? a.h.cur / (float)totalDur : 0.0f;
-            float cy = a.y.cur + a.h.cur;
+            // fully-stretched) span, purple ramp, fading in from 0 opacity.
+            // When one child is hovered, every same-named child across every
+            // bar showing this stretched fractal snaps onto a shared bottom
+            // line, cascading the rest of that bar's children out of the
+            // way -- same idea as the top-level hover cascade above, just
+            // scoped to this bar's own children. ----
             int n = (int)b.src->children.size();
+
+            int hoveredChildIdx = -1;
+            if (!effectiveChildHoverName.empty())
+                for (int ci = 0; ci < n; ci++)
+                    if (b.src->children[ci].name == effectiveChildHoverName) { hoveredChildIdx = ci; break; }
+
+            std::vector<float> cyOverride(n, NAN), chOverride(n, NAN);
+            if (hoveredChildIdx != -1)
+            {
+                int anchorGi = (cs.childHoverAnchorGroupIdx >= 0 && cs.childHoverAnchorGroupIdx < (int)groups.size())
+                                   ? cs.childHoverAnchorGroupIdx : gi;
+                auto anchorIt = childBase[anchorGi].find(effectiveChildHoverName);
+                auto ownIt = childBase[gi].find(effectiveChildHoverName);
+                if (anchorIt != childBase[anchorGi].end() && ownIt != childBase[gi].end())
+                {
+                    float targetBottom = anchorIt->second.first + anchorIt->second.second;
+                    float targetH = ownIt->second.second;
+                    float targetTopY = targetBottom - targetH;
+                    cyOverride[hoveredChildIdx] = targetTopY;
+                    chOverride[hoveredChildIdx] = targetH;
+
+                    float yCursor = targetTopY + targetH;
+                    for (int ci = hoveredChildIdx - 1; ci >= 0; ci--)
+                    {
+                        auto it2 = childBase[gi].find(b.src->children[ci].name);
+                        float h = it2 != childBase[gi].end() ? it2->second.second : 0.0f;
+                        yCursor += h;
+                        cyOverride[ci] = yCursor - h;
+                        chOverride[ci] = h;
+                    }
+                    yCursor = targetTopY;
+                    for (int ci = hoveredChildIdx + 1; ci < n; ci++)
+                    {
+                        auto it2 = childBase[gi].find(b.src->children[ci].name);
+                        float h = it2 != childBase[gi].end() ? it2->second.second : 0.0f;
+                        yCursor -= h;
+                        cyOverride[ci] = yCursor;
+                        chOverride[ci] = h;
+                    }
+                }
+            }
+
             for (int ci = 0; ci < n; ci++)
             {
                 const EvalBlock& child = b.src->children[ci];
-                float ch = (float)(child.dur * pxPerSec);
-                cy -= ch;
+
+                float cy, ch;
+                if (!std::isnan(cyOverride[ci]))
+                {
+                    cy = cyOverride[ci];
+                    ch = chOverride[ci];
+                }
+                else
+                {
+                    auto it2 = childBase[gi].find(child.name);
+                    if (it2 != childBase[gi].end()) { cy = it2->second.first; ch = it2->second.second; }
+                    else { cy = a.y.cur; ch = 0.0f; } // shouldn't happen; childBase[gi] covers every child here
+                }
 
                 std::string ckey = AnimKey(g.run->date, b.name + "\x1f>" + child.name);
                 bool isNewChild = cs.anim.find(ckey) == cs.anim.end();
@@ -990,13 +1213,15 @@ hitDone:
                 ca.x.Update(now); ca.y.Update(now); ca.h.Update(now); ca.opacity.Update(now);
 
                 float t = n > 1 ? (float)ci / (float)(n - 1) : 0.0f;
-                float dr, dg, db, lr, lg, lb;
-                HexToRGB(CHILD_DARK, dr, dg, db);
-                HexToRGB(CHILD_LIGHT, lr, lg, lb);
-                bool childFocused = hitIsChild && hitName == child.name;
+                bool childFocused = !effectiveChildHoverName.empty() && child.name == effectiveChildHoverName;
                 float rr, gg, bb;
-                if (childFocused) HexToRGB(FOCUS, rr, gg, bb);
-                else { rr = dr + (lr - dr) * t; gg = dg + (lg - dg) * t; bb = db + (lb - db) * t; }
+                if (childFocused) { rr = HoverColor[0]; gg = HoverColor[1]; bb = HoverColor[2]; }
+                else
+                {
+                    rr = childStart[0] + (childEnd[0] - childStart[0]) * t;
+                    gg = childStart[1] + (childEnd[1] - childStart[1]) * t;
+                    bb = childStart[2] + (childEnd[2] - childStart[2]) * t;
+                }
 
                 ca.colR.dur = FILL_DUR; ca.colG.dur = FILL_DUR; ca.colB.dur = FILL_DUR;
                 ca.colR.SetTarget(rr, now); ca.colG.SetTarget(gg, now); ca.colB.SetTarget(bb, now);
@@ -1122,7 +1347,7 @@ hitDone:
         // pin-row clicks are handled above and shouldn't also exit the
         // stretch; a plain click on empty chart space does.
         bool onPinRow = mouseLocal.y >= pinRowY && mouseLocal.y <= pinRowY + PIN_ROW_H;
-        if (!onPinRow) cs.stretchedName.clear();
+        if (!onPinRow) clearStretch();
     }
 
     // ---- one-time "jump to fastest" flash ----
@@ -1152,7 +1377,7 @@ hitDone:
             double hitDur = hitIsChild ? hitChildDur : hitBlock->dur;
 
             ImGui::BeginTooltip();
-            ImGui::PushStyleColor(ImGuiCol_Text, HexColor(FOCUS));
+            ImGui::PushStyleColor(ImGuiCol_Text, RGBColor(HoverColor));
             ImGui::TextUnformatted(hitName.c_str());
             ImGui::PopStyleColor();
 
@@ -1187,21 +1412,11 @@ hitDone:
     ImGui::EndChild();
     cs.footerWidth = std::max(cs.footerWidth, ImGui::GetItemRectSize().x);
 
-    // ---- paging button availability (disabled at either end / while every
-    // slot is pinned) ----
-    bool pagingLocked = availableSlots <= 0;
-    bool prevDisabled = pagingLocked || cs.windowStart <= 0;
-    bool nextDisabled = pagingLocked || (cs.windowStart + availableSlots >= (int)nonPinned.size());
-
     ImGui::SameLine();
     ImGui::BeginGroup();
-    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, prevDisabled ? 0.4f : 1.0f);
-    if (ImGui::Button("<##prevPage") && !prevDisabled)
-        PageBy(cs, ImGui::GetIO().KeyShift ? -WINDOW_SIZE : -1);
-    ImGui::PopStyleVar();
-    ImGui::Dummy(ImVec2(1, 8));
+    ImGui::Dummy(ImVec2(pageBtnW, pageBtnVPad));
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, nextDisabled ? 0.4f : 1.0f);
-    if (ImGui::Button(">##nextPage") && !nextDisabled)
+    if (ImGui::Button(">##nextPage", ImVec2(pageBtnW, 0)) && !nextDisabled)
         PageBy(cs, ImGui::GetIO().KeyShift ? WINDOW_SIZE : 1);
     ImGui::PopStyleVar();
     ImGui::EndGroup();
@@ -1220,7 +1435,7 @@ static void DrawControls(EvalState& cs)
 
     bool jumpDisabled = !cs.stretchedName.empty();
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, jumpDisabled ? 0.4f : 1.0f);
-    if (ImGui::Button("\xE2\x9A\xA1 fastest run") && !jumpDisabled && !cs.allRunsChronological.empty())
+    if (ImGui::Button("Fastest run") && !jumpDisabled && !cs.allRunsChronological.empty())
     {
         int bestIdx = 0;
         for (int i = 1; i < (int)cs.allRunsChronological.size(); i++)
@@ -1248,17 +1463,27 @@ static void DrawControls(EvalState& cs)
     ImGui::PopStyleVar();
     ImGui::SameLine();
 
-    ImGui::ColorButton("##coreSwatch", ImVec4(0x6f / 255.0f, 0xb3 / 255.0f, 0xe8 / 255.0f, 1.0f),
+    float corePure[3], rotPure[3], childPure[3];
+    DerivePureFromHue(CoreColorHue, corePure);
+    DerivePureFromHue(RotatingColorHue, rotPure);
+    DerivePureFromHue(ChildColorHue, childPure);
+
+    ImGui::ColorButton("##coreSwatch", ImVec4(corePure[0], corePure[1], corePure[2], 1.0f),
                         ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder, ImVec2(12, 12));
     ImGui::SameLine();
     ImGui::TextDisabled("Core (always present in window)");
     ImGui::SameLine();
-    ImGui::ColorButton("##rotSwatch", ImVec4(0xf0 / 255.0f, 0xa8 / 255.0f, 0x4e / 255.0f, 1.0f),
+    ImGui::ColorButton("##rotSwatch", ImVec4(rotPure[0], rotPure[1], rotPure[2], 1.0f),
                         ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder, ImVec2(12, 12));
     ImGui::SameLine();
     ImGui::TextDisabled("Rotating");
     ImGui::SameLine();
-    ImGui::ColorButton("##focusSwatch", ImVec4(1.0f, 0x4f / 255.0f, 0xb0 / 255.0f, 1.0f),
+    ImGui::ColorButton("##childSwatch", ImVec4(childPure[0], childPure[1], childPure[2], 1.0f),
+                        ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder, ImVec2(12, 12));
+    ImGui::SameLine();
+    ImGui::TextDisabled("Split-open children");
+    ImGui::SameLine();
+    ImGui::ColorButton("##focusSwatch", ImVec4(HoverColor[0], HoverColor[1], HoverColor[2], 1.0f),
                         ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder, ImVec2(12, 12));
     ImGui::SameLine();
     ImGui::TextDisabled("Hover focus");
@@ -1319,23 +1544,52 @@ void RenderEvaluationWindow()
             cs.stretchedName.clear();
             cs.stretchAnchorOrigIdx = -1;
             cs.stretchAnimStart = -1.0;
+            cs.childHoverName.clear();
+            cs.childHoverAnchorGroupIdx = -1;
             cs.hoverName.clear();
             cs.hoverAnchorOrigIdx = -1;
             cs.anim.clear();
             cs.groupAnim.clear();
         }
-        // else: same file, just a different run count (a run was added
-        // while this window was open, one got deleted, etc.) -- leave
-        // paging/pins/stretch alone. DrawChart already clamps windowStart
-        // to whatever's valid, and a pinned date that no longer exists
-        // simply won't be found when the pinned-run list is rebuilt.
+        else
+        {
+            // same file, just a different run count (a run was added
+            // while this window was open, one got deleted, etc.) -- leave
+            // paging/pins/stretch alone. DrawChart already clamps windowStart
+            // to whatever's valid, and a pinned date that no longer exists
+            // simply won't be found when the pinned-run list is rebuilt.
+            //
+            // Still prune animation-state entries keyed off dates that no
+            // longer exist -- cs.anim/cs.groupAnim otherwise only ever grow,
+            // since nothing else erases from them, and EvalState is a
+            // process-lifetime static (see GetState()).
+            std::set<std::string> validDates;
+            for (auto& r : cs.allRunsChronological)
+                validDates.insert(r.date);
+
+            for (auto it = cs.groupAnim.begin(); it != cs.groupAnim.end(); )
+            {
+                if (!validDates.count(it->first))
+                    it = cs.groupAnim.erase(it);
+                else
+                    ++it;
+            }
+            for (auto it = cs.anim.begin(); it != cs.anim.end(); )
+            {
+                std::string date = it->first.substr(0, it->first.find('\x1f'));
+                if (!validDates.count(date))
+                    it = cs.anim.erase(it);
+                else
+                    ++it;
+            }
+        }
 
         cs.everBuilt = true;
         cs.loadedPath = CurrentHistoryPath;
         cs.loadedSignature = signature;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(920, 640), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(980, 540), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Evaluation", &ShowEvaluation))
     {
         ImGui::End();

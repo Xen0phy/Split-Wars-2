@@ -33,6 +33,23 @@ struct ImGuiScopedDisabled
 #define DISABLED_BLOCK_CONCAT(a, b)  DISABLED_BLOCK_CONCAT_(a, b)
 #define DisabledBlock(cond) if (ImGuiScopedDisabled DISABLED_BLOCK_CONCAT(_disabled_scope_, __LINE__){cond})
 
+bool HueOnlyColorEdit(const char* label, float& hue)
+{
+    float colorBuffer[4];
+    ImGui::ColorConvertHSVtoRGB(hue, 172.0f / 255.0f, 172.0f / 255.0f, colorBuffer[0], colorBuffer[1], colorBuffer[2]);
+    colorBuffer[3] = 1.0f; // alpha, irrelevant since NoAlpha is set
+
+    bool changed = ImGui::ColorEdit4(label, colorBuffer,
+        ImGuiColorEditFlags_NoAlpha |
+        ImGuiColorEditFlags_NoInputs |
+        ImGuiColorEditFlags_PickerHueWheel);
+
+    float h, s, v;
+    ImGui::ColorConvertRGBtoHSV(colorBuffer[0], colorBuffer[1], colorBuffer[2], h, s, v);
+    hue = h;
+
+    return changed;
+}
 
 // ---------------------------------------------------------------------------
 // AddonOptions
@@ -438,6 +455,14 @@ void AddonOptions()
                     HistoryWindowH = std::clamp(HistoryWindowH, 150.0f, 3000.0f);
                     ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
                 }
+                ImGui::SameLine();
+                HueOnlyColorEdit("Core##ew", CoreColorHue);
+                ImGui::SameLine();
+                HueOnlyColorEdit("Rotating##ew", RotatingColorHue);
+                ImGui::SameLine();
+                HueOnlyColorEdit("Child##ew", ChildColorHue);
+                ImGui::SameLine();
+                ImGui::ColorEdit3("Hover##eW", HoverColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             }
 
             // Row 4 - Max History, Best Row Color
