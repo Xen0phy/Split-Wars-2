@@ -31,13 +31,6 @@ void RenderDebugWindow();
 void RenderSpeedoWindow();
 void RenderEvaluationWindow();
 
-// Visibility flag for the evaluation window (render_evaluation.cpp), declared
-// here alongside ShowDebug since neither is a persisted [UI] setting in
-// settings_table.h — both are runtime-only and default to closed. Defined in
-// render_evaluation.cpp (its only user besides the "Evaluation" button in
-// render_history.cpp) rather than shared.cpp, since nothing else needs it.
-extern bool ShowEvaluation;
-
 // ---------------------------------------------------------------------------
 // Time formatting helpers (implemented in render_shared.cpp)
 // ---------------------------------------------------------------------------

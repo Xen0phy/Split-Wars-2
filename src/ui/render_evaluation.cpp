@@ -29,9 +29,6 @@
 #include <utility>
 #include <vector>
 
-// Definition for the flag declared extern in render_shared.h.
-bool ShowEvaluation = false;
-
 // Core/rotating/child/hover colors are user-adjustable settings (see the
 // SETTING/SETTING_ARRAY entries in core/settings_table.h) rather than fixed
 // constants. Core/rotating/child are each a single Hue (0..1); the
@@ -1544,6 +1541,8 @@ void RenderEvaluationWindow()
     if (!ShowEvaluation)
         return;
 
+    static bool firstFrame = true;
+
     using namespace EvalTool;
     EvalState& cs = GetState();
 
@@ -1632,12 +1631,14 @@ void RenderEvaluationWindow()
         cs.loadedSignature = signature;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(980, 540), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Evaluation", &ShowEvaluation))
-    {
-        ImGui::End();
-        return;
+    if (firstFrame) {
+        ImGui::SetNextWindowSize(ImVec2(EvaluationWindowW, EvaluationWindowH), ImGuiCond_Always);
+        firstFrame = false;
     }
+    ImGui::Begin("Split Wars 2 - Evalutaion Tool", &ShowHistory);
+    ImVec2 sz = ImGui::GetWindowSize();
+    EvaluationWindowW = sz.x;
+    EvaluationWindowH = sz.y;
 
     if (cs.allRunsChronological.empty())
     {

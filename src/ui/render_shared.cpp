@@ -218,6 +218,7 @@ void LoadRouteFile(const RouteFile& rf)
 
     BestRun.clear();
     HistoryRuns.clear();
+    SegmentRecords.clear();
     BestRunIndex = -1;
     LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
     RecalcSegments(HistoryRuns, SegmentRecords);

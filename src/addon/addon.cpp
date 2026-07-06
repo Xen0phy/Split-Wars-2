@@ -147,7 +147,7 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
 
-    bool anyVisible = ShowConfig || ShowHistory || ShowRouteBrowser;
+    bool anyVisible = ShowConfig || ShowHistory || ShowRouteBrowser || ShowEvaluation;
 
     if (anyVisible)
     {
@@ -157,6 +157,7 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
         HotbarSavedShowRouteBrowser = ShowRouteBrowser;
         ShowConfig       = false;
         ShowHistory      = false;
+        ShowEvaluation   = false;
         ShowRouteBrowser = false;
         HotbarWindowsHidden = true;
     }

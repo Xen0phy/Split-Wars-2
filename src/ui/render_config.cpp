@@ -154,6 +154,7 @@ void RenderConfigWindow()
             lastSeenFilepath     = newFP;
             BestRun.clear();
             HistoryRuns.clear();
+            SegmentRecords.clear();
         }
     }
     ImGui::SameLine();
@@ -717,6 +718,7 @@ void RenderConfigWindow()
         CurrentHistoryPath.clear();
         BestRun.clear();
         HistoryRuns.clear();
+        SegmentRecords.clear();
         FullReset();
     }
 

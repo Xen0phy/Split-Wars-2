@@ -44,6 +44,7 @@ SETTING        (UI,           ShowZones,              bool,  true)
 SETTING        (UI,           ShowHistory,            bool,  false)
 SETTING        (UI,           ShowGrandTotal,         bool,  false)
 SETTING        (UI,           ShowRouteBrowser,       bool,  false)
+SETTING        (UI,           ShowEvaluation,         bool,  false)
 
 // ---------------------------------------------------------------------------
 // [Zones]
@@ -85,6 +86,8 @@ SETTING        (Windows,      HistoryWindowW,         float, 400.0f)
 SETTING        (Windows,      HistoryWindowH,         float, 400.0f)
 SETTING        (Windows,      BrowserWindowW,         float, 400.0f)
 SETTING        (Windows,      BrowserWindowH,         float, 400.0f)
+SETTING        (Windows,      EvaluationWindowW,      float, 960.0f)
+SETTING        (Windows,      EvaluationWindowH,      float, 640.0f)
 
 // ---------------------------------------------------------------------------
 // [Streamer]
