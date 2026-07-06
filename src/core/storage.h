@@ -90,12 +90,18 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 // Best time achieved for a named Start/End split pair across all runs.
 // A segment is identified by its prefix — "Kinfall" from "Kinfall Start"
 // and "Kinfall End". If no matching End exists in a run, that run is skipped.
+// The 2nd- and 3rd-best times (and their dates) are tracked alongside the
+// best, for display in a hover/tooltip.
 // ---------------------------------------------------------------------------
 struct SegmentRecord
 {
-    std::string name;      // Prefix, e.g. "Kinfall"
-    double      bestTime;  // Shortest Start→End delta in seconds
-    std::string bestDate;  // Date string of the run that achieved bestTime
+    std::string name;        // Prefix, e.g. "Kinfall"
+    double      bestTime;    // Shortest Start→End delta in seconds
+    std::string bestDate;    // Date string of the run that achieved bestTime
+    double      secondTime  = 0.0; // 2nd-shortest delta, 0.0 if not reached yet
+    std::string secondDate;        // Date string of the run that achieved secondTime
+    double      thirdTime   = 0.0; // 3rd-shortest delta, 0.0 if not reached yet
+    std::string thirdDate;         // Date string of the run that achieved thirdTime
 };
 
 // Recalculates all segment records from scratch across all runs.

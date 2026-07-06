@@ -1437,6 +1437,22 @@ hitDone:
                 {
                     ImGui::Text("Best: %s -- this is it!", FormatSegmentTime(s.bestDur).c_str());
                 }
+
+                // 2nd/3rd best, if this block is a tracked Start/End segment.
+                // Sourced from the persisted SegmentRecords (kept up to date
+                // by UpdateSegments whenever a run finishes) rather than
+                // recomputed here, since allTimeStats above only ever tracks
+                // the single best per block name.
+                for (const SegmentRecord& seg : SegmentRecords)
+                {
+                    if (seg.name != hitName) continue;
+                    if (!seg.secondDate.empty())
+                        ImGui::Text("2nd: %s (%s)", FormatSegmentTime(seg.secondTime).c_str(), seg.secondDate.c_str());
+                    if (!seg.thirdDate.empty())
+                        ImGui::Text("3rd: %s (%s)", FormatSegmentTime(seg.thirdTime).c_str(), seg.thirdDate.c_str());
+                    break;
+                }
+
                 ImGui::Separator();
                 ImGui::Text("Average: %s", FormatSegmentTime(s.totalDur / s.count).c_str());
             }

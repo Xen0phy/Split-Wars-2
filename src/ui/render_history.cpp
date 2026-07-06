@@ -570,6 +570,7 @@ void RenderHistoryWindow()
 
                     char buf[32];
                     int removeSegIndex = -1; // Set when "Delete Segment" is chosen
+                    int hoveredSegIdx  = -1; // Set to the row index the cursor is over; -1 = none
 
                     for (int n = 0; n < (int)segOrder.size(); n++)
                     {
@@ -585,6 +586,7 @@ void RenderHistoryWindow()
                             ImGuiSelectableFlags_SpanAllColumns,
                             ImVec2(0.0f, ImGui::GetTextLineHeight()));
                         bool segRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+                        if (ImGui::IsItemHovered() && hoveredSegIdx == -1) hoveredSegIdx = i;
 
                         ImGui::SameLine();
                         ImGui::Text("%s", seg.name.c_str());
@@ -611,6 +613,27 @@ void RenderHistoryWindow()
                     }
 
                     ImGui::EndTable();
+
+                    // Runner-up hover — drawn after the table closes (same reason as
+                    // the Runs tab above: doing this inline per-row could show two
+                    // tooltips at once near a row boundary).
+                    if (hoveredSegIdx >= 0)
+                    {
+                        const SegmentRecord& hoveredSeg = SegmentRecords[hoveredSegIdx];
+                        if (!hoveredSeg.secondDate.empty())
+                        {
+                            ImGui::BeginTooltip();
+                            char rankBuf[32];
+                            FormatTime(rankBuf, sizeof(rankBuf), hoveredSeg.secondTime);
+                            ImGui::Text("2nd: %s (%s)", rankBuf, hoveredSeg.secondDate.c_str());
+                            if (!hoveredSeg.thirdDate.empty())
+                            {
+                                FormatTime(rankBuf, sizeof(rankBuf), hoveredSeg.thirdTime);
+                                ImGui::Text("3rd: %s (%s)", rankBuf, hoveredSeg.thirdDate.c_str());
+                            }
+                            ImGui::EndTooltip();
+                        }
+                    }
 
                     // Deferred segment deletion — safe to do after the table loop ends.
                     if (removeSegIndex >= 0)
