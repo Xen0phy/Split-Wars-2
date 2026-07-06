@@ -33,6 +33,23 @@ struct ImGuiScopedDisabled
 #define DISABLED_BLOCK_CONCAT(a, b)  DISABLED_BLOCK_CONCAT_(a, b)
 #define DisabledBlock(cond) if (ImGuiScopedDisabled DISABLED_BLOCK_CONCAT(_disabled_scope_, __LINE__){cond})
 
+bool HueOnlyColorEdit(const char* label, float& hue)
+{
+    float colorBuffer[4];
+    ImGui::ColorConvertHSVtoRGB(hue, 172.0f / 255.0f, 172.0f / 255.0f, colorBuffer[0], colorBuffer[1], colorBuffer[2]);
+    colorBuffer[3] = 1.0f; // alpha, irrelevant since NoAlpha is set
+
+    bool changed = ImGui::ColorEdit4(label, colorBuffer,
+        ImGuiColorEditFlags_NoAlpha |
+        ImGuiColorEditFlags_NoInputs |
+        ImGuiColorEditFlags_PickerHueWheel);
+
+    float h, s, v;
+    ImGui::ColorConvertRGBtoHSV(colorBuffer[0], colorBuffer[1], colorBuffer[2], h, s, v);
+    hue = h;
+
+    return changed;
+}
 
 // ---------------------------------------------------------------------------
 // AddonOptions
@@ -47,7 +64,12 @@ void AddonOptions()
     // Build Info
     // ---------------------------------------------------------------------------
     ImGui::TextDisabled("Release: %s", DateAndTime.c_str());
-    
+    if (ShowDebug)
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Render time (avg/1s): %.3f ms", AddonRenderAvgMs);
+    }
+
     // ---------------------------------------------------------------------------
     // Save Settings
     // ---------------------------------------------------------------------------
@@ -158,7 +180,7 @@ void AddonOptions()
                 Tooltip("When enabled, the live segment and total rows show milliseconds while the timer is running.\nDisabled by default: milliseconds only appear once the segment is stopped.");
     
                 ImGui::TableSetColumnIndex(1);
-                if (ImGui::Button("Reset Time Colors##tc"))
+                if (ImGui::SmallButton("Reset Color##tc"))
                 {
                     float defAhead[3]   = { 0.2f, 1.0f, 0.2f };
                     float defBehind[3]  = { 1.0f, 0.3f, 0.3f };
@@ -297,7 +319,7 @@ void AddonOptions()
                         else
                             dl->AddCircleFilled(handle, 5.0f, IM_COL32(128, 128, 128, 128));
                         dl->AddCircle(handle, 5.0f, IM_COL32(0, 0, 0, 255));
-                        if (ImGui::Button("Reset Offset"))
+                        if (ImGui::SmallButton("Reset Offset"))
                         {
                             float defOffset[2]  = { 0.0f, 1.0f };
                             std::copy(defOffset,  defOffset  + 2, CMDigitShadowOffset);
@@ -331,7 +353,7 @@ void AddonOptions()
                     ImGui::ColorEdit3("Overlay##cm", CMDigitOverlay,     ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
                     if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                     ImGui::TableSetColumnIndex(1);
-                    if (ImGui::Button("Reset Crash Mode Colors##cm"))
+                    if (ImGui::SmallButton("Reset Color##cm"))
                     {
                         float defShadow[3]  = { 0.0f, 0.0f, 0.0f };
                         float defFill[3]    = { 0.0f, 0.0f, 0.0f };
@@ -361,6 +383,8 @@ void AddonOptions()
     // ---------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Window Settings"))
     {
+        ImGui::TextDisabled("Tip: You can also resize any window by dragging its edges or bottom-right corner.");
+        
         if (ImGui::BeginTable("##windowsettings", 2, ImGuiTableFlags_None))
         {
             ImGui::TableSetupColumn("##wleft",  ImGuiTableColumnFlags_WidthFixed, 200);
@@ -371,11 +395,9 @@ void AddonOptions()
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Show Route Config", &ShowConfig);
             Tooltip("Toggles the route configuration window.");
-            
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(65.0f);
             DisabledBlock(!ShowConfig)
             {
+                ImGui::SetNextItemWidth(65.0f);
                 if (ImGui::InputFloat("W##cw", &ConfigWindowW, 0, 0, "%.0f"))
                 {
                     ConfigWindowW = std::clamp(ConfigWindowW, 200.0f, 3000.0f);
@@ -389,17 +411,21 @@ void AddonOptions()
                     ImGui::SetWindowSize("Split Wars 2 - Route Config", ImVec2(ConfigWindowW, ConfigWindowH));
                 }
             }
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            
+            ImGui::TableSetColumnIndex(1);
+            // empty
 
             // Row 2 - Route Browser
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Show Route Browser", &ShowRouteBrowser);
             Tooltip("Toggles the route file browser.");
-            
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(65.0f);
             DisabledBlock(!ShowRouteBrowser)
             {
+                ImGui::SetNextItemWidth(65.0f);
                 if (ImGui::InputFloat("W##bw", &BrowserWindowW, 0, 0, "%.0f"))
                 {
                     BrowserWindowW = std::clamp(BrowserWindowW, 200.0f, 3000.0f);
@@ -413,18 +439,20 @@ void AddonOptions()
                     ImGui::SetWindowSize("Split Wars 2 - Route Browser", ImVec2(BrowserWindowW, BrowserWindowH));
                 }
             }
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            
+            ImGui::TableSetColumnIndex(1);
+            // empty
             
             // Row 3 - Route History
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Show History",       &ShowHistory);
             Tooltip("Toggles the history window.");
-            ImGui::SameLine();
             DisabledBlock(!ShowHistory)
             {
-                ImGui::ColorEdit3("Best Row##tc", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
-
-                ImGui::TableSetColumnIndex(1);
                 ImGui::SetNextItemWidth(65.0f);
                 if (ImGui::InputFloat("W##hw", &HistoryWindowW, 0, 0, "%.0f"))
                 {
@@ -438,29 +466,58 @@ void AddonOptions()
                     HistoryWindowH = std::clamp(HistoryWindowH, 150.0f, 3000.0f);
                     ImGui::SetWindowSize("Split Wars 2 - Run History", ImVec2(HistoryWindowW, HistoryWindowH));
                 }
-            }
 
-            // Row 4 - Max History, Best Row Color
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            // Max History Runs — clamped to [1, 100].
-            ImGui::Text("Max");
-            Tooltip("Set an amount between 1 and 100.");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(65.0f);
-            ImGui::DragInt("##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
-            DisabledBlock(!ShowHistory)
-            {
+                ImGui::TableSetColumnIndex(1);
+                ImGui::ColorEdit3("Best Row##hw", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
                 ImGui::SameLine();
-                if (ImGui::Button("Reset Color"))
+                if (ImGui::SmallButton("Reset Color##hw"))
                 {
                     float defBestRow[3]    = { 0.2f, 0.3f, 0.2f };
                     std::copy(defBestRow,    defBestRow    + 3, ColorBestRow);
                 }
             }
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
             
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextDisabled("Tip: You can also resize any window by dragging its edges or bottom-right corner.");
+            // Row 4 - Evaluation Tool
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Checkbox("Show Evaluation",       &ShowEvaluation);
+            Tooltip("Toggles the evaluation window.");
+            DisabledBlock(!ShowEvaluation)
+            {
+                ImGui::SetNextItemWidth(65.0f);
+                if (ImGui::InputFloat("W##ew", &EvaluationWindowW, 0, 0, "%.0f"))
+                {
+                    EvaluationWindowW = std::clamp(EvaluationWindowW, 200.0f, 3000.0f);
+                    ImGui::SetWindowSize("Split Wars 2 - Evaluation Tool", ImVec2(EvaluationWindowW, EvaluationWindowH));
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(65.0f);
+                if (ImGui::InputFloat("H##eh", &EvaluationWindowH, 0, 0, "%.0f"))
+                {
+                    EvaluationWindowH = std::clamp(EvaluationWindowH, 150.0f, 3000.0f);
+                    ImGui::SetWindowSize("Split Wars 2 - Evaluation Tool", ImVec2(EvaluationWindowW, EvaluationWindowH));
+                }
+                
+                ImGui::TableSetColumnIndex(1);
+                HueOnlyColorEdit("Core##ew", CoreColorHue);
+                ImGui::SameLine();
+                HueOnlyColorEdit("Rotating##ew", RotatingColorHue);
+                HueOnlyColorEdit("Child##ew", ChildColorHue);
+                ImGui::SameLine();
+                ImGui::ColorEdit3("Hover##eW", HoverColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Reset Color##ew"))
+                {
+                    float defHover[3] = { 1.000f, 0.310f, 0.690f };
+                    CoreColorHue = 0.573f;
+                    RotatingColorHue = 0.093f;
+                    ChildColorHue = 0.772f;
+                    std::copy(defHover,    defHover    + 3, HoverColor);
+                }
+            }
             
             ImGui::EndTable();
         }
@@ -532,7 +589,7 @@ void AddonOptions()
                 ImGui::TableSetColumnIndex(1);
                 ImGui::ColorEdit3("Null",     ColorNull,    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
                 ImGui::SameLine();
-                if (ImGui::Button("Reset Colors"))
+                if (ImGui::SmallButton("Reset Color##zone"))
                 {
                     float defStart[3]      = { 0.2f, 1.0f, 0.2f };
                     float defGoal[3]       = { 0.2f, 0.5f, 1.0f };

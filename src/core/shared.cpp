@@ -127,6 +127,7 @@ std::vector<Split>         BestRun;
 std::vector<HistoricalRun> HistoryRuns;
 int                        BestRunIndex = -1; // Index into HistoryRuns; -1 = none set
 std::vector<SegmentRecord> SegmentRecords;
+int                        MaxHistoryRuns = 100; // 0 = unlimited; loaded per-route from the .history file
 
 // ---------------------------------------------------------------------------
 // Per-run state flags
@@ -184,7 +185,7 @@ void FullReset()
         CheckpointStates[i].Point   = src.Point;
         CheckpointStates[i].IsStart = src.IsStart;
         CheckpointStates[i].IsGoal  = src.IsGoal;
-        strncpy(CheckpointStates[i].Name, src.Name, sizeof(CheckpointStates[i].Name));
+        strncpy(CheckpointStates[i].Name, src.Name, sizeof(CheckpointStates[i].Name) - 1);
         CheckpointStates[i].ResetRuntime();
     }
 }
@@ -313,3 +314,4 @@ float occludePixelRadius       = 1000.0f; // Base pixel radius for the character
 float occludePixelClamp        = 300.0f;  // Maximum pixel radius the occlusion circle can reach
 float ZoneRenderAvgMs          = 0.0f;
 int   ZoneRenderSelectedIndex  = -1;
+float AddonRenderAvgMs         = 0.0f;

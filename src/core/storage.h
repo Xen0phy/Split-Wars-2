@@ -90,12 +90,18 @@ bool LoadRoute(const std::string& filepath, Route& route, std::string& routeName
 // Best time achieved for a named Start/End split pair across all runs.
 // A segment is identified by its prefix — "Kinfall" from "Kinfall Start"
 // and "Kinfall End". If no matching End exists in a run, that run is skipped.
+// The 2nd- and 3rd-best times (and their dates) are tracked alongside the
+// best, for display in a hover/tooltip.
 // ---------------------------------------------------------------------------
 struct SegmentRecord
 {
-    std::string name;      // Prefix, e.g. "Kinfall"
-    double      bestTime;  // Shortest Start→End delta in seconds
-    std::string bestDate;  // Date string of the run that achieved bestTime
+    std::string name;        // Prefix, e.g. "Kinfall"
+    double      bestTime;    // Shortest Start→End delta in seconds
+    std::string bestDate;    // Date string of the run that achieved bestTime
+    double      secondTime  = 0.0; // 2nd-shortest delta, 0.0 if not reached yet
+    std::string secondDate;        // Date string of the run that achieved secondTime
+    double      thirdTime   = 0.0; // 3rd-shortest delta, 0.0 if not reached yet
+    std::string thirdDate;         // Date string of the run that achieved thirdTime
 };
 
 // Recalculates all segment records from scratch across all runs.
@@ -113,22 +119,27 @@ void UpdateSegments(const HistoricalRun& run,
 // ---------------------------------------------------------------------------
 // SaveHistory — writes all runs and the best-run index to historyPath.
 //               bestRunIndex = -1 means no best run is designated.
+//               maxHistoryRuns is this route's own trim cap (0 = unlimited).
 // LoadHistory — reads historyPath and restores runs and bestRun.
 //               bestRun is populated from runs[best_run_index] if valid.
 //               outBestIndex is set to the loaded best_run_index value
 //               (-1 if none) so callers can track it as a plain integer
 //               rather than re-deriving it via timestamp matching later.
+//               outMaxHistoryRuns is set to the loaded max_history_runs value,
+//               defaulting to 100 for files that predate this field.
 // ---------------------------------------------------------------------------
 bool SaveHistory(const std::string& historyPath,
                  const std::vector<HistoricalRun>& runs,
                  const std::vector<SegmentRecord>& segments,
-                 int bestRunIndex = -1);
+                 int bestRunIndex = -1,
+                 int maxHistoryRuns = 100);
 
 bool LoadHistory(const std::string& historyPath,
                  std::vector<Split>& bestRun,
                  std::vector<HistoricalRun>& runs,
                  std::vector<SegmentRecord>& segments,
-                 int& outBestIndex);
+                 int& outBestIndex,
+                 int& outMaxHistoryRuns);
 
 // ---------------------------------------------------------------------------
 // Settings I/O

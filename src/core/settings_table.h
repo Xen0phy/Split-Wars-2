@@ -44,6 +44,7 @@ SETTING        (UI,           ShowZones,              bool,  true)
 SETTING        (UI,           ShowHistory,            bool,  false)
 SETTING        (UI,           ShowGrandTotal,         bool,  false)
 SETTING        (UI,           ShowRouteBrowser,       bool,  false)
+SETTING        (UI,           ShowEvaluation,         bool,  false)
 
 // ---------------------------------------------------------------------------
 // [Zones]
@@ -56,7 +57,6 @@ SETTING        (Zones,        ZoneFadeEnd,            float, 150.0f)
 // ---------------------------------------------------------------------------
 SETTING_ENUM   (Timer, TimerDisplayMode, TimerMode, int,   TimerMode::Split)
 SETTING        (Timer,        CompactMode,            bool,  false)
-SETTING        (Timer,        MaxHistoryRuns,         int,   30)
 SETTING        (Timer,        FractalRota,            bool,  false) 
 
 // ---------------------------------------------------------------------------
@@ -70,6 +70,12 @@ SETTING_ARRAY  (Colors,       ColorAhead,             3,     ARR( 0.2f,  1.0f,  
 SETTING_ARRAY  (Colors,       ColorBehind,            3,     ARR( 1.0f,  0.3f,  0.3f))
 SETTING_ARRAY  (Colors,       ColorBestRow,           3,     ARR( 0.2f,  0.5f,  0.2f))
 
+// Evaluation Colors
+SETTING        (Colors,       CoreColorHue,           float, 0.573f)
+SETTING        (Colors,       RotatingColorHue,       float, 0.093f)
+SETTING        (Colors,       ChildColorHue,          float, 0.772f)
+SETTING_ARRAY  (Colors,       HoverColor,             3,     ARR(1.000f, 0.310f, 0.690f))
+
 // ---------------------------------------------------------------------------
 // [Windows]
 // ---------------------------------------------------------------------------
@@ -79,6 +85,8 @@ SETTING        (Windows,      HistoryWindowW,         float, 400.0f)
 SETTING        (Windows,      HistoryWindowH,         float, 400.0f)
 SETTING        (Windows,      BrowserWindowW,         float, 400.0f)
 SETTING        (Windows,      BrowserWindowH,         float, 400.0f)
+SETTING        (Windows,      EvaluationWindowW,      float, 960.0f)
+SETTING        (Windows,      EvaluationWindowH,      float, 640.0f)
 
 // ---------------------------------------------------------------------------
 // [Streamer]

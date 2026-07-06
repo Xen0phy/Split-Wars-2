@@ -112,8 +112,9 @@ static void AddonQuickAccessMenu()
     if (ImGui::BeginMenu("Windows"))
     {
         ImGui::MenuItem("Route Config",  nullptr, &ShowConfig);
-        ImGui::MenuItem("History",       nullptr, &ShowHistory);
         ImGui::MenuItem("Route Browser", nullptr, &ShowRouteBrowser);
+        ImGui::MenuItem("History",       nullptr, &ShowHistory);
+        ImGui::MenuItem("Evaluation",    nullptr, &ShowEvaluation);
         ImGui::EndMenu();
     }
     ImGui::Separator();
@@ -148,7 +149,7 @@ static void AddonQuickAccessMenu()
             // table, even one made while Rota was active. Reloading from
             // disk here restores exactly that, with no separate state to
             // track or keep in sync.
-            LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+            LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
         }
     }
     Tooltip("For frequent fractal runners: today's set of active fractals\n"

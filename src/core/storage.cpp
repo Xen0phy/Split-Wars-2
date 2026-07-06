@@ -380,10 +380,32 @@ void UpdateSegments(const HistoricalRun& run,
             {
                 segments.push_back({ prefix, delta, run.Date });
             }
-            else if (delta < rec->bestTime)
+            else
             {
-                rec->bestTime = delta;
-                rec->bestDate = run.Date;
+                // Insert delta into the existing best/second/third ranking.
+                // Only three slots are kept, so this is a simple insertion
+                // rather than a full sort of every delta ever seen.
+                if (delta < rec->bestTime)
+                {
+                    rec->thirdTime  = rec->secondTime;
+                    rec->thirdDate  = rec->secondDate;
+                    rec->secondTime = rec->bestTime;
+                    rec->secondDate = rec->bestDate;
+                    rec->bestTime   = delta;
+                    rec->bestDate   = run.Date;
+                }
+                else if (rec->secondDate.empty() || delta < rec->secondTime)
+                {
+                    rec->thirdTime  = rec->secondTime;
+                    rec->thirdDate  = rec->secondDate;
+                    rec->secondTime = delta;
+                    rec->secondDate = run.Date;
+                }
+                else if (rec->thirdDate.empty() || delta < rec->thirdTime)
+                {
+                    rec->thirdTime = delta;
+                    rec->thirdDate = run.Date;
+                }
             }
             break; // Only pair with the first matching End
         }
@@ -414,14 +436,15 @@ void UpdateSegments(const HistoricalRun& run,
 //   }
 // ---------------------------------------------------------------------------
 bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun>& runs,
-    const std::vector<SegmentRecord>& segments, int bestRunIndex)
+    const std::vector<SegmentRecord>& segments, int bestRunIndex, int maxHistoryRuns)
 {
     try
     {
         fs::create_directories(fs::path(historyPath).parent_path());
 
         json j;
-        j["best_run_index"] = bestRunIndex;
+        j["best_run_index"]   = bestRunIndex;
+        j["max_history_runs"] = maxHistoryRuns;
 
         json history = json::array();
         for (const auto& run : runs)
@@ -442,9 +465,13 @@ bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun
         json segArr = json::array();
         for (const SegmentRecord& s : segments)
             segArr.push_back({
-                {"name",      s.name},
-                {"best_time", s.bestTime},
-                {"best_date", s.bestDate}
+                {"name",        s.name},
+                {"best_time",   s.bestTime},
+                {"best_date",   s.bestDate},
+                {"second_time", s.secondTime},
+                {"second_date", s.secondDate},
+                {"third_time",  s.thirdTime},
+                {"third_date",  s.thirdDate}
             });
         j["segments"] = segArr;
 
@@ -464,9 +491,12 @@ bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun
 // before the grand total feature was added still load without errors.
 // The best run is resolved by index: bestRun is set to the splits of the
 // run at best_run_index, or left empty if the index is -1 or out of range.
+// max_history_runs defaults to 100 for files saved before this
+// field existed, so pre-existing history is never unexpectedly trimmed.
 // ---------------------------------------------------------------------------
 bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
-    std::vector<HistoricalRun>& runs, std::vector<SegmentRecord>& segments, int& outBestIndex)
+    std::vector<HistoricalRun>& runs, std::vector<SegmentRecord>& segments, int& outBestIndex,
+    int& outMaxHistoryRuns)
 {
     try
     {
@@ -501,20 +531,32 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
         if (outBestIndex >= 0)
             bestRun = runs[outBestIndex].Splits;
 
+        outMaxHistoryRuns = j.value("max_history_runs", 100); // 0 = unlimited; default for pre-existing files
+
         // Load segment records — absent in older files, recalculated by caller.
         segments.clear();
+        bool missingRankFields = false; // set if an entry predates 2nd/3rd best tracking
         if (j.contains("segments"))
         {
             for (const auto& s : j["segments"])
             {
                 SegmentRecord rec;
-                rec.name     = s.value("name",      "");
-                rec.bestTime = s.value("best_time", 0.0);
-                rec.bestDate = s.value("best_date", "");
+                rec.name       = s.value("name",        "");
+                rec.bestTime   = s.value("best_time",   0.0);
+                rec.bestDate   = s.value("best_date",   "");
+                rec.secondTime = s.value("second_time", 0.0);
+                rec.secondDate = s.value("second_date", "");
+                rec.thirdTime  = s.value("third_time",  0.0);
+                rec.thirdDate  = s.value("third_date",  "");
+                if (!s.contains("second_date")) missingRankFields = true;
                 if (!rec.name.empty()) segments.push_back(rec);
             }
         }
-        if (segments.empty() && !runs.empty())
+        // Either no segments were saved at all (pre-segments-feature file), or
+        // they were saved before 2nd/3rd best existed — in both cases a full
+        // recalc from history backfills everything correctly in one pass,
+        // rather than leaving 2nd/3rd stuck at "not reached yet" forever.
+        if ((segments.empty() || missingRankFields) && !runs.empty())
             RecalcSegments(runs, segments);
 
         return true;

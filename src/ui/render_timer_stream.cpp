@@ -438,9 +438,14 @@ void RenderTimerOverlayStream()
     bool        hasBest   = !BestRun.empty();
     int         numSplits = (int)splits.size();
 
+    // goalCp is just used for display purposes below (its name / whether it's
+    // set at all) and is fine as "the first goal" for that. The type checks
+    // below use GetGoalOfType() instead of goalCp->Point.TriggerType, since a
+    // route can have multiple goals of different types and GetGoal() only
+    // ever returns the first one.
     const CheckpointState* goalCp = GetGoal(CurrentRoute);
-    bool goalIsAllCheckpoints = goalCp && goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
-    bool goalIsCombatArena    = goalCp && goalCp->Point.TriggerType == ETriggerType::CombatArena;
+    bool goalIsAllCheckpoints = GetGoalOfType(CurrentRoute, ETriggerType::AllCheckpoints) != nullptr;
+    bool goalIsCombatArena    = GetGoalOfType(CurrentRoute, ETriggerType::CombatArena)    != nullptr;
     bool manualStop = finished && numSplits > 0 &&
                       strcmp(splits[numSplits - 1].Name, "Manual Stop") == 0;
 
@@ -819,8 +824,7 @@ void RenderTimerOverlayStream()
         if (ImGui::Button("Save as best##postrun", ImVec2(btnW, btnH)))
         {
             BestRun = splits;
-            if (finished && !manualStop && !goalIsAllCheckpoints &&
-                (!goalCp || goalCp->Point.TriggerType != ETriggerType::CombatArena))
+            if (finished && !manualStop && !goalIsAllCheckpoints && !goalIsCombatArena)
             {
                 Split goalEntry{};  
                 goalEntry.Timestamp = elapsed;
@@ -830,7 +834,7 @@ void RenderTimerOverlayStream()
             }
             BestRunIndex = 0;
             if (!CurrentHistoryPath.empty())
-                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
             RunFinished = false;
         }
 

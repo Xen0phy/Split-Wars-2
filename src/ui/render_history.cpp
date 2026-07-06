@@ -12,6 +12,7 @@
 //   • A "Clear History" button (with a confirmation popup) wipes all runs.
 //   • All changes are persisted to the .history file on disk immediately.
 
+#include "imgui.h"
 #include "render_shared.h"
 
 void RenderHistoryWindow()
@@ -30,7 +31,53 @@ void RenderHistoryWindow()
     HistoryWindowH = sz.y;
 
     ImGui::Text("Route: %s", CurrentRouteName.c_str());
+
+    // "Evaluation" opens the stacked run-chart window (render_evaluation.cpp)
+    // for whatever history file is currently loaded. Only shown once a file
+    // is actually loaded, since there's nothing to evaluate otherwise.
+    if (!CurrentHistoryPath.empty())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Evaluation"))
+            ShowEvaluation = true;
+    }
+
     ImGui::Separator();
+
+    // -------------------------------------------------------------------------
+    // Max History Runs — per-route cap on stored runs, persisted in this
+    // route's own .history file (0 = unlimited). Replaces the old global
+    // settings.ini value so different routes can keep different amounts of
+    // history (e.g. a daily fractal route vs. a rarely-run boss kill).
+    // -------------------------------------------------------------------------
+    if (!CurrentHistoryPath.empty())
+    {
+        if (ImGui::BeginTable("##maxhistoryrunstable", 2, ImGuiTableFlags_None))
+        {
+            ImGui::TableSetupColumn("##left",  ImGuiTableColumnFlags_WidthFixed, 80);
+            ImGui::TableSetupColumn("##right", ImGuiTableColumnFlags_WidthFixed);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Max Runs kept");
+            ImGui::SetNextItemWidth(40.0f);
+            if (ImGui::InputInt("##maxhistoryruns", &MaxHistoryRuns, 0, 0))
+            {
+                if (MaxHistoryRuns < 0) MaxHistoryRuns = 0;
+                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
+            }
+            Tooltip("0 = unlimited. Caps how many runs this route keeps; oldest runs\n"
+                    "are trimmed first (the best run and fastest run are never removed).");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("(large history files can slow down loading — keeping\n"
+                                 "it under a few hundred runs is recommended)");
+
+            ImGui::EndTable();
+        }
+        ImGui::Separator();
+    }
+
 
     if (ImGui::BeginTabBar("##historytabs"))
     {
@@ -64,7 +111,7 @@ void RenderHistoryWindow()
                         BestRun.clear();
                         BestRunIndex = -1;
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();
@@ -212,7 +259,7 @@ void RenderHistoryWindow()
                                 BestRun      = run.Splits;
                                 BestRunIndex = i;
                                 if (!CurrentHistoryPath.empty())
-                                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                             }
 
                             // ---------------------------------------------------------
@@ -222,10 +269,10 @@ void RenderHistoryWindow()
                             if (ImGui::MenuItem("Copy to clipboard"))
                             {
                                 // Suppress the AllCheckpoints synthetic Goal split,
-                                // same logic as the hover tooltip.
-                                const CheckpointState* goalCp = GetGoal(CurrentRoute);
-                                bool goalIsAllCheckpoints = goalCp &&
-                                    goalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
+                                // same logic as the hover tooltip. Looked up by type
+                                // (not GetGoal()) since a route can have multiple goals.
+                                const CheckpointState* goalCp = GetGoalOfType(CurrentRoute, ETriggerType::AllCheckpoints);
+                                bool goalIsAllCheckpoints = goalCp != nullptr;
                                 int splitsToShow = (int)run.Splits.size();
                                 if (goalIsAllCheckpoints && splitsToShow > 0 && goalCp &&
                                     strcmp(run.Splits.back().Name, goalCp->Name) == 0)
@@ -305,9 +352,10 @@ void RenderHistoryWindow()
 
                             // Suppress the synthetic "Goal" split that AllCheckpoints
                             // goals append — it's redundant with the Total line below.
-                            const CheckpointState* tooltipGoalCp = GetGoal(CurrentRoute);
-                            bool tooltipGoalIsAllCheckpoints = tooltipGoalCp &&
-                                tooltipGoalCp->Point.TriggerType == ETriggerType::AllCheckpoints;
+                            // Looked up by type (not GetGoal()) since a route can have
+                            // multiple goals.
+                            const CheckpointState* tooltipGoalCp = GetGoalOfType(CurrentRoute, ETriggerType::AllCheckpoints);
+                            bool tooltipGoalIsAllCheckpoints = tooltipGoalCp != nullptr;
                             int splitsToShow = (int)run.Splits.size();
                             if (tooltipGoalIsAllCheckpoints && splitsToShow > 0 && tooltipGoalCp &&
                                 strcmp(run.Splits.back().Name, tooltipGoalCp->Name) == 0)
@@ -406,7 +454,7 @@ void RenderHistoryWindow()
                         // If BestRunIndex < removeIndex the best run is unaffected.
 
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                     }
                 }
 
@@ -460,7 +508,7 @@ void RenderHistoryWindow()
                     {
                         SegmentRecords.clear();
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();
@@ -522,6 +570,7 @@ void RenderHistoryWindow()
 
                     char buf[32];
                     int removeSegIndex = -1; // Set when "Delete Segment" is chosen
+                    int hoveredSegIdx  = -1; // Set to the row index the cursor is over; -1 = none
 
                     for (int n = 0; n < (int)segOrder.size(); n++)
                     {
@@ -537,6 +586,7 @@ void RenderHistoryWindow()
                             ImGuiSelectableFlags_SpanAllColumns,
                             ImVec2(0.0f, ImGui::GetTextLineHeight()));
                         bool segRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+                        if (ImGui::IsItemHovered() && hoveredSegIdx == -1) hoveredSegIdx = i;
 
                         ImGui::SameLine();
                         ImGui::Text("%s", seg.name.c_str());
@@ -564,12 +614,33 @@ void RenderHistoryWindow()
 
                     ImGui::EndTable();
 
+                    // Runner-up hover — drawn after the table closes (same reason as
+                    // the Runs tab above: doing this inline per-row could show two
+                    // tooltips at once near a row boundary).
+                    if (hoveredSegIdx >= 0)
+                    {
+                        const SegmentRecord& hoveredSeg = SegmentRecords[hoveredSegIdx];
+                        if (!hoveredSeg.secondDate.empty())
+                        {
+                            ImGui::BeginTooltip();
+                            char rankBuf[32];
+                            FormatTime(rankBuf, sizeof(rankBuf), hoveredSeg.secondTime);
+                            ImGui::Text("2nd: %s (%s)", rankBuf, hoveredSeg.secondDate.c_str());
+                            if (!hoveredSeg.thirdDate.empty())
+                            {
+                                FormatTime(rankBuf, sizeof(rankBuf), hoveredSeg.thirdTime);
+                                ImGui::Text("3rd: %s (%s)", rankBuf, hoveredSeg.thirdDate.c_str());
+                            }
+                            ImGui::EndTooltip();
+                        }
+                    }
+
                     // Deferred segment deletion — safe to do after the table loop ends.
                     if (removeSegIndex >= 0)
                     {
                         SegmentRecords.erase(SegmentRecords.begin() + removeSegIndex);
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                     }
                 }
             }

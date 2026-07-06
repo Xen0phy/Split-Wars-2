@@ -33,11 +33,14 @@ static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
 // TrimHistory
 // ---------------------------------------------------------------------------
 // Removes the oldest unprotected runs until the list is within MaxHistoryRuns.
+// MaxHistoryRuns is per-route (loaded from the .history file); 0 means
+// unlimited, so no trimming happens at all.
 // Protected runs are: the designated best run (BestRunIndex) and the run with
 // the fastest total time. These are never removed by automatic trimming.
 // ---------------------------------------------------------------------------
 void TrimHistory()
 {
+    if (MaxHistoryRuns <= 0) return; // 0 = unlimited
     if ((int)HistoryRuns.size() <= MaxHistoryRuns) return;
 
     // Find the index of the fastest run.
@@ -92,7 +95,7 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
             BestRunIndex++;
         TrimHistory();         // Trim the list to the configured cap
         if (!CurrentHistoryPath.empty())
-            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
     }
     else
     {
@@ -147,7 +150,7 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
 {
     if (aIsRelease) return;
 
-    bool anyVisible = ShowConfig || ShowHistory || ShowRouteBrowser;
+    bool anyVisible = ShowConfig || ShowHistory || ShowRouteBrowser || ShowEvaluation;
 
     if (anyVisible)
     {
@@ -157,6 +160,7 @@ static void OnHotbarToggleKey(const char* aIdentifier, bool aIsRelease)
         HotbarSavedShowRouteBrowser = ShowRouteBrowser;
         ShowConfig       = false;
         ShowHistory      = false;
+        ShowEvaluation   = false;
         ShowRouteBrowser = false;
         HotbarWindowsHidden = true;
     }
@@ -329,6 +333,14 @@ static void DrawIndentedNotice(const char* text)
 void AddonRender()
 {
     if (!MumbleLink && !GS.RTAPIAvailable) return;
+
+    // Render-time averaging — see AddonRenderAvgMs in shared.h. Only sampled
+    // while ShowDebug is on (mirroring the per-zone timing in RenderZones()),
+    // so there's no steady_clock overhead when nobody's looking at it.
+    bool timeThisFrame = ShowDebug;
+    std::chrono::steady_clock::time_point renderStart;
+    if (timeThisFrame) renderStart = std::chrono::steady_clock::now();
+
     UpdateGameState(); // populate GS from whichever source is active
 
     if (ShowSettingsMigrationNotice)
@@ -607,9 +619,14 @@ void AddonRender()
     // -------------------------------------------------------------------------
     bool isLoading = GS.IsLoading;
 
-    // Convenience pointers to the designated start and goal checkpoints.
+    // Convenience pointers to the designated start checkpoint and the
+    // MapChange-typed goal (if any) — used below for the load-screen grand-
+    // total snapshot. Looked up by type rather than GetGoal() (which only
+    // ever returns the first IsGoal checkpoint) because a route can have
+    // multiple goals of different types, and this logic only applies when
+    // the goal actually being run is a MapChange one.
     CheckpointState* startCp = GetStart(CurrentRoute);
-    CheckpointState* goalCp  = GetGoal(CurrentRoute);
+    CheckpointState* mapChangeGoalCp = GetGoalOfType(CurrentRoute, ETriggerType::MapChange);
 
     // -------------------------------------------------------------------------
     // Main logic — held under KeybindMutex so timer calls here and in keybind
@@ -625,10 +642,9 @@ void AddonRender()
                 // Special case for MapChange goals: if the goal fires on the map
                 // transition itself, snapshot the GrandTimer now (before the map
                 // actually changes) so load-screen time is excluded from the grand total.
-                if (SpeedrunTimer.IsRunning() && goalCp &&
-                    goalCp->Point.TriggerType == ETriggerType::MapChange &&
-                    goalCp->Point.MapID != 0 &&
-                    currMapID == goalCp->Point.MapID)
+                if (SpeedrunTimer.IsRunning() && mapChangeGoalCp &&
+                    mapChangeGoalCp->Point.MapID != 0 &&
+                    currMapID == mapChangeGoalCp->Point.MapID)
                 {
                     PendingGrandStop = GrandTimer.GetElapsedSeconds();
                 }
@@ -653,7 +669,7 @@ void AddonRender()
 
                 // If we didn't actually leave the goal map (e.g. a mid-run load
                 // screen on the same map), discard the snapshot.
-                if (PendingGrandStop >= 0.0 && goalCp && currMapID == goalCp->Point.MapID)
+                if (PendingGrandStop >= 0.0 && mapChangeGoalCp && currMapID == mapChangeGoalCp->Point.MapID)
                     PendingGrandStop = -1.0;
 
                 if (ShowDebug)
@@ -802,10 +818,11 @@ void AddonRender()
 
                         // Detect whether this start and the goal share the exact same zone
                         // (single-arena run).  If so the goal's combat tracker must be armed
-                        // at the same time as the start's.
-                        CheckpointState* goalCs = GetGoal(CurrentRoute);
+                        // at the same time as the start's. Looked up by type (not GetGoal(),
+                        // which only returns the first IsGoal checkpoint) since a route can
+                        // have multiple goals and this only applies to the CombatArena one.
+                        CheckpointState* goalCs = GetGoalOfType(CurrentRoute, ETriggerType::CombatArena);
                         bool sameArea = goalCs &&
-                            goalCs->Point.TriggerType == ETriggerType::CombatArena &&
                             goalCs->Point.MapID       == pt.MapID  &&
                             goalCs->Point.X           == pt.X      &&
                             goalCs->Point.Y           == pt.Y      &&
@@ -1019,7 +1036,7 @@ void AddonRender()
                     if (!CurrentHistoryPath.empty())
                     {
                         UpdateSegments(run, SegmentRecords);
-                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                     }
 
                     cs.triggered = true;
@@ -1110,4 +1127,40 @@ void AddonRender()
     RenderRouteBrowserWindow();
     RenderDebugWindow();
     RenderSpeedoWindow();
+    RenderEvaluationWindow();
+
+    // Roll this frame's duration into a once-per-second average rather than
+    // storing a raw per-frame number, which would be too jittery to read.
+    // wasTiming tracks whether we were sampling last frame so that turning
+    // ShowDebug back on starts a clean window instead of mixing in whatever
+    // partial accumulation was left over from before it was switched off.
+    static bool   wasTiming   = false;
+    static double accumMs     = 0.0;
+    static int    frameCount  = 0;
+    static std::chrono::steady_clock::time_point windowStart = std::chrono::steady_clock::now();
+
+    if (timeThisFrame)
+    {
+        if (!wasTiming)
+        {
+            accumMs     = 0.0;
+            frameCount  = 0;
+            windowStart = std::chrono::steady_clock::now();
+        }
+
+        accumMs += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - renderStart).count();
+        frameCount++;
+
+        double windowElapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - windowStart).count();
+        if (windowElapsed >= 1.0)
+        {
+            AddonRenderAvgMs = (frameCount > 0) ? (float)(accumMs / frameCount) : 0.0f;
+            accumMs     = 0.0;
+            frameCount  = 0;
+            windowStart = std::chrono::steady_clock::now();
+        }
+    }
+    wasTiming = timeThisFrame;
 }

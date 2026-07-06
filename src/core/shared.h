@@ -146,6 +146,7 @@ extern std::vector<Split>         BestRun;      // Splits of the designated best
 extern std::vector<HistoricalRun> HistoryRuns;  // All recorded runs, newest first
 extern int                        BestRunIndex; // Index of the best run in HistoryRuns; -1 = none set
 extern std::vector<SegmentRecord> SegmentRecords; // Best times per named Start/End pair
+extern int                        MaxHistoryRuns; // Per-route cap on stored runs; 0 = unlimited. Persisted in the .history file, not settings.ini.
 
 // ---------------------------------------------------------------------------
 // Fractal Rota
@@ -338,3 +339,7 @@ extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle ca
 // Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
 extern float ZoneRenderAvgMs;
 extern int   ZoneRenderSelectedIndex; // set by render_debug, read by worldrender
+// Whole-addon render timing — how long AddonRender() itself takes, averaged
+// over a rolling ~1s window. Only sampled while ShowDebug is true (see
+// AddonRender() in addon.cpp), so there's no steady_clock overhead otherwise.
+extern float AddonRenderAvgMs;

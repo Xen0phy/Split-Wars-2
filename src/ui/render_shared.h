@@ -29,6 +29,7 @@ void RenderHistoryWindow();
 void RenderRouteBrowserWindow();
 void RenderDebugWindow();
 void RenderSpeedoWindow();
+void RenderEvaluationWindow();
 
 // ---------------------------------------------------------------------------
 // Time formatting helpers (implemented in render_shared.cpp)
