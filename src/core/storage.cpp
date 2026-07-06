@@ -465,7 +465,7 @@ bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun
 // before the grand total feature was added still load without errors.
 // The best run is resolved by index: bestRun is set to the splits of the
 // run at best_run_index, or left empty if the index is -1 or out of range.
-// max_history_runs defaults to 0 (unlimited) for files saved before this
+// max_history_runs defaults to 100 for files saved before this
 // field existed, so pre-existing history is never unexpectedly trimmed.
 // ---------------------------------------------------------------------------
 bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
@@ -505,7 +505,7 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
         if (outBestIndex >= 0)
             bestRun = runs[outBestIndex].Splits;
 
-        outMaxHistoryRuns = j.value("max_history_runs", 0); // 0 = unlimited; default for pre-existing files
+        outMaxHistoryRuns = j.value("max_history_runs", 100); // 0 = unlimited; default for pre-existing files
 
         // Load segment records — absent in older files, recalculated by caller.
         segments.clear();

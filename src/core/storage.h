@@ -120,13 +120,13 @@ void UpdateSegments(const HistoricalRun& run,
 //               (-1 if none) so callers can track it as a plain integer
 //               rather than re-deriving it via timestamp matching later.
 //               outMaxHistoryRuns is set to the loaded max_history_runs value,
-//               defaulting to 0 (unlimited) for files that predate this field.
+//               defaulting to 100 for files that predate this field.
 // ---------------------------------------------------------------------------
 bool SaveHistory(const std::string& historyPath,
                  const std::vector<HistoricalRun>& runs,
                  const std::vector<SegmentRecord>& segments,
                  int bestRunIndex = -1,
-                 int maxHistoryRuns = 0);
+                 int maxHistoryRuns = 100);
 
 bool LoadHistory(const std::string& historyPath,
                  std::vector<Split>& bestRun,

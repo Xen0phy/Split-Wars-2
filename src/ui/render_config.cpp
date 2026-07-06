@@ -156,7 +156,7 @@ void RenderConfigWindow()
             BestRunIndex = -1;
             HistoryRuns.clear();
             SegmentRecords.clear();
-            MaxHistoryRuns = 0;
+            MaxHistoryRuns = 100;
         }
     }
     ImGui::SameLine();
@@ -722,7 +722,7 @@ void RenderConfigWindow()
         BestRunIndex = -1;
         HistoryRuns.clear();
         SegmentRecords.clear();
-        MaxHistoryRuns = 0;
+        MaxHistoryRuns = 100;
         FullReset();
     }
 
