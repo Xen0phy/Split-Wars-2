@@ -1651,7 +1651,7 @@ void RenderEvaluationWindow()
         ImGui::SetNextWindowSize(ImVec2(EvaluationWindowW, EvaluationWindowH), ImGuiCond_Always);
         firstFrame = false;
     }
-    ImGui::Begin("Split Wars 2 - Evalutaion Tool", &ShowHistory);
+    ImGui::Begin("Split Wars 2 - Evaluation Tool", &ShowEvaluation);
     ImVec2 sz = ImGui::GetWindowSize();
     EvaluationWindowW = sz.x;
     EvaluationWindowH = sz.y;

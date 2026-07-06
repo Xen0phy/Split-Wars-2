@@ -64,7 +64,12 @@ void AddonOptions()
     // Build Info
     // ---------------------------------------------------------------------------
     ImGui::TextDisabled("Release: %s", DateAndTime.c_str());
-    
+    if (ShowDebug)
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Render time (avg/1s): %.3f ms", AddonRenderAvgMs);
+    }
+
     // ---------------------------------------------------------------------------
     // Save Settings
     // ---------------------------------------------------------------------------
@@ -486,14 +491,14 @@ void AddonOptions()
                 if (ImGui::InputFloat("W##ew", &EvaluationWindowW, 0, 0, "%.0f"))
                 {
                     EvaluationWindowW = std::clamp(EvaluationWindowW, 200.0f, 3000.0f);
-                    ImGui::SetWindowSize("Split Wars 2 - Evalutaion Tool", ImVec2(EvaluationWindowW, EvaluationWindowH));
+                    ImGui::SetWindowSize("Split Wars 2 - Evaluation Tool", ImVec2(EvaluationWindowW, EvaluationWindowH));
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(65.0f);
                 if (ImGui::InputFloat("H##eh", &EvaluationWindowH, 0, 0, "%.0f"))
                 {
                     EvaluationWindowH = std::clamp(EvaluationWindowH, 150.0f, 3000.0f);
-                    ImGui::SetWindowSize("Split Wars 2 - Evalutaion Tool", ImVec2(EvaluationWindowW, EvaluationWindowH));
+                    ImGui::SetWindowSize("Split Wars 2 - Evaluation Tool", ImVec2(EvaluationWindowW, EvaluationWindowH));
                 }
                 
                 ImGui::TableSetColumnIndex(1);

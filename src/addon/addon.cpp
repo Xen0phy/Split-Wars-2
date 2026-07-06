@@ -333,6 +333,14 @@ static void DrawIndentedNotice(const char* text)
 void AddonRender()
 {
     if (!MumbleLink && !GS.RTAPIAvailable) return;
+
+    // Render-time averaging — see AddonRenderAvgMs in shared.h. Only sampled
+    // while ShowDebug is on (mirroring the per-zone timing in RenderZones()),
+    // so there's no steady_clock overhead when nobody's looking at it.
+    bool timeThisFrame = ShowDebug;
+    std::chrono::steady_clock::time_point renderStart;
+    if (timeThisFrame) renderStart = std::chrono::steady_clock::now();
+
     UpdateGameState(); // populate GS from whichever source is active
 
     if (ShowSettingsMigrationNotice)
@@ -1120,4 +1128,39 @@ void AddonRender()
     RenderDebugWindow();
     RenderSpeedoWindow();
     RenderEvaluationWindow();
+
+    // Roll this frame's duration into a once-per-second average rather than
+    // storing a raw per-frame number, which would be too jittery to read.
+    // wasTiming tracks whether we were sampling last frame so that turning
+    // ShowDebug back on starts a clean window instead of mixing in whatever
+    // partial accumulation was left over from before it was switched off.
+    static bool   wasTiming   = false;
+    static double accumMs     = 0.0;
+    static int    frameCount  = 0;
+    static std::chrono::steady_clock::time_point windowStart = std::chrono::steady_clock::now();
+
+    if (timeThisFrame)
+    {
+        if (!wasTiming)
+        {
+            accumMs     = 0.0;
+            frameCount  = 0;
+            windowStart = std::chrono::steady_clock::now();
+        }
+
+        accumMs += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - renderStart).count();
+        frameCount++;
+
+        double windowElapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - windowStart).count();
+        if (windowElapsed >= 1.0)
+        {
+            AddonRenderAvgMs = (frameCount > 0) ? (float)(accumMs / frameCount) : 0.0f;
+            accumMs     = 0.0;
+            frameCount  = 0;
+            windowStart = std::chrono::steady_clock::now();
+        }
+    }
+    wasTiming = timeThisFrame;
 }

@@ -339,3 +339,7 @@ extern float occludePixelClamp;  // Maximum pixel radius the occlusion circle ca
 // Only valid when ShowDebug is true and s_SelectedCheckpoint >= 0.
 extern float ZoneRenderAvgMs;
 extern int   ZoneRenderSelectedIndex; // set by render_debug, read by worldrender
+// Whole-addon render timing — how long AddonRender() itself takes, averaged
+// over a rolling ~1s window. Only sampled while ShowDebug is true (see
+// AddonRender() in addon.cpp), so there's no steady_clock overhead otherwise.
+extern float AddonRenderAvgMs;
