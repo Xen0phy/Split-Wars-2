@@ -12,6 +12,7 @@
 //   • A "Clear History" button (with a confirmation popup) wipes all runs.
 //   • All changes are persisted to the .history file on disk immediately.
 
+#include "imgui.h"
 #include "render_shared.h"
 
 void RenderHistoryWindow()
@@ -42,6 +43,41 @@ void RenderHistoryWindow()
     }
 
     ImGui::Separator();
+
+    // -------------------------------------------------------------------------
+    // Max History Runs — per-route cap on stored runs, persisted in this
+    // route's own .history file (0 = unlimited). Replaces the old global
+    // settings.ini value so different routes can keep different amounts of
+    // history (e.g. a daily fractal route vs. a rarely-run boss kill).
+    // -------------------------------------------------------------------------
+    if (!CurrentHistoryPath.empty())
+    {
+        if (ImGui::BeginTable("##maxhistoryrunstable", 2, ImGuiTableFlags_None))
+        {
+            ImGui::TableSetupColumn("##left",  ImGuiTableColumnFlags_WidthFixed, 80);
+            ImGui::TableSetupColumn("##right", ImGuiTableColumnFlags_WidthFixed);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Max Runs kept");
+            ImGui::SetNextItemWidth(40.0f);
+            if (ImGui::InputInt("##maxhistoryruns", &MaxHistoryRuns, 0, 0))
+            {
+                if (MaxHistoryRuns < 0) MaxHistoryRuns = 0;
+                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
+            }
+            Tooltip("0 = unlimited. Caps how many runs this route keeps; oldest runs\n"
+                    "are trimmed first (the best run and fastest run are never removed).");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("(large history files can slow down loading — keeping\n"
+                                 "it under a few hundred runs is recommended)");
+
+            ImGui::EndTable();
+        }
+        ImGui::Separator();
+    }
+
 
     if (ImGui::BeginTabBar("##historytabs"))
     {
@@ -75,7 +111,7 @@ void RenderHistoryWindow()
                         BestRun.clear();
                         BestRunIndex = -1;
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();
@@ -223,7 +259,7 @@ void RenderHistoryWindow()
                                 BestRun      = run.Splits;
                                 BestRunIndex = i;
                                 if (!CurrentHistoryPath.empty())
-                                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                             }
 
                             // ---------------------------------------------------------
@@ -418,7 +454,7 @@ void RenderHistoryWindow()
                         // If BestRunIndex < removeIndex the best run is unaffected.
 
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                     }
                 }
 
@@ -472,7 +508,7 @@ void RenderHistoryWindow()
                     {
                         SegmentRecords.clear();
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();
@@ -581,7 +617,7 @@ void RenderHistoryWindow()
                     {
                         SegmentRecords.erase(SegmentRecords.begin() + removeSegIndex);
                         if (!CurrentHistoryPath.empty())
-                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                     }
                 }
             }

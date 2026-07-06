@@ -2,7 +2,7 @@
 
 constexpr int Maj = 1;
 constexpr int Min = 5;
-constexpr int Bld = 3;
+constexpr int Bld = 4;
 constexpr int Rev = 0;
 
 static constexpr const char* VersionNotice =

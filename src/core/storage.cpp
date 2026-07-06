@@ -414,14 +414,15 @@ void UpdateSegments(const HistoricalRun& run,
 //   }
 // ---------------------------------------------------------------------------
 bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun>& runs,
-    const std::vector<SegmentRecord>& segments, int bestRunIndex)
+    const std::vector<SegmentRecord>& segments, int bestRunIndex, int maxHistoryRuns)
 {
     try
     {
         fs::create_directories(fs::path(historyPath).parent_path());
 
         json j;
-        j["best_run_index"] = bestRunIndex;
+        j["best_run_index"]   = bestRunIndex;
+        j["max_history_runs"] = maxHistoryRuns;
 
         json history = json::array();
         for (const auto& run : runs)
@@ -464,9 +465,12 @@ bool SaveHistory(const std::string& historyPath, const std::vector<HistoricalRun
 // before the grand total feature was added still load without errors.
 // The best run is resolved by index: bestRun is set to the splits of the
 // run at best_run_index, or left empty if the index is -1 or out of range.
+// max_history_runs defaults to 0 (unlimited) for files saved before this
+// field existed, so pre-existing history is never unexpectedly trimmed.
 // ---------------------------------------------------------------------------
 bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
-    std::vector<HistoricalRun>& runs, std::vector<SegmentRecord>& segments, int& outBestIndex)
+    std::vector<HistoricalRun>& runs, std::vector<SegmentRecord>& segments, int& outBestIndex,
+    int& outMaxHistoryRuns)
 {
     try
     {
@@ -500,6 +504,8 @@ bool LoadHistory(const std::string& historyPath, std::vector<Split>& bestRun,
         outBestIndex  = (bestIndex >= 0 && bestIndex < (int)runs.size()) ? bestIndex : -1;
         if (outBestIndex >= 0)
             bestRun = runs[outBestIndex].Splits;
+
+        outMaxHistoryRuns = j.value("max_history_runs", 0); // 0 = unlimited; default for pre-existing files
 
         // Load segment records — absent in older files, recalculated by caller.
         segments.clear();

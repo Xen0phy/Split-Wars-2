@@ -33,11 +33,14 @@ static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
 // TrimHistory
 // ---------------------------------------------------------------------------
 // Removes the oldest unprotected runs until the list is within MaxHistoryRuns.
+// MaxHistoryRuns is per-route (loaded from the .history file); 0 means
+// unlimited, so no trimming happens at all.
 // Protected runs are: the designated best run (BestRunIndex) and the run with
 // the fastest total time. These are never removed by automatic trimming.
 // ---------------------------------------------------------------------------
 void TrimHistory()
 {
+    if (MaxHistoryRuns <= 0) return; // 0 = unlimited
     if ((int)HistoryRuns.size() <= MaxHistoryRuns) return;
 
     // Find the index of the fastest run.
@@ -92,7 +95,7 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
             BestRunIndex++;
         TrimHistory();         // Trim the list to the configured cap
         if (!CurrentHistoryPath.empty())
-            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
     }
     else
     {
@@ -1025,7 +1028,7 @@ void AddonRender()
                     if (!CurrentHistoryPath.empty())
                     {
                         UpdateSegments(run, SegmentRecords);
-                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                     }
 
                     cs.triggered = true;

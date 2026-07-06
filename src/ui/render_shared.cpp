@@ -220,7 +220,8 @@ void LoadRouteFile(const RouteFile& rf)
     HistoryRuns.clear();
     SegmentRecords.clear();
     BestRunIndex = -1;
-    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+    MaxHistoryRuns = 0;
+    LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
     RecalcSegments(HistoryRuns, SegmentRecords);
     ApplyFractalRota();
 

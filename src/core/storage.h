@@ -113,22 +113,27 @@ void UpdateSegments(const HistoricalRun& run,
 // ---------------------------------------------------------------------------
 // SaveHistory — writes all runs and the best-run index to historyPath.
 //               bestRunIndex = -1 means no best run is designated.
+//               maxHistoryRuns is this route's own trim cap (0 = unlimited).
 // LoadHistory — reads historyPath and restores runs and bestRun.
 //               bestRun is populated from runs[best_run_index] if valid.
 //               outBestIndex is set to the loaded best_run_index value
 //               (-1 if none) so callers can track it as a plain integer
 //               rather than re-deriving it via timestamp matching later.
+//               outMaxHistoryRuns is set to the loaded max_history_runs value,
+//               defaulting to 0 (unlimited) for files that predate this field.
 // ---------------------------------------------------------------------------
 bool SaveHistory(const std::string& historyPath,
                  const std::vector<HistoricalRun>& runs,
                  const std::vector<SegmentRecord>& segments,
-                 int bestRunIndex = -1);
+                 int bestRunIndex = -1,
+                 int maxHistoryRuns = 0);
 
 bool LoadHistory(const std::string& historyPath,
                  std::vector<Split>& bestRun,
                  std::vector<HistoricalRun>& runs,
                  std::vector<SegmentRecord>& segments,
-                 int& outBestIndex);
+                 int& outBestIndex,
+                 int& outMaxHistoryRuns);
 
 // ---------------------------------------------------------------------------
 // Settings I/O

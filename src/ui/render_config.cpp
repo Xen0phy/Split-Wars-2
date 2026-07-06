@@ -142,7 +142,7 @@ void RenderConfigWindow()
             // Overwrite the existing file and keep history intact.
             SaveRoute(CurrentRouteFilepath, CurrentRoute);
             if (!CurrentHistoryPath.empty())
-                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
         }
         else
         {
@@ -153,8 +153,10 @@ void RenderConfigWindow()
             CurrentHistoryPath   = newHP;
             lastSeenFilepath     = newFP;
             BestRun.clear();
+            BestRunIndex = -1;
             HistoryRuns.clear();
             SegmentRecords.clear();
+            MaxHistoryRuns = 0;
         }
     }
     ImGui::SameLine();
@@ -717,8 +719,10 @@ void RenderConfigWindow()
         CurrentRouteFilepath.clear();
         CurrentHistoryPath.clear();
         BestRun.clear();
+        BestRunIndex = -1;
         HistoryRuns.clear();
         SegmentRecords.clear();
+        MaxHistoryRuns = 0;
         FullReset();
     }
 

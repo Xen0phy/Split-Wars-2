@@ -352,7 +352,7 @@ void RenderTimerOverlay()
 
                 BestRunIndex = 0; // Newest run is always inserted at index 0
                 if (!CurrentHistoryPath.empty())
-                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                    SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                 RunFinished = false;
             }
 

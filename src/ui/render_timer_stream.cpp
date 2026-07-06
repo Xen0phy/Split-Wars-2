@@ -834,7 +834,7 @@ void RenderTimerOverlayStream()
             }
             BestRunIndex = 0;
             if (!CurrentHistoryPath.empty())
-                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex);
+                SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
             RunFinished = false;
         }
 

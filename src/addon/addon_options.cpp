@@ -463,10 +463,6 @@ void AddonOptions()
                 }
 
                 ImGui::TableSetColumnIndex(1);
-                // Max History Runs — clamped to [1, 100].
-                ImGui::SetNextItemWidth(65.0f);
-                ImGui::DragInt("Max runs in history##maxruns", &MaxHistoryRuns, 1.0f, 1, 100);
-                Tooltip("Set an amount between 1 and 100.");
                 ImGui::ColorEdit3("Best Row##hw", ColorBestRow, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Reset Color##hw"))

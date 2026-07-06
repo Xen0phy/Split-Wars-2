@@ -127,6 +127,7 @@ std::vector<Split>         BestRun;
 std::vector<HistoricalRun> HistoryRuns;
 int                        BestRunIndex = -1; // Index into HistoryRuns; -1 = none set
 std::vector<SegmentRecord> SegmentRecords;
+int                        MaxHistoryRuns = 0; // 0 = unlimited; loaded per-route from the .history file
 
 // ---------------------------------------------------------------------------
 // Per-run state flags

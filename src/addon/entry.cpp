@@ -149,7 +149,7 @@ static void AddonQuickAccessMenu()
             // table, even one made while Rota was active. Reloading from
             // disk here restores exactly that, with no separate state to
             // track or keep in sync.
-            LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex);
+            LoadHistory(CurrentHistoryPath, BestRun, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
         }
     }
     Tooltip("For frequent fractal runners: today's set of active fractals\n"
