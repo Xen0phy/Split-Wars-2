@@ -98,6 +98,15 @@ void RenderTimerOverlay()
             // --- Completed split rows ---
             for (int i = 0; i < numSplits; i++)
             {
+                // Split 0 is always the run-start marker (fired the instant the
+                // start trigger/keybind starts the timer, so its timestamp is
+                // always 0:00:00.000). It's always kept in the underlying split
+                // data -- it anchors segment-time math for split 1 and is always
+                // written to the JSON/history file -- but by default we don't
+                // draw a redundant "0:00:00.000" row for it. ShowStartSplit lets
+                // the user opt back into seeing it.
+                if (i == 0 && !ShowStartSplit) continue;
+
                 // The time shown per split depends on the display mode:
                 //   Split   → cumulative time from run start
                 //   Segment / LiveSplit → time for this segment only (delta from previous)

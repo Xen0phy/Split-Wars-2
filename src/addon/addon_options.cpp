@@ -188,9 +188,27 @@ void AddonOptions()
                     std::copy(defBehind,  defBehind  + 3, ColorBehind);
                     SaveCurrentSettings();
                 }
+
+                // Row 5
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Checkbox("Show Start Split", &ShowStartSplit);
+                Tooltip("Shows the split fired by whatever checkpoint started the run, at 0:00:00.000.\n"
+                        "This split is always recorded and saved to the run's history/JSON regardless of\n"
+                        "this setting -- it only controls whether the 0:00:00.000 row is drawn on screen.");
+                        
+                ImGui::TableSetColumnIndex(1);
+                // empty
+
+                //Row 6
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Separator();
+                ImGui::TableSetColumnIndex(1);
+                ImGui::Separator();
             
                 // --- Streamer section ---
-                // Row 5
+                // Row 7
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Checkbox("Streamer Mode", &StreamerMode);
@@ -228,7 +246,7 @@ void AddonOptions()
                         }
                     }
     
-                    // Row 6
+                    // Row 8
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     // empty
@@ -262,7 +280,7 @@ void AddonOptions()
     
                 }
 
-                //Row 7
+                //Row 9
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Separator();
