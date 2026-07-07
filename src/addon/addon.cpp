@@ -737,6 +737,7 @@ void AddonRender()
                                 FullReset();
                                 SpeedrunTimer.Start();
                                 GrandTimer.Start();
+                                SpeedrunTimer.AddSplit(cs.Name);
                             }
                             else if (!cs.IsStart && SpeedrunTimer.IsRunning() && !cs.triggered)
                             {
@@ -776,6 +777,7 @@ void AddonRender()
                         {
                             SpeedrunTimer.Start();
                             GrandTimer.Start();
+                            SpeedrunTimer.AddSplit(cs.Name);
                         }
 
                         cs.wasInCircle = inCircle;
@@ -788,6 +790,7 @@ void AddonRender()
                             FullReset();
                             SpeedrunTimer.Start();
                             GrandTimer.Start();
+                            SpeedrunTimer.AddSplit(cs.Name);
                         }
                     }
                     else if (pt.TriggerType == ETriggerType::MapChange)
@@ -806,6 +809,7 @@ void AddonRender()
                             FullReset();
                             SpeedrunTimer.Start();
                             GrandTimer.Start();
+                            SpeedrunTimer.AddSplit(cs.Name);
                         }
                         cs.wasInCircle = inCircle;
                     }
@@ -840,6 +844,7 @@ void AddonRender()
                                 // Re-fetch after FullReset (which re-syncs CheckpointStates).
                                 CheckpointStates[i].combat.active = true;
                                 CheckpointStates[i].combat.state  = ECombatState::Armed;
+                                SpeedrunTimer.AddSplit(CheckpointStates[i].Name);
 
                                 if (sameArea && goalCs)
                                 {
@@ -1075,6 +1080,9 @@ void AddonRender()
                 FullReset();
                 SpeedrunTimer.Start();
                 GrandTimer.Start();
+                CheckpointState* startCp = GetStart(CurrentRoute);
+                if (startCp)
+                    SpeedrunTimer.AddSplit(startCp->Name);
             }
 
             // Update grand total display value for this frame.
@@ -1124,6 +1132,7 @@ void AddonRender()
         RenderTimerOverlay();
     RenderConfigWindow();
     RenderHistoryWindow();
+    RenderHistoryMaintenanceWindow();
     RenderRouteBrowserWindow();
     RenderDebugWindow();
     RenderSpeedoWindow();

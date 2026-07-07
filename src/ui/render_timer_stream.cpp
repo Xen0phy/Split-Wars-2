@@ -497,7 +497,7 @@ void RenderTimerOverlayStream()
     {
         // The split at s_LastSplitStart just got pushed out -- capture it
         int i = s_LastSplitStart;
-        if (i < numSplits)
+        if (i < numSplits && !(i == 0 && !ShowStartSplit))
         {
             double splitTime = (TimerDisplayMode == TimerMode::Split)
                 ? splits[i].Timestamp
@@ -691,6 +691,11 @@ void RenderTimerOverlayStream()
     // --- Completed split rows ---
     for (int i = splitStart; i < numSplits; i++)
     {
+        // Split 0 is the run-start marker (always 0:00:00.000, always saved to
+        // history/JSON regardless of this setting) -- only drawn when the user
+        // has opted in via ShowStartSplit. See render_timer.cpp for the same logic.
+        if (i == 0 && !ShowStartSplit) continue;
+
         double splitTime = (TimerDisplayMode == TimerMode::Split)
             ? splits[i].Timestamp
             : (i == 0 ? splits[i].Timestamp : splits[i].Timestamp - splits[i-1].Timestamp);

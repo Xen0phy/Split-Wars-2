@@ -58,6 +58,7 @@ SETTING        (Zones,        ZoneFadeEnd,            float, 150.0f)
 SETTING_ENUM   (Timer, TimerDisplayMode, TimerMode, int,   TimerMode::Split)
 SETTING        (Timer,        CompactMode,            bool,  false)
 SETTING        (Timer,        FractalRota,            bool,  false) 
+SETTING        (Timer,        ShowStartSplit,         bool,  false)
 
 // ---------------------------------------------------------------------------
 // [Colors]

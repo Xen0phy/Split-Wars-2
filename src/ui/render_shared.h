@@ -26,6 +26,7 @@ void RenderTimerOverlay();
 void RenderTimerOverlayStream();
 void RenderConfigWindow();
 void RenderHistoryWindow();
+void RenderHistoryMaintenanceWindow();
 void RenderRouteBrowserWindow();
 void RenderDebugWindow();
 void RenderSpeedoWindow();
