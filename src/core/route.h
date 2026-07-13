@@ -133,7 +133,7 @@ struct RoutePoint
     int             HyperbolaC          = 12;   // MapChange only: controls the openness of the
                                                 // hyperbolic corner cutout. C = HyperbolaC * 100.
                                                 // Higher = wider curve. Default 12.
-    int             DotDensity          = 200;  // Display only: >0 renders as a dot cloud with
+    int             DotDensity          = 400;  // Display only: >0 renders as a dot cloud with
                                                 // this many dots (Circle) or derived spacing (Plane).
     float           bandCenterInput     = 0.0f; // Circle: centre latitude of the dot band in degrees
                                                 // (-90 = south pole, +90 = north pole).

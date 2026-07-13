@@ -28,12 +28,14 @@
 
 #include "worldrender.h"
 #include "shared.h"
+#include "dot_sprite.h"
 #include "imgui.h"
 #include "imgui_internal.h" 
 #include <algorithm>
 #include <cmath>
 #include <deque>
 #include <chrono>
+#include <unordered_map>
 
 // ---------------------------------------------------------------------------
 // WorldToScreen
@@ -57,14 +59,25 @@
 //   5. Apply a perspective divide using the horizontal FOV, then remap
 //      from [-1,1] NDC to pixel coordinates.
 // ---------------------------------------------------------------------------
-bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
+// ---------------------------------------------------------------------------
+// BuildCameraBasis
+// ---------------------------------------------------------------------------
+// Does the camera-dependent, but dot-independent, work that WorldToScreen()
+// used to redo on every single call: normalising the forward vector,
+// deriving right/up via cross products, and computing the FOV-derived
+// perspective factor. All of this only depends on the camera and the
+// display size for the current frame, so it only needs to run once per
+// frame no matter how many thousands of dots get projected against it.
+// ---------------------------------------------------------------------------
+CameraBasis BuildCameraBasis()
 {
-    Vector3 camPos   = { GS.CameraX,      GS.CameraY,      GS.CameraZ      };
+    CameraBasis b;
+
     Vector3 camFront = { GS.CameraFrontX, GS.CameraFrontY, GS.CameraFrontZ };
 
     // Step 1 — normalise the forward vector.
     float flen = std::sqrt(camFront.X*camFront.X + camFront.Y*camFront.Y + camFront.Z*camFront.Z);
-    if (flen < 0.0001f) return false;
+    if (flen < 0.0001f) { b.valid = false; return b; }
     float fx = camFront.X / flen;
     float fy = camFront.Y / flen;
     float fz = camFront.Z / flen;
@@ -90,32 +103,68 @@ bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
     float ty = fz*rx - fx*rz;
     float tz = fx*ry - fy*rx;
 
-    // Step 4 — transform the world offset into camera space.
-    float dx = wx - camPos.X;
-    float dy = wy - camPos.Y;
-    float dz = wz - camPos.Z;
+    b.valid = true;
+    b.camX = GS.CameraX; b.camY = GS.CameraY; b.camZ = GS.CameraZ;
+    b.rx = rx; b.ry = ry; b.rz = rz;
+    b.tx = tx; b.ty = ty; b.tz = tz;
+    b.fx = fx; b.fy = fy; b.fz = fz;
 
-    float vx =  rx*dx + ry*dy + rz*dz;
-    float vy =  tx*dx + ty*dy + tz*dz;
-    float vz =  fx*dx + fy*dy + fz*dz;
+    ImGuiIO& io = ImGui::GetIO();
+    b.dispW = io.DisplaySize.x;
+    b.dispH = io.DisplaySize.y;
+    b.aspect = b.dispW / b.dispH;
+
+    float fov = (GS.FOV > 0.01f) ? GS.FOV : 0.873f;
+    b.f = 1.0f / std::tan(fov * 0.5f);
+
+    return b;
+}
+
+// ---------------------------------------------------------------------------
+// ProjectWithBasis
+// ---------------------------------------------------------------------------
+// The actual per-point projection, against an already-built CameraBasis.
+// Just a subtract, three dot products, and a perspective divide — no trig,
+// no sqrt, no per-call basis reconstruction. This is what every per-dot
+// hot loop should call instead of WorldToScreen().
+// ---------------------------------------------------------------------------
+bool ProjectWithBasis(const CameraBasis& b, float wx, float wy, float wz, float& sx, float& sy)
+{
+    if (!b.valid) return false;
+
+    float dx = wx - b.camX;
+    float dy = wy - b.camY;
+    float dz = wz - b.camZ;
+
+    float vx =  b.rx*dx + b.ry*dy + b.rz*dz;
+    float vy =  b.tx*dx + b.ty*dy + b.tz*dz;
+    float vz =  b.fx*dx + b.fy*dy + b.fz*dz;
 
     if (vz <= 0.01f) return false;
 
-    // Step 5 — perspective projection.
-    ImGuiIO& io  = ImGui::GetIO();
-    float aspect = io.DisplaySize.x / io.DisplaySize.y;
-    float fov = (GS.FOV > 0.01f) ? GS.FOV : 0.873f;
-    float f   = 1.0f / std::tan(fov * 0.5f);
+    float px =  vx * (b.f / b.aspect) / vz;
+    float py = -vy * b.f / vz;
 
-    float px =  vx * (f / aspect) / vz;
-    float py = -vy * f / vz;
-
-    sx = (px * 0.5f + 0.5f) * io.DisplaySize.x;
-    sy = (py * 0.5f + 0.5f) * io.DisplaySize.y;
+    sx = (px * 0.5f + 0.5f) * b.dispW;
+    sy = (py * 0.5f + 0.5f) * b.dispH;
 
     if (sx < -10000 || sx > 10000 || sy < -10000 || sy > 10000) return false;
 
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// WorldToScreen
+// ---------------------------------------------------------------------------
+// Compatibility wrapper for the occasional non-hot-path caller (e.g. the
+// debug UI) that just wants a one-off projection. Builds a CameraBasis and
+// throws it away — fine for a handful of calls per frame, but per-dot loops
+// must use BuildCameraBasis() once + ProjectWithBasis() per point instead.
+// ---------------------------------------------------------------------------
+bool WorldToScreen(float wx, float wy, float wz, float& sx, float& sy)
+{
+    CameraBasis b = BuildCameraBasis();
+    return ProjectWithBasis(b, wx, wy, wz, sx, sy);
 }
 
 // ---------------------------------------------------------------------------
@@ -128,23 +177,18 @@ static bool RoutePointIsSet(const RoutePoint& point)
 
 
 // ---------------------------------------------------------------------------
-// OcclusionState  (file-private helper)
+// CalcOcclusionState
 // ---------------------------------------------------------------------------
-// Computed once per frame (via CalcOcclusionState) and passed into both zone
-// renderers so player-occlusion logic doesn't have to be duplicated.
+// Computed once per frame in RenderZones() (not once per zone as before) and
+// passed into both zone renderers so player-occlusion logic doesn't have to
+// be duplicated. Takes the already-built per-frame CameraBasis so it doesn't
+// pay for its own basis reconstruction either.
 // ---------------------------------------------------------------------------
-struct OcclusionState
-{
-    bool  playerOnScreen;
-    float playerSx, playerSy;
-    float occludeRadius;
-};
-
-static OcclusionState CalcOcclusionState()
+OcclusionState CalcOcclusionState(const CameraBasis& basis)
 {
     OcclusionState os;
 
-    os.playerOnScreen = WorldToScreen(
+    os.playerOnScreen = ProjectWithBasis(basis,
         GS.PlayerX, GS.PlayerY + 1.0f, GS.PlayerZ,
         os.playerSx, os.playerSy);
 
@@ -201,6 +245,325 @@ static int ApplyOcclusion(int dotAlpha, float sx, float sy, const OcclusionState
 constexpr float PIf = 3.14159265358979323846f;
 
 // ---------------------------------------------------------------------------
+// Sphere-point cache  (file-private)
+// ---------------------------------------------------------------------------
+// Every camera-independent per-dot value for a sphere zone — the unit
+// direction on the sphere, the band falloff, and the raw longitude needed
+// by the CircleInteract rotating gap — depends only on the zone's dot count
+// and band parameters, never on the camera or player position. Previously
+// RenderZoneCircle recomputed asin/sin/cos for every dot on every frame;
+// now that work happens once and is reused until the config actually
+// changes (e.g. the user drags a band slider in the route editor).
+//
+// The cache is keyed by the RoutePoint's address, since each checkpoint's
+// Point lives at a stable address in CurrentRoute.Checkpoints for the
+// lifetime of the loaded route. A cheap signature check (density + the
+// three band inputs) detects live edits and regenerates only that entry.
+// If the route is reloaded and the backing vector reallocates, old entries
+// simply go unused; GuardSphereCacheSize() below bounds how much of that
+// can accumulate.
+// ---------------------------------------------------------------------------
+struct SpherePoint
+{
+    float x, y, z;   // unit direction on the sphere (pre-radius, pre-translate)
+    float falloff;   // band falloff: 1.0 at band centre, 0.0 at either edge
+    float theta;     // raw longitude, retained for the rotating interaction gap
+};
+
+struct SphereCacheEntry
+{
+    std::vector<SpherePoint> pts;
+    int   density    = -1;
+    float bandCenter = 0.0f, bandUp = 0.0f, bandDown = 0.0f;
+};
+
+static std::unordered_map<const RoutePoint*, SphereCacheEntry> s_sphereCache;
+
+// Defensive bound: if route reloads keep leaving orphaned entries behind
+// (backing vector reallocating to a new address each time), just wipe the
+// cache rather than let it grow unbounded. Call once per frame.
+static void GuardSphereCacheSize()
+{
+    constexpr size_t kMaxEntries = 512;
+    if (s_sphereCache.size() > kMaxEntries)
+        s_sphereCache.clear();
+}
+
+static const std::vector<SpherePoint>& GetSpherePoints(const RoutePoint& point, int numDots)
+{
+    SphereCacheEntry& cache = s_sphereCache[&point];
+
+    bool dirty = cache.density    != numDots ||
+                 cache.bandCenter != point.bandCenterInput ||
+                 cache.bandUp     != point.bandUpInput ||
+                 cache.bandDown   != point.bandDownInput;
+
+    if (!dirty) return cache.pts;
+
+    const float golden = PIf * (3.0f - std::sqrt(5.0f)); // golden angle ~2.399 radians
+
+    const float bandCenter = point.bandCenterInput * (PIf / 180.0f);
+    const float bandUp     = point.bandUpInput     * (PIf / 180.0f);
+    const float bandDown   = point.bandDownInput   * (PIf / 180.0f);
+
+    const float phiMinClamped = std::max(bandCenter - bandDown, -PIf * 0.5f);
+    const float phiMaxClamped = std::min(bandCenter + bandUp,    PIf * 0.5f);
+
+    const float tMin = (std::sin(phiMinClamped) + 1.0f) * 0.5f;
+    const float tMax = (std::sin(phiMaxClamped) + 1.0f) * 0.5f;
+
+    cache.pts.clear();
+    cache.pts.reserve(numDots);
+
+    for (int i = 0; i < numDots; i++)
+    {
+        const float t   = tMin + (tMax - tMin) * (float)i / (numDots - 1);
+        float phi   = std::asin(-1.0f + 2.0f * t); // latitude within the band
+        float theta = golden * i;                    // longitude
+
+        float distFromCenter = phi - bandCenter;
+        float normalizedDist = (distFromCenter >= 0.0f)
+            ? ((bandUp   > 0.0f) ? distFromCenter /  bandUp   : 0.0f)
+            : ((bandDown > 0.0f) ? distFromCenter / -bandDown : 0.0f);
+        float falloff = 1.0f - std::abs(normalizedDist);
+
+        float cosPhi = std::cos(phi);
+
+        SpherePoint sp;
+        sp.x = cosPhi * std::cos(theta);
+        sp.y = std::sin(phi);
+        sp.z = cosPhi * std::sin(theta);
+        sp.falloff = falloff;
+        sp.theta   = theta;
+        cache.pts.push_back(sp);
+    }
+
+    cache.density    = numDots;
+    cache.bandCenter = point.bandCenterInput;
+    cache.bandUp     = point.bandUpInput;
+    cache.bandDown   = point.bandDownInput;
+
+    return cache.pts;
+}
+
+// ---------------------------------------------------------------------------
+// Fast dot drawing  (file-private)
+// ---------------------------------------------------------------------------
+// AddCircleFilled() recomputes an auto segment count, builds a path, and
+// emits an anti-aliased fringe on every single call — all of which is
+// wasted work for a constant 3px-radius dot repeated tens or hundreds of
+// thousands of times a frame. This emits the same filled-circle geometry
+// directly via ImDrawList's low-level Prim* API: a small fixed-size unit
+// circle (computed once, not per dot) translated and scaled per call, with
+// no path building and no AA fringe. At 3px radius the loss of the AA edge
+// is not visible; the segment count below (8) is close to what
+// AddCircleFilled's own auto-calc would already choose at this radius, so
+// the shape is unchanged.
+//
+// Callers should skip this entirely (not just pass alpha 0) whenever a
+// dot's alpha is already zero before occlusion — at high dot densities a
+// large fraction of dots are faded out by the band edge or distance fade,
+// and every one of those previously still paid for a full draw call.
+// ---------------------------------------------------------------------------
+// Both zone renderers always draw at this fixed pixel radius, so the ring
+// geometry is entirely camera/data-independent and can be baked once here
+// instead of being recomputed (radius multiply + outerScale divide) on
+// every single one of the up-to-100k dots drawn per frame.
+constexpr float DOT_RADIUS = 3.0f;
+
+namespace
+{
+    constexpr int   kDotSegments = 8;
+    constexpr float AA_SIZE      = 1.0f; // matches Dear ImGui's default fringe width in pixels
+
+    struct DotRingOffsets
+    {
+        // Pre-scaled by DOT_RADIUS / (DOT_RADIUS + AA_SIZE) respectively, so
+        // the hot loop below only ever does cx + offset (an add), never a
+        // multiply — the multiply happens once here at static-init time.
+        float innerX[kDotSegments], innerY[kDotSegments];
+        float outerX[kDotSegments], outerY[kDotSegments];
+        DotRingOffsets()
+        {
+            const float outerRadius = DOT_RADIUS + AA_SIZE;
+            for (int i = 0; i < kDotSegments; i++)
+            {
+                float a  = (2.0f * PIf * i) / kDotSegments;
+                float ux = std::cos(a);
+                float uy = std::sin(a);
+                innerX[i] = ux * DOT_RADIUS;
+                innerY[i] = uy * DOT_RADIUS;
+                outerX[i] = ux * outerRadius;
+                outerY[i] = uy * outerRadius;
+            }
+        }
+    };
+    const DotRingOffsets s_dotRing; // built once at static-init time
+}
+
+// ---------------------------------------------------------------------------
+// Dot sprite texture
+// ---------------------------------------------------------------------------
+// A small (6x6, exactly 2*DOT_RADIUS), near-native-size soft-edged white
+// circle, requested once from Nexus and used to draw every zone dot as a
+// single 4-vertex/6-index textured quad instead of the 17-vertex/42-index
+// hand-built triangle fan below. White RGB so the sprite tints to each
+// zone's configured color via per-vertex color, exactly like the fan
+// version.
+//
+// Uses the async Textures_LoadFromMemory + callback (not the synchronous
+// GetOrCreateFromMemory) for the same reason render_speedo.cpp's texture
+// loading does: the synchronous variant can hand back a Texture_t* whose
+// Resource is still null while the decode/upload finishes, with nothing
+// telling the caller when it becomes ready.
+//
+// PrimAddFilledDotFan() remains as the fallback used for the handful of
+// frames before the sprite finishes loading, so zones still render
+// (just without the texture win) rather than being blank at startup.
+// ---------------------------------------------------------------------------
+static Texture_t* s_dotTexture          = nullptr;
+static bool       s_dotTextureRequested = false;
+
+static void OnDotSpriteReceived(const char* /*aIdentifier*/, Texture_t* aTexture)
+{
+    s_dotTexture = aTexture;
+}
+
+static void EnsureDotTextureRequested()
+{
+    if (s_dotTextureRequested) return;
+    s_dotTextureRequested = true;
+    APIDefs->Textures_LoadFromMemory("SW2_ZONE_DOT",
+        (void*)g_DotSpriteData, g_DotSpriteData_size, OnDotSpriteReceived);
+}
+
+// The sprite in dot_sprite.h is baked at exactly 2*DOT_RADIUS (6x6) and
+// drawn 1:1 -- no runtime scaling. Tied directly to DOT_RADIUS rather than
+// a separate constant, since the sprite is defined to always match it; if
+// DOT_RADIUS changes, dot_sprite.h must be regenerated at 2*DOT_RADIUS.
+constexpr float kDotQuadHalfSize = DOT_RADIUS;
+
+static inline void PrimAddFilledDotSprite(ImDrawList* dl, float cx, float cy, int r255, int g255, int b255, int alpha)
+{
+    dl->PrimReserve(6, 4);
+
+    ImDrawVert*  vtxWrite   = dl->_VtxWritePtr;
+    ImDrawIdx*   idxWrite   = dl->_IdxWritePtr;
+    unsigned int vtxBaseIdx = dl->_VtxCurrentIdx;
+
+    const ImU32  col = IM_COL32(r255, g255, b255, alpha);
+    const float  h   = kDotQuadHalfSize;
+
+    vtxWrite[0].pos = ImVec2(cx - h, cy - h); vtxWrite[0].uv = ImVec2(0.0f, 0.0f); vtxWrite[0].col = col;
+    vtxWrite[1].pos = ImVec2(cx + h, cy - h); vtxWrite[1].uv = ImVec2(1.0f, 0.0f); vtxWrite[1].col = col;
+    vtxWrite[2].pos = ImVec2(cx + h, cy + h); vtxWrite[2].uv = ImVec2(1.0f, 1.0f); vtxWrite[2].col = col;
+    vtxWrite[3].pos = ImVec2(cx - h, cy + h); vtxWrite[3].uv = ImVec2(0.0f, 1.0f); vtxWrite[3].col = col;
+
+    idxWrite[0] = (ImDrawIdx)(vtxBaseIdx + 0);
+    idxWrite[1] = (ImDrawIdx)(vtxBaseIdx + 1);
+    idxWrite[2] = (ImDrawIdx)(vtxBaseIdx + 2);
+    idxWrite[3] = (ImDrawIdx)(vtxBaseIdx + 0);
+    idxWrite[4] = (ImDrawIdx)(vtxBaseIdx + 2);
+    idxWrite[5] = (ImDrawIdx)(vtxBaseIdx + 3);
+
+    dl->_VtxWritePtr   += 4;
+    dl->_IdxWritePtr   += 6;
+    dl->_VtxCurrentIdx += 4;
+}
+
+static inline void PrimAddFilledDotFan(ImDrawList* dl, float cx, float cy, int r255, int g255, int b255, int alpha)
+{
+    // Anti-aliasing fringe: Dear ImGui's own circle/polygon fill isn't just
+    // a flat-shaded fan — it adds a ~1px ring of vertices that fade to
+    // alpha 0, which is what makes small shapes read as smooth instead of
+    // faceted. Dropping that (as the first version of this function did)
+    // is what made the 3px dots look edgy once AddCircleFilled's own
+    // tessellation/AA path was bypassed for speed. This restores the same
+    // visual technique by hand: an interior fan at full alpha, plus a
+    // second ring one unit further out at alpha 0, stitched together with
+    // a thin band of triangles.
+
+    const int ringVtx  = kDotSegments;
+    const int vtxCount = 1 + ringVtx * 2;  // centre + solid ring + fringe ring
+    const int idxCount = ringVtx * 3       // interior fan
+                        + ringVtx * 6;     // fringe ring (2 triangles per segment)
+
+    dl->PrimReserve(idxCount, vtxCount);
+
+    ImDrawVert*  vtxWrite   = dl->_VtxWritePtr;
+    ImDrawIdx*   idxWrite   = dl->_IdxWritePtr;
+    unsigned int vtxBaseIdx = dl->_VtxCurrentIdx;
+    ImVec2       uv         = dl->_Data->TexUvWhitePixel;
+
+    ImU32 colSolid = IM_COL32(r255, g255, b255, alpha);
+    ImU32 colFade  = IM_COL32(r255, g255, b255, 0);
+
+    vtxWrite[0].pos = ImVec2(cx, cy);
+    vtxWrite[0].uv  = uv;
+    vtxWrite[0].col = colSolid;
+
+    for (int i = 0; i < ringVtx; i++)
+    {
+        vtxWrite[1 + i].pos = ImVec2(cx + s_dotRing.innerX[i], cy + s_dotRing.innerY[i]);
+        vtxWrite[1 + i].uv  = uv;
+        vtxWrite[1 + i].col = colSolid;
+
+        vtxWrite[1 + ringVtx + i].pos = ImVec2(cx + s_dotRing.outerX[i], cy + s_dotRing.outerY[i]);
+        vtxWrite[1 + ringVtx + i].uv  = uv;
+        vtxWrite[1 + ringVtx + i].col = colFade;
+    }
+
+    ImDrawIdx* idx = idxWrite;
+    for (int i = 0; i < ringVtx; i++)
+    {
+        *idx++ = (ImDrawIdx)(vtxBaseIdx);
+        *idx++ = (ImDrawIdx)(vtxBaseIdx + 1 + i);
+        *idx++ = (ImDrawIdx)(vtxBaseIdx + 1 + ((i + 1) % ringVtx));
+    }
+    for (int i = 0; i < ringVtx; i++)
+    {
+        int i1 = (i + 1) % ringVtx;
+        unsigned int inner0 = vtxBaseIdx + 1 + i;
+        unsigned int inner1 = vtxBaseIdx + 1 + i1;
+        unsigned int outer0 = vtxBaseIdx + 1 + ringVtx + i;
+        unsigned int outer1 = vtxBaseIdx + 1 + ringVtx + i1;
+
+        *idx++ = (ImDrawIdx)inner0;
+        *idx++ = (ImDrawIdx)inner1;
+        *idx++ = (ImDrawIdx)outer1;
+
+        *idx++ = (ImDrawIdx)inner0;
+        *idx++ = (ImDrawIdx)outer1;
+        *idx++ = (ImDrawIdx)outer0;
+    }
+
+    dl->_VtxWritePtr   += vtxCount;
+    dl->_IdxWritePtr   += idxCount;
+    dl->_VtxCurrentIdx += vtxCount;
+}
+
+// ---------------------------------------------------------------------------
+// DrawDot  (dispatcher)
+// ---------------------------------------------------------------------------
+// Every zone renderer calls this instead of picking a Prim* function
+// directly. Whether the sprite path is used is decided once per frame by
+// RenderZones() (s_useSpriteDotsThisFrame) — never per dot — because the
+// sprite path requires the draw list's active texture to be our dot
+// texture for the whole batch (see the PushTextureID/PopTextureID pair in
+// RenderZones()); switching textures per dot would defeat the entire point
+// of this by forcing a new draw command every time.
+// ---------------------------------------------------------------------------
+static bool s_useSpriteDotsThisFrame = false;
+
+static inline void DrawDot(ImDrawList* dl, float cx, float cy, int r255, int g255, int b255, int alpha)
+{
+    if (s_useSpriteDotsThisFrame)
+        PrimAddFilledDotSprite(dl, cx, cy, r255, g255, b255, alpha);
+    else
+        PrimAddFilledDotFan(dl, cx, cy, r255, g255, b255, alpha);
+}
+
+// ---------------------------------------------------------------------------
 // RenderZoneCircle
 // ---------------------------------------------------------------------------
 // Draws a world-space zone indicator for sphere-type triggers.
@@ -220,18 +583,20 @@ constexpr float PIf = 3.14159265358979323846f;
 //                     through ZoneFadeStart/ZoneFadeEnd.
 //   • Occlusion     — dots behind the player model are faded via ApplyOcclusion.
 // ---------------------------------------------------------------------------
-void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
+void RenderZoneCircle(const RoutePoint& point, float r, float g, float b,
+                      const CameraBasis& basis, const OcclusionState& os)
 {
     if (!MumbleLink && !GS.RTAPIAvailable) return;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
 
-    const float DOT_RADIUS = 3.0f;
     const int NUM_DOTS = point.DotDensity > 0 ? point.DotDensity : 300;
 
-    const float golden = PIf * (3.0f - std::sqrt(5.0f)); // golden angle ~2.399 radians
-
-    OcclusionState os = CalcOcclusionState();
+    // Color is constant for the whole zone — only alpha varies per dot —
+    // so pack it to 8-bit once here instead of re-casting on every dot.
+    const int r255 = (int)(r * 255);
+    const int g255 = (int)(g * 255);
+    const int b255 = (int)(b * 255);
 
     // --- Combat pulse (out-of-combat only) ---
     // Mimics a heartbeat: two sharp gaussian bumps (lub-dub) followed by a
@@ -261,51 +626,32 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
         effectiveRadius += pulse * 0.5f - 0.05f;     // offset so rest ≈ nominal radius
     }
 
-    // Convert band parameters to radians
-    const float bandCenter = point.bandCenterInput * (PIf / 180.0f);
-    const float bandUp     = point.bandUpInput     * (PIf / 180.0f);
-    const float bandDown   = point.bandDownInput   * (PIf / 180.0f);
+    // Camera-independent per-dot data (unit direction, falloff, raw theta) —
+    // generated once and reused until density/band settings change.
+    const std::vector<SpherePoint>& pts = GetSpherePoints(point, NUM_DOTS);
 
-    // Derived latitude limits, clamped to the valid sphere range
-    const float phiMinClamped = std::max(bandCenter - bandDown, -PIf * 0.5f);
-    const float phiMaxClamped = std::min(bandCenter + bandUp,    PIf * 0.5f);
+    // --- Rotating gap (Interact trigger only) ---
+    // A fixed arc of longitude is hidden and the whole pattern rotates,
+    // giving a "beckoning" sweep effect. The gap edges are softened over a
+    // feather band so the cut fades in/out rather than clipping hard.
+    // These constants (and rotOffset, which only depends on elapsed time)
+    // are the same for every dot this frame, so they're computed once here
+    // rather than being recomputed inside the per-dot loop as before.
+    const bool  isInteract = (point.TriggerType == ETriggerType::CircleInteract);
+    const float gapRad     = 90.0f * (PIf / 180.0f); // degrees of arc to hide
+    const float featherRad = 15.0f * (PIf / 180.0f); // soft fade either side
+    const float rpm        = 20.0f;                  // rotation speed
+    float rotOffset = 0.0f;
+    if (isInteract)
+        rotOffset = std::fmod((float)ImGui::GetTime() * (rpm / 60.0f) * 2.0f * PIf, 2.0f * PIf);
 
-    // t values corresponding to phiMin/phiMax in the asin distribution
-    const float tMin = (std::sin(phiMinClamped) + 1.0f) * 0.5f;
-    const float tMax = (std::sin(phiMaxClamped) + 1.0f) * 0.5f;
-
-    for (int i = 0; i < NUM_DOTS; i++)
+    for (const SpherePoint& sp : pts)
     {
-        // Remap i into [tMin, tMax] so all dots land within the visible band
-        const float t   = tMin + (tMax - tMin) * (float)i / (NUM_DOTS - 1);
-        float phi   = std::asin(-1.0f + 2.0f * t); // latitude within the band
-        float theta = golden * i;                    // longitude
-
-        // Falloff: 1.0 at band centre, 0.0 at either edge
-        float distFromCenter = phi - bandCenter;
-        float normalizedDist = (distFromCenter >= 0.0f)
-            ? ((bandUp   > 0.0f) ? distFromCenter /  bandUp   : 0.0f)
-            : ((bandDown > 0.0f) ? distFromCenter / -bandDown : 0.0f);
-
-        float falloff  = 1.0f - std::abs(normalizedDist);
-
-        // --- Rotating gap (Interact trigger only) ---
-        // A fixed arc of longitude is hidden and the whole pattern rotates,
-        // giving a "beckoning" sweep effect.
-        // The gap edges are softened over a feather band so the cut fades
-        // in/out rather than clipping hard.
         float interactAlpha = 1.0f;
-        if (point.TriggerType == ETriggerType::CircleInteract)
+        if (isInteract)
         {
-            const float gapDeg     = 90.0f;                              // degrees of arc to hide
-            const float featherDeg = 15.0f;                              // soft fade either side
-            const float rpm        = 20.0f;                              // rotation speed
-            const float gapRad     = gapDeg     * (PIf / 180.0f);
-            const float featherRad = featherDeg * (PIf / 180.0f);
-
             // Advance theta by time, normalise into [0, 2π)
-            float rotOffset = std::fmod((float)ImGui::GetTime() * (rpm / 60.0f) * 2.0f * PIf, 2.0f * PIf);
-            float thetaNorm = std::fmod(theta - rotOffset + 4.0f * PIf, 2.0f * PIf);
+            float thetaNorm = std::fmod(sp.theta - rotOffset + 4.0f * PIf, 2.0f * PIf);
 
             // [0, gapRad]            → fully hidden
             // [gapRad, gapRad+feath] → leading feather (fade back in)
@@ -322,9 +668,9 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
                 interactAlpha = std::min(interactAlpha, trailingDist / featherRad); // 1→0
         }
 
-        float wx = point.X + std::cos(phi) * std::cos(theta) * effectiveRadius;
-        float wy = point.Y + std::sin(phi)                   * effectiveRadius;
-        float wz = point.Z + std::cos(phi) * std::sin(theta) * effectiveRadius;
+        float wx = point.X + sp.x * effectiveRadius;
+        float wy = point.Y + sp.y * effectiveRadius;
+        float wz = point.Z + sp.z * effectiveRadius;
 
         // Per-dot distance fade from player position using the global fade range
         float pdx = wx - GS.PlayerX;
@@ -333,14 +679,15 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
         float playerDist = std::sqrt(pdx*pdx + pdy*pdy + pdz*pdz);
         float dotDistAlpha = std::clamp(1.0f - (playerDist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
 
-        int   dotAlpha = (int)(220 * 0.8f * falloff * dotDistAlpha * interactAlpha);
+        int   dotAlpha = (int)(220 * 0.8f * sp.falloff * dotDistAlpha * interactAlpha);
+        if (dotAlpha <= 0) continue; // occlusion can only lower this further — skip the projection and draw call entirely
 
         float sx, sy;
-        if (WorldToScreen(wx, wy, wz, sx, sy))
+        if (ProjectWithBasis(basis, wx, wy, wz, sx, sy))
         {
-            dl->AddCircleFilled(ImVec2(sx, sy), DOT_RADIUS,
-                IM_COL32((int)(r*255), (int)(g*255), (int)(b*255),
-                    ApplyOcclusion(dotAlpha, sx, sy, os)));
+            int finalAlpha = ApplyOcclusion(dotAlpha, sx, sy, os);
+            if (finalAlpha <= 0) continue;
+            DrawDot(dl, sx, sy, r255, g255, b255, finalAlpha);
         }
     }
 }
@@ -367,13 +714,12 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b)
 // ZoneFadeEnd, and occlusion fade via ApplyOcclusion — matching the sphere
 // zone's visual language exactly.
 // ---------------------------------------------------------------------------
-void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
+void RenderZonePlane(const RoutePoint& point, float r, float g, float b,
+                     const CameraBasis& basis, const OcclusionState& os)
 {
     if (!MumbleLink && !GS.RTAPIAvailable) return;
 
     ImDrawList* dl = ImGui::GetForegroundDrawList();
-
-    OcclusionState os = CalcOcclusionState();
 
     // Along-plane direction vector from PlaneAngle
     float angleRad = point.PlaneAngle * PIf / 180.0f;
@@ -398,9 +744,14 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
     float e = e30 + (e1000 - e30) * t;
 
     float DOT_SPACING = std::pow(200.0f / point.DotDensity, e);
-    const float DOT_RADIUS  = 3.0f;
     int   cols = std::max(2, (int)(point.RadiusWidth / DOT_SPACING) + 1);
     int   rows = std::max(2, (int)((bandUp + bandDown) / DOT_SPACING) + 1);
+
+    // Color is constant for the whole zone — only alpha varies per dot —
+    // so pack it to 8-bit once here instead of re-casting on every dot.
+    const int r255 = (int)(r * 255);
+    const int g255 = (int)(g * 255);
+    const int b255 = (int)(b * 255);
 
     for (int ci = 0; ci < cols; ci++)
     {
@@ -430,13 +781,14 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b)
             float dotDistAlpha = std::clamp(1.0f - (playerDist - ZoneFadeStart) / (ZoneFadeEnd - ZoneFadeStart), 0.0f, 1.0f);
 
             int   dotAlpha = (int)(220 * falloff * dotDistAlpha);
+            if (dotAlpha <= 0) continue;
 
             float sx, sy;
-            if (WorldToScreen(wx, wy, wz, sx, sy))
+            if (ProjectWithBasis(basis, wx, wy, wz, sx, sy))
             {
-                dl->AddCircleFilled(ImVec2(sx, sy), DOT_RADIUS,
-                    IM_COL32((int)(r*255), (int)(g*255), (int)(b*255),
-                        ApplyOcclusion(dotAlpha, sx, sy, os)));
+                int finalAlpha = ApplyOcclusion(dotAlpha, sx, sy, os);
+                if (finalAlpha <= 0) continue;
+                DrawDot(dl, sx, sy, r255, g255, b255, finalAlpha);
             }
         }
     }
@@ -482,6 +834,12 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
     const float POWER        = 1.5f;
     const float MouseRepelRadius = 50.0f;
 
+    // Color is constant for the whole zone — only alpha varies per dot —
+    // so pack it to 8-bit once here instead of re-casting on every dot.
+    const int r255 = (int)(r * 255);
+    const int g255 = (int)(g * 255);
+    const int b255 = (int)(b * 255);
+
     float x = DOT_RADIUS;
     while (x < ARM_LEN)
     {
@@ -513,8 +871,7 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
                     int a = (int)(alpha * 255.0f * mouseAlpha);
                     if (a > 0)
                     {
-                        dl->AddCircleFilled(ImVec2(x, y), DOT_RADIUS,
-                            IM_COL32((int)(r * 255), (int)(g * 255), (int)(b * 255), a));
+                        DrawDot(dl, x, y, r255, g255, b255, a);
                     }
                 }
             }
@@ -549,7 +906,29 @@ void RenderZones()
     if (GS.IsLoading) return;
 
     UpdateUIRects(); // snapshot UI window rects before drawing any dots
-    
+
+    // Kick off the dot-sprite texture load the first time we render (no-op
+    // once requested). Decided once per frame, not per dot: the sprite path
+    // needs the draw list's active texture to be our dot texture for the
+    // whole batch, so every RenderZoneCircle/Plane/Map dot this frame must
+    // agree on which path is active. See DrawDot()'s comment for why.
+    EnsureDotTextureRequested();
+    s_useSpriteDotsThisFrame = (s_dotTexture != nullptr && s_dotTexture->Resource != nullptr);
+
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    if (s_useSpriteDotsThisFrame)
+        dl->PushTextureID((ImTextureID)s_dotTexture->Resource);
+
+    // Camera basis and player-occlusion state are both genuinely once-per-
+    // frame quantities. Previously each zone rebuilt them independently
+    // (CalcOcclusionState() called its own WorldToScreen(), which in turn
+    // rebuilt the full camera basis from scratch); now it happens exactly
+    // once here and gets threaded through every zone this frame.
+    CameraBasis    basis = BuildCameraBasis();
+    OcclusionState os    = CalcOcclusionState(basis);
+
+    GuardSphereCacheSize();
+
     // Map ID and camera position come from GS, populated each frame from
     // whichever source is active (RTAPI or Mumble).
     unsigned int currMapID = GS.MapID;
@@ -622,11 +1001,11 @@ void RenderZones()
             auto t0 = std::chrono::high_resolution_clock::now();
     
             if (p.TriggerType == ETriggerType::Plane || p.TriggerType == ETriggerType::NullPlane)
-                RenderZonePlane(p, r, g, b);
+                RenderZonePlane(p, r, g, b, basis, os);
             else if (p.TriggerType == ETriggerType::MapChange)
                 RenderZoneMap(p, r, g, b);
             else
-                RenderZoneCircle(p, r, g, b);
+                RenderZoneCircle(p, r, g, b, basis, os);
     
             float ms = std::chrono::duration<float, std::milli>(
                 std::chrono::high_resolution_clock::now() - t0).count();
@@ -646,11 +1025,11 @@ void RenderZones()
         else
         {
             if (p.TriggerType == ETriggerType::Plane || p.TriggerType == ETriggerType::NullPlane)
-                RenderZonePlane(p, r, g, b);
+                RenderZonePlane(p, r, g, b, basis, os);
             else if (p.TriggerType == ETriggerType::MapChange)
                 RenderZoneMap(p, r, g, b);
             else
-                RenderZoneCircle(p, r, g, b);
+                RenderZoneCircle(p, r, g, b, basis, os);
         }
     };
 
@@ -682,4 +1061,7 @@ void RenderZones()
         float b = isNull ? ColorNull[2] : ColorCheckpoint[2];
         renderPoint(cp.Point, r, g, b, i);
     }
+
+    if (s_useSpriteDotsThisFrame)
+        dl->PopTextureID();
 }

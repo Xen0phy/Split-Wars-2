@@ -335,6 +335,32 @@ void RecalcSegments(const std::vector<HistoricalRun>& runs,
 }
 
 // ---------------------------------------------------------------------------
+// Split name Start/End suffix helpers
+// ---------------------------------------------------------------------------
+// See the declarations in storage.h for why these exist as shared helpers
+// rather than being re-derived at each call site.
+// ---------------------------------------------------------------------------
+static const std::string START_SUFFIX = " Start";
+static const std::string END_SUFFIX   = " End";
+
+bool IsStartSplitName(const std::string& name)
+{
+    if (name.size() <= START_SUFFIX.size()) return false;
+    return name.compare(name.size() - START_SUFFIX.size(),
+        START_SUFFIX.size(), START_SUFFIX) == 0;
+}
+
+std::string StartSplitPrefix(const std::string& name)
+{
+    return name.substr(0, name.size() - START_SUFFIX.size());
+}
+
+std::string EndSplitName(const std::string& prefix)
+{
+    return prefix + END_SUFFIX;
+}
+
+// ---------------------------------------------------------------------------
 // UpdateSegments
 // ---------------------------------------------------------------------------
 // Scans a single run for Start/End split pairs and updates segment records
@@ -345,8 +371,6 @@ void RecalcSegments(const std::vector<HistoricalRun>& runs,
 void UpdateSegments(const HistoricalRun& run,
     std::vector<SegmentRecord>& segments)
 {
-    static const std::string START_SUFFIX  = " Start";
-    static const std::string END_SUFFIX    = " End";
     static const std::string TAINTED_NAME  = "__TAINTED__";
 
     for (int i = 0; i < (int)run.Splits.size(); i++)
@@ -354,12 +378,10 @@ void UpdateSegments(const HistoricalRun& run,
         const std::string& name = run.Splits[i].Name;
 
         // Check for " Start" suffix.
-        if (name.size() <= START_SUFFIX.size()) continue;
-        if (name.compare(name.size() - START_SUFFIX.size(),
-                START_SUFFIX.size(), START_SUFFIX) != 0) continue;
+        if (!IsStartSplitName(name)) continue;
 
-        std::string prefix = name.substr(0, name.size() - START_SUFFIX.size());
-        std::string endName = prefix + END_SUFFIX;
+        std::string prefix = StartSplitPrefix(name);
+        std::string endName = EndSplitName(prefix);
 
         // Find the nearest matching " End" after this split.
         for (int j = i + 1; j < (int)run.Splits.size(); j++)

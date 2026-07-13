@@ -535,6 +535,13 @@ void AddonOptions()
                     ChildColorHue = 0.772f;
                     std::copy(defHover,    defHover    + 3, HoverColor);
                 }
+                ImGui::SetNextItemWidth(65.0f);
+                ImGui::InputFloat("Bar Width##ew", &BarWidth,0.0f,0.0f,"%.0f");
+                if (BarWidth < 1 ) BarWidth = 1;
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(65.0f);
+                ImGui::InputFloat("Bar Gap##ew", &BarGap,0.0f,0.0f,"%.0f");
+                if (BarGap < 1 ) BarGap = 1;
             }
             
             ImGui::EndTable();

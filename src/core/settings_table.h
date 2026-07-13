@@ -86,8 +86,15 @@ SETTING        (Windows,      HistoryWindowW,         float, 400.0f)
 SETTING        (Windows,      HistoryWindowH,         float, 400.0f)
 SETTING        (Windows,      BrowserWindowW,         float, 400.0f)
 SETTING        (Windows,      BrowserWindowH,         float, 400.0f)
-SETTING        (Windows,      EvaluationWindowW,      float, 960.0f)
+SETTING        (Windows,      EvaluationWindowW,      float, 930.0f)
 SETTING        (Windows,      EvaluationWindowH,      float, 640.0f)
+
+// ---------------------------------------------------------------------------
+// [Evaluation]
+// ---------------------------------------------------------------------------
+SETTING        (Windows,      BarWidth,               float, 42.0f)
+SETTING        (Windows,      BarGap,                 float, 15.0f)
+
 
 // ---------------------------------------------------------------------------
 // [Streamer]

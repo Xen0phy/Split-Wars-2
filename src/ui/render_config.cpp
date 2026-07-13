@@ -481,8 +481,16 @@ void RenderConfigWindow()
             {
                 char l[32]; snprintf(l, sizeof(l), "##dotDensity_%d", i);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::DragInt(l, &point.DotDensity, 1, 30, 1000, "%d");
-                point.DotDensity = std::clamp(point.DotDensity, 0, 100000);
+                if (point.TriggerType == ETriggerType::Plane)
+                {
+                    ImGui::DragInt(l, &point.DotDensity, 1, 30, 1000, "%d");
+                    point.DotDensity = std::clamp(point.DotDensity, 30, 1000);
+                }
+                else
+                {
+                    ImGui::DragInt(l, &point.DotDensity, 1, 30, 10000, "%d");
+                    point.DotDensity = std::clamp(point.DotDensity, 0, 100000);
+                }
             }
 
             // --- Band Center / Up / Down ---

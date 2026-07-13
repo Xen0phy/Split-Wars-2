@@ -70,6 +70,40 @@ void TrimHistory()
     }
 }
 
+// RecordRun
+// ---------------------------------------------------------------------------
+// Shared run-finalization logic used by both the manual Start/Stop keybind
+// and the automatic goal-trigger stop in AddonRender(). Builds the
+// HistoricalRun record, marks the run finished, updates the displayed grand
+// total, inserts it at the front of history, updates segment PBs, trims to
+// the configured cap, and saves to disk.
+//
+// Callers are responsible for anything trigger-specific that needs to happen
+// to `splits` before this is called (e.g. the goal block appending its own
+// checkpoint name as the final split entry) — this function only handles the
+// bookkeeping that both callers need identically.
+// ---------------------------------------------------------------------------
+static void RecordRun(double totalTime, double grandTotal, const std::vector<Split>& splits)
+{
+    RunFinished          = true;
+    DisplayedGrandTotal  = grandTotal;
+
+    HistoricalRun run;
+    run.Date       = GetCurrentDateTimeString();
+    run.TotalTime  = totalTime;
+    run.GrandTotal = grandTotal;
+    run.Splits     = splits;
+
+    HistoryRuns.insert(HistoryRuns.begin(), run);  // Newest run goes to the top
+    if (BestRunIndex >= 0) BestRunIndex++;
+    TrimHistory();
+    if (!CurrentHistoryPath.empty())
+    {
+        UpdateSegments(run, SegmentRecords);
+        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
+    }
+}
+
 // "Start/Stop" key — if the timer is already running this acts as a manual
 // stop: it adds a final "Manual Stop" split, stops both timers, records the
 // run in history, and saves to disk.  If the timer is not running it resets
@@ -83,19 +117,7 @@ static void OnStartStopKey(const char* aIdentifier, bool aIsRelease)
         SpeedrunTimer.AddSplit("Manual Stop");
         SpeedrunTimer.Stop();
         GrandTimer.Stop();
-        RunFinished = true;
-
-        HistoricalRun run;
-        run.Date       = GetCurrentDateTimeString();
-        run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
-        run.GrandTotal = GrandTimer.GetElapsedSeconds();
-        run.Splits     = SpeedrunTimer.GetSplits();
-        HistoryRuns.insert(HistoryRuns.begin(), run);  // Newest run goes to the top
-        if (BestRunIndex >= 0)
-            BestRunIndex++;
-        TrimHistory();         // Trim the list to the configured cap
-        if (!CurrentHistoryPath.empty())
-            SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
+        RecordRun(SpeedrunTimer.GetElapsedSeconds(), GrandTimer.GetElapsedSeconds(), SpeedrunTimer.GetSplits());
     }
     else
     {
@@ -1010,39 +1032,28 @@ void AddonRender()
                         GrandTimer.Stop();
                     }
 
-                    RunFinished = true;
-
-                    HistoricalRun run;
-                    run.Date       = GetCurrentDateTimeString();
-                    run.TotalTime  = SpeedrunTimer.GetElapsedSeconds();
-                    run.GrandTotal = (PendingGrandStop >= 0.0)
+                    double totalTime  = SpeedrunTimer.GetElapsedSeconds();
+                    double grandTotal = (PendingGrandStop >= 0.0)
                         ? PendingGrandStop
                         : GrandTimer.GetElapsedSeconds();
-                    DisplayedGrandTotal = run.GrandTotal;
-                    PendingGrandStop    = -1.0;
-                    run.Splits          = SpeedrunTimer.GetSplits();
+                    PendingGrandStop = -1.0;
+
+                    std::vector<Split> splits = SpeedrunTimer.GetSplits();
 
                     // Ensure the goal checkpoint itself appears as the final split entry
                     // for plain trigger types.  CombatArena already injected "X Combat End".
                     if (pt.TriggerType != ETriggerType::CombatArena)
                     {
-                        if (run.Splits.empty() || strcmp(run.Splits.back().Name, cs.Name) != 0)
+                        if (splits.empty() || strcmp(splits.back().Name, cs.Name) != 0)
                         {
                             Split goalSplit;
                             strncpy(goalSplit.Name, cs.Name, sizeof(goalSplit.Name) - 1);
-                            goalSplit.Timestamp = run.TotalTime;
-                            run.Splits.push_back(goalSplit);
+                            goalSplit.Timestamp = totalTime;
+                            splits.push_back(goalSplit);
                         }
                     }
 
-                    HistoryRuns.insert(HistoryRuns.begin(), run);
-                    if (BestRunIndex >= 0) BestRunIndex++;
-                    TrimHistory();
-                    if (!CurrentHistoryPath.empty())
-                    {
-                        UpdateSegments(run, SegmentRecords);
-                        SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
-                    }
+                    RecordRun(totalTime, grandTotal, splits);
 
                     cs.triggered = true;
                     break; // Run is over — no need to evaluate further checkpoints.

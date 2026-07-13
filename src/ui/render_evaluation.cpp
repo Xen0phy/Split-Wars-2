@@ -66,6 +66,20 @@ struct EvalBlock
 struct EvalRun
 {
     std::string date;
+    // Identity key used for every lookup/animation-state association below
+    // (pinning, hover/stretch anchors, groupAnim/anim map keys, the flash
+    // target, etc). `date` is only "YYYY-MM-DD HH:MM" -- deliberately
+    // minute-granularity for display (see GetCurrentDateTimeString) -- so
+    // two runs finished within the same minute (trivially reproducible by
+    // firing off several quick test runs) share an identical date string.
+    // Using date directly as a key made those runs alias the same
+    // groupAnim/anim entries, corrupting both runs' animated position/size
+    // (visually: a run present in the data and taking up a layout slot, but
+    // rendered with no bar/date/time because its geometry got stomped by
+    // its same-minute sibling). `key` starts out equal to `date` and is
+    // only disambiguated (see the loop in RenderEvaluationWindow that fills
+    // it in) when a collision with an earlier same-date run is detected.
+    std::string key;
     double total_time = 0.0;
     std::vector<EvalBlock> blocks; // bottom -> top stacking order (play order)
 };
@@ -107,15 +121,15 @@ static void ParseSpan(const std::vector<HistorySplitPoint>& splits, int startIdx
     while (i < endIdx)
     {
         const HistorySplitPoint& sp = splits[i];
-        bool isStart = sp.name.size() > 6 && sp.name.compare(sp.name.size() - 6, 6, " Start") == 0;
+        bool isStart = IsStartSplitName(sp.name);
 
         if (isStart)
         {
-            std::string base = sp.name.substr(0, sp.name.size() - 6);
+            std::string base = StartSplitPrefix(sp.name);
             int endFound = -1;
             for (int j = i + 1; j < endIdx; j++)
             {
-                if (splits[j].name == base + " End") { endFound = j; break; }
+                if (splits[j].name == EndSplitName(base)) { endFound = j; break; }
             }
 
             if (endFound == -1)
@@ -171,6 +185,7 @@ static EvalRun ConvertHistoricalRun(const HistoricalRun& run)
 {
     EvalRun er;
     er.date = run.Date;
+    er.key = run.Date; // disambiguated below once siblings are known, if needed
     er.total_time = Round2(run.TotalTime);
 
     std::vector<HistorySplitPoint> splits;
@@ -215,16 +230,15 @@ static std::unordered_map<std::string, EvalStat> ComputeAllTimeStats(const std::
 }
 
 // ---------------------------------------------------------------------
-// Layout / style constants -- kept 1:1 with the HTML's pixel values.
+// Layout / style constants
 // ---------------------------------------------------------------------
-static const float BAR_W = 46.0f;
-static const float BAR_GAP = 18.0f;
 static const float TOTAL_BAND_H = 22.0f;
 static const float TOP_PAD = 18.0f + TOTAL_BAND_H;
+static const float DATE_BAND_H = 36.0f; // two lines: mm/dd on top, hh:mm below
 static const float PIN_ROW_H = 18.0f;
 static const float PIN_ROW_GAP = 4.0f;
-static const float BOTTOM_PAD = 34.0f + PIN_ROW_GAP + PIN_ROW_H;
-static const float CHART_H = 460.0f + PIN_ROW_GAP + PIN_ROW_H;
+static const float BOTTOM_PAD = 16.0f + DATE_BAND_H + PIN_ROW_GAP + PIN_ROW_H;
+static const float CHART_H = 442.0f + DATE_BAND_H + PIN_ROW_GAP + PIN_ROW_H;
 static const float PLOT_H = CHART_H - TOP_PAD - BOTTOM_PAD;
 static const int   WINDOW_SIZE = 15;
 static const float ANIM_DUR = 0.32f;   // matches .bar-block's transition duration
@@ -448,11 +462,11 @@ static EvalState& GetState()
     return s;
 }
 
-static std::string AnimKey(const std::string& date, const std::string& name)
+static std::string AnimKey(const std::string& runKey, const std::string& name)
 {
     std::string k;
-    k.reserve(date.size() + 1 + name.size());
-    k += date;
+    k.reserve(runKey.size() + 1 + name.size());
+    k += runKey;
     k += '\x1f';
     k += name;
     return k;
@@ -536,7 +550,7 @@ static void DrawChart(EvalState& cs)
     std::vector<const EvalRun*> nonPinned, pinnedRuns;
     for (auto& r : cs.allRunsChronological)
     {
-        if (cs.pinnedDates.count(r.date)) pinnedRuns.push_back(&r);
+        if (cs.pinnedDates.count(r.key)) pinnedRuns.push_back(&r);
         else nonPinned.push_back(&r);
     }
     int availableSlots = std::max(0, WINDOW_SIZE - (int)pinnedRuns.size());
@@ -592,7 +606,7 @@ static void DrawChart(EvalState& cs)
     for (size_t ri = 0; ri < runs.size(); ri++)
     {
         const EvalRun* run = runs[ri];
-        float x = BAR_GAP + ri * (BAR_W + BAR_GAP);
+        float x = BarGap + ri * (BarWidth + BarGap);
         groups[ri].run = run;
         groups[ri].baseX = x;
         groups[ri].origIndex = (int)ri;
@@ -636,7 +650,7 @@ static void DrawChart(EvalState& cs)
     }
 
     // ---- canvas setup ----
-    float chartW = runs.empty() ? BAR_GAP : (float)runs.size() * (BAR_W + BAR_GAP) + BAR_GAP;
+    float chartW = runs.empty() ? BarGap : (float)runs.size() * (BarWidth + BarGap) + BarGap;
 
     float pageBtnW = 24.0f;
     float pageBtnVPad = std::max(0.0f, (CHART_H - ImGui::GetFrameHeight()) / 2.0f);
@@ -687,7 +701,7 @@ static void DrawChart(EvalState& cs)
                     // parent rect is hidden while split open (pointer-events:
                     // none in the HTML) -- test its revealed children instead,
                     // subdividing the parent's own previous-frame geometry.
-                    std::string parentKey = AnimKey(g.run->date, b.name);
+                    std::string parentKey = AnimKey(g.run->key, b.name);
                     auto itp = cs.anim.find(parentKey);
                     float px = itp != cs.anim.end() && itp->second.x.init ? itp->second.x.cur : b.baseX;
                     float py = itp != cs.anim.end() && itp->second.y.init ? itp->second.y.cur : b.baseY;
@@ -701,7 +715,7 @@ static void DrawChart(EvalState& cs)
                     {
                         float ch = (float)(c.dur * pxPerSec);
                         cy -= ch;
-                        if (mouseLocal.x >= px && mouseLocal.x <= px + BAR_W && mouseLocal.y >= cy && mouseLocal.y <= cy + ch)
+                        if (mouseLocal.x >= px && mouseLocal.x <= px + BarWidth && mouseLocal.y >= cy && mouseLocal.y <= cy + ch)
                         {
                             hitName = c.name;
                             hitGroupIdx = gi;
@@ -713,12 +727,12 @@ static void DrawChart(EvalState& cs)
                     continue; // no child under the cursor in this bar -- try the next block/bar
                 }
 
-                std::string key = AnimKey(g.run->date, b.name);
+                std::string key = AnimKey(g.run->key, b.name);
                 auto it = cs.anim.find(key);
                 float rx = it != cs.anim.end() && it->second.x.init ? it->second.x.cur : b.baseX;
                 float ry = it != cs.anim.end() && it->second.y.init ? it->second.y.cur : b.baseY;
                 float rh = it != cs.anim.end() && it->second.h.init ? it->second.h.cur : b.baseH;
-                if (mouseLocal.x >= rx && mouseLocal.x <= rx + BAR_W && mouseLocal.y >= ry && mouseLocal.y <= ry + rh)
+                if (mouseLocal.x >= rx && mouseLocal.x <= rx + BarWidth && mouseLocal.y >= ry && mouseLocal.y <= ry + rh)
                 {
                     hitName = b.name;
                     hitBlock = &b;
@@ -770,7 +784,7 @@ hitDone:
                 {
                     clearStretch();
                     cs.stretchedName = hitName;
-                    cs.stretchAnchorDate = groups[hitGroupIdx].run->date;
+                    cs.stretchAnchorDate = groups[hitGroupIdx].run->key;
                     cs.stretchAnchorOrigIdx = hitGroupIdx;
                     cs.stretchAnimStart = now;
                 }
@@ -780,7 +794,7 @@ hitDone:
             else
             {
                 cs.stretchedName = hitName;
-                cs.stretchAnchorDate = groups[hitGroupIdx].run->date;
+                cs.stretchAnchorDate = groups[hitGroupIdx].run->key;
                 cs.stretchAnchorOrigIdx = hitGroupIdx;
                 cs.stretchAnimStart = now;
             }
@@ -883,7 +897,7 @@ hitDone:
         cs.stretchAnchorOrigIdx = -1;
         for (int gi = 0; gi < (int)groups.size(); gi++)
         {
-            if (groups[gi].run->date == cs.stretchAnchorDate)
+            if (groups[gi].run->key == cs.stretchAnchorDate)
             {
                 cs.stretchAnchorOrigIdx = gi;
                 break;
@@ -941,7 +955,7 @@ hitDone:
             {
                 if (b.name != cs.stretchedName || !b.src || b.src->children.empty())
                     continue;
-                std::string parentKey = AnimKey(g.run->date, b.name);
+                std::string parentKey = AnimKey(g.run->key, b.name);
                 auto itp = cs.anim.find(parentKey);
                 float py = itp != cs.anim.end() && itp->second.y.init ? itp->second.y.cur : b.baseY;
                 float ph = itp != cs.anim.end() && itp->second.h.init ? itp->second.h.cur : b.baseH;
@@ -964,9 +978,9 @@ hitDone:
     for (int gi = 0; gi < (int)groups.size(); gi++)
     {
         auto& g = groups[gi];
-        float targetX = BAR_GAP + slotOfOrig[gi] * (BAR_W + BAR_GAP);
+        float targetX = BarGap + slotOfOrig[gi] * (BarWidth + BarGap);
 
-        std::string gkey = g.run->date;
+        std::string gkey = g.run->key;
         auto& ganim = cs.groupAnim[gkey];
         ganim.x.SetTarget(targetX, now);
         ganim.x.Update(now);
@@ -1100,7 +1114,7 @@ hitDone:
         for (int bi = 0; bi < (int)g.blocks.size(); bi++)
         {
             auto& b = g.blocks[bi];
-            std::string key = AnimKey(g.run->date, b.name);
+            std::string key = AnimKey(g.run->key, b.name);
             auto& a = cs.anim[key];
 
             bool hasChildren = b.src && !b.src->children.empty();
@@ -1115,7 +1129,7 @@ hitDone:
                 // real fade, not an instant pop.
                 for (auto& c : b.src->children)
                 {
-                    std::string ckey = AnimKey(g.run->date, b.name + "\x1f>" + c.name);
+                    std::string ckey = AnimKey(g.run->key, b.name + "\x1f>" + c.name);
                     auto cit = cs.anim.find(ckey);
                     if (cit != cs.anim.end())
                         cit->second.opacity.from = cit->second.opacity.cur = cit->second.opacity.to = 0.0f;
@@ -1161,7 +1175,7 @@ hitDone:
             if (!splitOpen)
             {
                 ImVec2 p0(origin.x + a.x.cur, origin.y + a.y.cur);
-                ImVec2 p1(p0.x + BAR_W, p0.y + a.h.cur);
+                ImVec2 p1(p0.x + BarWidth, p0.y + a.h.cur);
                 ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(a.colR.cur, a.colG.cur, a.colB.cur, a.opacity.cur));
                 dl->AddRectFilled(p0, p1, col);
                 dl->AddRect(p0, p1, HexColor(0x14161a, a.opacity.cur));
@@ -1236,7 +1250,7 @@ hitDone:
                     else { cy = a.y.cur; ch = 0.0f; } // shouldn't happen; childBase[gi] covers every child here
                 }
 
-                std::string ckey = AnimKey(g.run->date, b.name + "\x1f>" + child.name);
+                std::string ckey = AnimKey(g.run->key, b.name + "\x1f>" + child.name);
                 bool isNewChild = cs.anim.find(ckey) == cs.anim.end();
                 auto& ca = cs.anim[ckey];
                 ca.x.dur = ANIM_DUR; ca.y.dur = ANIM_DUR; ca.h.dur = ANIM_DUR; ca.opacity.dur = FADE_DUR;
@@ -1267,7 +1281,7 @@ hitDone:
                 ca.colR.Update(now); ca.colG.Update(now); ca.colB.Update(now);
 
                 ImVec2 cp0(origin.x + ca.x.cur, origin.y + ca.y.cur);
-                ImVec2 cp1(cp0.x + BAR_W, cp0.y + ca.h.cur);
+                ImVec2 cp1(cp0.x + BarWidth, cp0.y + ca.h.cur);
                 ImU32 ccol = ImGui::ColorConvertFloat4ToU32(ImVec4(ca.colR.cur, ca.colG.cur, ca.colB.cur, ca.opacity.cur));
                 dl->AddRectFilled(cp0, cp1, ccol);
                 dl->AddRect(cp0, cp1, HexColor(0x14161a, ca.opacity.cur));
@@ -1281,11 +1295,11 @@ hitDone:
     {
         for (auto& g : groups)
         {
-            if (g.run->date == cs.pendingFlashDate)
+            if (g.run->key == cs.pendingFlashDate)
             {
                 double blockDurSum = 0.0;
                 for (auto& b : g.blocks) blockDurSum += b.dur;
-                auto& ganim = cs.groupAnim[g.run->date];
+                auto& ganim = cs.groupAnim[g.run->key];
                 cs.flashX = ganim.x.cur;
                 cs.flashTop = yForSeconds(blockDurSum);
                 cs.flashBottom = yForSeconds(0.0);
@@ -1303,8 +1317,8 @@ hitDone:
         dl->AddRect(p0, p1, HexColor(BAND_STROKE), 9.0f);
         for (auto& g : groups)
         {
-            auto& ganim = cs.groupAnim[g.run->date];
-            float cx = origin.x + ganim.x.cur + BAR_W / 2.0f;
+            auto& ganim = cs.groupAnim[g.run->key];
+            float cx = origin.x + ganim.x.cur + BarWidth / 2.0f;
 
             bool groupHasStretched = false;
             double stretchDur = 0.0;
@@ -1324,21 +1338,32 @@ hitDone:
     float dateBandY = CHART_H - BOTTOM_PAD + 2.0f;
     {
         ImVec2 p0(origin.x, origin.y + dateBandY);
-        ImVec2 p1(origin.x + chartW - 4.0f, origin.y + dateBandY + 18.0f);
+        ImVec2 p1(origin.x + chartW - 4.0f, origin.y + dateBandY + DATE_BAND_H);
         dl->AddRectFilled(p0, p1, HexColor(BAND_BG), 9.0f);
         dl->AddRect(p0, p1, HexColor(BAND_STROKE), 9.0f);
         for (auto& g : groups)
         {
-            auto& ganim = cs.groupAnim[g.run->date];
-            float cx = origin.x + ganim.x.cur + BAR_W / 2.0f;
+            auto& ganim = cs.groupAnim[g.run->key];
+            float cx = origin.x + ganim.x.cur + BarWidth / 2.0f;
+            // "YYYY-MM-DD HH:MM" -> "MM-DD" (top line) and "HH:MM" (bottom line).
             std::string mmdd = g.run->date.size() >= 10 ? g.run->date.substr(5, 5) : g.run->date;
-            ImVec2 ts = ImGui::CalcTextSize(mmdd.c_str());
-            dl->AddText(ImVec2(cx - ts.x / 2.0f, origin.y + dateBandY + 15.0f - ts.y), HexColor(TEXT_DIM), mmdd.c_str());
+            std::string hhmm = g.run->date.size() >= 16 ? g.run->date.substr(11, 5) : std::string();
+
+            ImVec2 ts1 = ImGui::CalcTextSize(mmdd.c_str());
+            float row1BottomY = dateBandY + DATE_BAND_H / 2.0f - 1.0f;
+            dl->AddText(ImVec2(cx - ts1.x / 2.0f, origin.y + row1BottomY - ts1.y), HexColor(TEXT_DIM), mmdd.c_str());
+
+            if (!hhmm.empty())
+            {
+                ImVec2 ts2 = ImGui::CalcTextSize(hhmm.c_str());
+                float row2BottomY = dateBandY + DATE_BAND_H - 3.0f;
+                dl->AddText(ImVec2(cx - ts2.x / 2.0f, origin.y + row2BottomY - ts2.y), HexColor(TEXT_DIM), hhmm.c_str());
+            }
         }
     }
 
     // ---- pin row ----
-    float pinRowY = dateBandY + 18.0f + PIN_ROW_GAP;
+    float pinRowY = dateBandY + DATE_BAND_H + PIN_ROW_GAP;
     {
         ImVec2 p0(origin.x, origin.y + pinRowY);
         ImVec2 p1(origin.x + chartW - 4.0f, origin.y + pinRowY + PIN_ROW_H);
@@ -1347,11 +1372,11 @@ hitDone:
 
         for (auto& g : groups)
         {
-            auto& ganim = cs.groupAnim[g.run->date];
-            float cx = origin.x + ganim.x.cur + BAR_W / 2.0f;
+            auto& ganim = cs.groupAnim[g.run->key];
+            float cx = origin.x + ganim.x.cur + BarWidth / 2.0f;
             float cy = origin.y + pinRowY + PIN_ROW_H / 2.0f;
             float boxSize = 12.0f;
-            bool isPinned = cs.pinnedDates.count(g.run->date) != 0;
+            bool isPinned = cs.pinnedDates.count(g.run->key) != 0;
 
             ImVec2 b0(cx - boxSize / 2.0f, cy - boxSize / 2.0f);
             ImVec2 b1(cx + boxSize / 2.0f, cy + boxSize / 2.0f);
@@ -1360,8 +1385,8 @@ hitDone:
                                mouseScreen.y >= b0.y && mouseScreen.y <= b1.y;
             if (boxHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
-                if (isPinned) cs.pinnedDates.erase(g.run->date);
-                else if ((int)cs.pinnedDates.size() < WINDOW_SIZE) cs.pinnedDates.insert(g.run->date);
+                if (isPinned) cs.pinnedDates.erase(g.run->key);
+                else if ((int)cs.pinnedDates.size() < WINDOW_SIZE) cs.pinnedDates.insert(g.run->key);
                 isPinned = !isPinned; // reflect immediately this frame
             }
 
@@ -1402,7 +1427,7 @@ hitDone:
         if (alpha > 0.0f)
         {
             ImVec2 p0(origin.x + cs.flashX, origin.y + cs.flashTop);
-            ImVec2 p1(origin.x + cs.flashX + BAR_W, origin.y + cs.flashBottom);
+            ImVec2 p1(origin.x + cs.flashX + BarWidth, origin.y + cs.flashBottom);
             dl->AddRectFilled(p0, p1, ImGui::ColorConvertFloat4ToU32(ImVec4(1, 1, 1, alpha)));
         }
     }
@@ -1497,19 +1522,19 @@ static void DrawControls(EvalState& cs)
             if (cs.allRunsChronological[i].total_time < cs.allRunsChronological[bestIdx].total_time)
                 bestIdx = i;
         const EvalRun& bestRun = cs.allRunsChronological[bestIdx];
-        cs.pendingFlashDate = bestRun.date;
+        cs.pendingFlashDate = bestRun.key;
         cs.flashPending = true;
         cs.flashStartTime = -1.0;
 
-        if (!cs.pinnedDates.count(bestRun.date))
+        if (!cs.pinnedDates.count(bestRun.key))
         {
             std::vector<const EvalRun*> nonPinned;
             for (auto& r : cs.allRunsChronological)
-                if (!cs.pinnedDates.count(r.date)) nonPinned.push_back(&r);
+                if (!cs.pinnedDates.count(r.key)) nonPinned.push_back(&r);
             int availableSlots = std::max(0, WINDOW_SIZE - (int)cs.pinnedDates.size());
             int idxInNonPinned = -1;
             for (int i = 0; i < (int)nonPinned.size(); i++)
-                if (nonPinned[i]->date == bestRun.date) { idxInNonPinned = i; break; }
+                if (nonPinned[i]->key == bestRun.key) { idxInNonPinned = i; break; }
             int maxStart = std::max(0, (int)nonPinned.size() - availableSlots);
             if (idxInNonPinned != -1)
                 cs.windowStart = std::max(0, std::min(maxStart, idxInNonPinned - availableSlots / 2));
@@ -1581,6 +1606,19 @@ void RenderEvaluationWindow()
     bool pathChanged = (cs.loadedPath != CurrentHistoryPath);
     if (!cs.everBuilt || pathChanged || signature != cs.loadedSignature)
     {
+        // Was the window already showing the most recent runs before this
+        // rebuild? If so, a run being added should keep the view pinned to
+        // the end -- otherwise windowStart (an absolute index) stays put
+        // while the non-pinned list grows underneath it, and the newest run
+        // lands just past the visible slots. Captured before the clear()
+        // below since it needs the pre-rebuild run list.
+        int oldNonPinnedCount = 0;
+        for (auto& r : cs.allRunsChronological)
+            if (!cs.pinnedDates.count(r.key)) oldNonPinnedCount++;
+        int oldAvailableSlots = std::max(0, WINDOW_SIZE - (int)cs.pinnedDates.size());
+        int oldMaxStart = std::max(0, oldNonPinnedCount - oldAvailableSlots);
+        bool wasAtEnd = cs.everBuilt && cs.windowStart >= oldMaxStart;
+
         cs.allRunsChronological.clear();
         cs.allRunsChronological.reserve(HistoryRuns.size());
         for (auto& r : HistoryRuns)
@@ -1590,6 +1628,23 @@ void RenderEvaluationWindow()
         // paging assumption in DrawChart (oldest at windowStart, newest at
         // the end).
         std::reverse(cs.allRunsChronological.begin(), cs.allRunsChronological.end());
+
+        // Disambiguate keys for runs sharing the same minute-granularity
+        // date (see the comment on EvalRun::key). Walked in chronological
+        // (physical, append-stable) order so the same run gets the same key
+        // across rebuilds as long as it keeps the same neighbors -- HistoryRuns
+        // is only ever appended to or had entries removed from, never
+        // reordered, so this is stable frame to frame.
+        {
+            std::unordered_map<std::string, int> seenCount;
+            for (auto& r : cs.allRunsChronological)
+            {
+                int n = ++seenCount[r.date];
+                if (n > 1)
+                    r.key = r.date + "\x1e" + std::to_string(n);
+            }
+        }
+
         cs.allTimeStats = ComputeAllTimeStats(cs.allRunsChronological);
 
         if (!cs.everBuilt || pathChanged)
@@ -1613,17 +1668,28 @@ void RenderEvaluationWindow()
         {
             // same file, just a different run count (a run was added
             // while this window was open, one got deleted, etc.) -- leave
-            // paging/pins/stretch alone. DrawChart already clamps windowStart
-            // to whatever's valid, and a pinned date that no longer exists
-            // simply won't be found when the pinned-run list is rebuilt.
-            //
+            // paging/pins/stretch alone, UNLESS the window was already
+            // showing the latest runs, in which case follow the new end so a
+            // freshly finished run isn't left just out of view. DrawChart
+            // already clamps windowStart to whatever's valid, and a pinned
+            // date that no longer exists simply won't be found when the
+            // pinned-run list is rebuilt.
+            if (wasAtEnd)
+            {
+                int nonPinnedCount = 0;
+                for (auto& r : cs.allRunsChronological)
+                    if (!cs.pinnedDates.count(r.key)) nonPinnedCount++;
+                int availableSlots = std::max(0, WINDOW_SIZE - (int)cs.pinnedDates.size());
+                cs.windowStart = std::max(0, nonPinnedCount - availableSlots);
+            }
+
             // Still prune animation-state entries keyed off dates that no
             // longer exist -- cs.anim/cs.groupAnim otherwise only ever grow,
             // since nothing else erases from them, and EvalState is a
             // process-lifetime static (see GetState()).
             std::set<std::string> validDates;
             for (auto& r : cs.allRunsChronological)
-                validDates.insert(r.date);
+                validDates.insert(r.key);
 
             for (auto it = cs.groupAnim.begin(); it != cs.groupAnim.end(); )
             {

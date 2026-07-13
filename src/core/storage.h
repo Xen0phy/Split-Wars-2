@@ -104,6 +104,29 @@ struct SegmentRecord
     std::string thirdDate;         // Date string of the run that achieved thirdTime
 };
 
+// ---------------------------------------------------------------------------
+// Split name Start/End suffix helpers
+// ---------------------------------------------------------------------------
+// The naming convention that ties a segment together — a split literally
+// named "X Start" paired with one literally named "X End" — is shared by
+// UpdateSegments() below and the evaluation window's span parser
+// (render_evaluation.cpp). Both only need to know "is this a Start split"
+// and "what End name pairs with it", so that logic lives here once; neither
+// caller should re-derive the suffix length or literal text itself.
+// ---------------------------------------------------------------------------
+
+// True if name ends in the " Start" suffix.
+bool IsStartSplitName(const std::string& name);
+
+// Strips the " Start" suffix, returning the bare segment prefix
+// (e.g. "Kinfall Start" -> "Kinfall"). Only valid to call when
+// IsStartSplitName(name) is true.
+std::string StartSplitPrefix(const std::string& name);
+
+// Builds the matching " End" split name for a given prefix
+// (e.g. "Kinfall" -> "Kinfall End").
+std::string EndSplitName(const std::string& prefix);
+
 // Recalculates all segment records from scratch across all runs.
 // Call on route load to ensure segments are always consistent with history.
 void RecalcSegments(const std::vector<HistoricalRun>& runs,
