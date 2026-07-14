@@ -78,6 +78,7 @@ static const char* RoleName(EStreamFontRole role)
 
 // ---------------------------------------------------------------------------
 // Nexus callback
+// ---------------------------------------------------------------------------
 // Called by Nexus once per registered font when the atlas is ready (or when
 // a re-atlas happens, e.g. when the user changes Nexus UI scale, or after
 // a resize we requested).
@@ -97,6 +98,7 @@ static void OnFontReceived(const char* aIdentifier, void* aFont)
 
 // ---------------------------------------------------------------------------
 // FindFile
+// ---------------------------------------------------------------------------
 // Looks up a previously-discovered font file by stem.
 // ---------------------------------------------------------------------------
 static const FontFile* FindFile(const std::string& stem)
@@ -109,6 +111,7 @@ static const FontFile* FindFile(const std::string& stem)
 
 // ---------------------------------------------------------------------------
 // FindSlot
+// ---------------------------------------------------------------------------
 // Looks up an existing (stem, role) registration, if any.
 // ---------------------------------------------------------------------------
 static FontSlot* FindSlot(const std::string& stem, EStreamFontRole role)
@@ -244,6 +247,7 @@ const std::vector<std::string>& GetStreamFontNames()
 
 // ---------------------------------------------------------------------------
 // GetStreamerFont
+// ---------------------------------------------------------------------------
 // Convenience wrapper — returns the font matching the user's current settings,
 // falling back to FontBig from Nexus if nothing is available yet.
 // ---------------------------------------------------------------------------

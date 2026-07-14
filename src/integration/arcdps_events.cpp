@@ -47,14 +47,13 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
         return;
     }
 
-    // -----------------------------------------------------------------------
-    // Catch-all frequency counter.
+    // --- Catch-all frequency counter ---
     // Incremented for EVERY event before any specific handler runs, so the
     // debug dump can show exactly which IsStatechange values the Nexus bridge
     // actually delivers — including any that we have no handler for yet.
-    // This is how we confirm whether CBTS_APIDELAYED (or any other type) ever
-    // arrives, without having to add a named handler for each candidate first.
-    // -----------------------------------------------------------------------
+    // This is how CBTS_APIDELAYED was first confirmed to arrive, before it
+    // got the dedicated handler below; the same counter still tracks any
+    // other type that hasn't earned a handler yet.
     {
         std::lock_guard<std::mutex> lock(CombatEntriesMutex);
         if (isLocal)
@@ -144,14 +143,12 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
         return;
     }
 
-    // -----------------------------------------------------------------------
-    // APIDELAYED — capture every field verbatim.
+    // --- APIDELAYED: capture every field verbatim ---
     // ArcDPS fires one of these per event it deemed unsafe for realtime,
     // delivered after squad combat ends.  The field that carries the original
     // ECombatStateChange is undocumented; storing everything lets the debug
     // dump reveal it by inspection across a post-combat burst.
     // Capped at 50 to survive a full post-combat flush without runaway alloc.
-    // -----------------------------------------------------------------------
     if (data->ev->IsStatechange == ArcDPS::CBTS_APIDELAYED)
     {
         ApiDelayedEvent ev = {};
@@ -195,10 +192,8 @@ static void OnCombatEventInternal(void* aEventArgs, bool isLocal)
     if (data->ev->IsStatechange != ArcDPS::CBTS_NONE)        return;
     if ((ArcDPS::ECombatResult)data->ev->Result != ArcDPS::CBTR_KILLINGBLOW) return;
 
-    // -----------------------------------------------------------------------
-    // Killing blow — store in debug vector only.
+    // --- Killing blow: store in debug vector only ---
     // Trigger logic will live in addon.cpp, consuming from KillingBlows.
-    // -----------------------------------------------------------------------
     {
         KillingBlowEvent ev = {};
         ev.ArcTime     = data->ev->Time;

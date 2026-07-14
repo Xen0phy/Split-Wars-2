@@ -23,8 +23,9 @@
 #include <windows.h>
 
 // ---------------------------------------------------------------------------
-// Forward declaration — defined in entry.cpp / shared.cpp (see note below).
+// Forward declaration
 // ---------------------------------------------------------------------------
+// Defined in entry.cpp / shared.cpp — see note below.
 // ArcDPS populates these when it calls arc_init() on your plugin.  If your
 // addon does not yet call into ArcDPS you can leave these as null/zero and
 // the dump will show "Not connected" for those fields.
@@ -35,7 +36,11 @@
 extern ArcDPS::PluginInfo* ArcDPSExports;   // nullptr until arc_init fires
 
 // ---------------------------------------------------------------------------
-// File-private helpers — one per enum in ArcDPS.h
+// File-private helpers
+// ---------------------------------------------------------------------------
+// One per enum in ArcDPS.h: StateChangeName, IFFName, CombatResultName,
+// ActivationName, BuffRemoveName, BuffCycleName, GWLanguageName, and
+// ContentLocalName.
 // ---------------------------------------------------------------------------
 
 static const char* StateChangeName(ArcDPS::ECombatStateChange sc)
@@ -213,14 +218,14 @@ static const char* ContentLocalName(ArcDPS::EContentLocal cl)
 // ---------------------------------------------------------------------------
 void RenderArcDPSDump()
 {
-    // -------------------------------------------------------------------------
-    // Collection toggle — off by default every session, never persisted.
-    // Everything below this line only ever has data when this is on: it
-    // feeds the "Killing Blows" and event-frequency panels further down,
-    // never the real timer/route/taint logic (that all runs on Mumble/RTAPI
-    // instead). Collection runs for as long as this is on, independent of
-    // whether this tab is open or closed — so this checkbox, not closing
-    // the tab, is what actually stops it.
+    // --- Collection toggle ---
+    // Off by default every session, never persisted. Everything below this
+    // line only ever has data when this is on: it feeds the "Killing Blows"
+    // and event-frequency panels further down, never the real timer/route/
+    // taint logic (that all runs on Mumble/RTAPI instead). Collection runs
+    // for as long as this is on, independent of whether this tab is open or
+    // closed — so this checkbox, not closing the tab, is what actually
+    // stops it.
     //
     // Note: this intentionally does NOT use ImGui::Checkbox's bound-bool
     // form. ArcDPS_Subscribe/Unsubscribe both read-and-flip
@@ -229,7 +234,6 @@ void RenderArcDPSDump()
     // no-op instead of actually (un)subscribing. So a plain local bool
     // drives the checkbox, and the real bool is only ever touched inside
     // Subscribe/Unsubscribe.
-    // -------------------------------------------------------------------------
     bool collectionToggle = ArcDPSCollectionEnabled;
     if (ImGui::Checkbox("Collect ArcDPS Events", &collectionToggle))
     {
@@ -247,11 +251,9 @@ void RenderArcDPSDump()
     ImGui::Separator();
     ImGui::Spacing();
 
-    // -------------------------------------------------------------------------
-    // Availability — check whether arcdps.dll is present in the process.
-    // GetModuleHandleW does not increment the reference count, so no
-    // FreeLibrary is needed.
-    // -------------------------------------------------------------------------
+    // --- Availability ---
+    // Check whether arcdps.dll is present in the process. GetModuleHandleW
+    // does not increment the reference count, so no FreeLibrary is needed.
     if (ImGui::CollapsingHeader("Availability"))
     {
     HMODULE arcMod = GetModuleHandleW(L"arcdps.dll");
@@ -270,9 +272,8 @@ void RenderArcDPSDump()
         ArcDPS::LogArc);
     }
 
-    // -------------------------------------------------------------------------
-    // Struct sizes — useful sanity-check when verifying ABI compatibility.
-    // -------------------------------------------------------------------------
+    // --- Struct sizes ---
+    // Useful sanity-check when verifying ABI compatibility.
     if (ImGui::CollapsingHeader("Struct Sizes"))
     {
     ImGui::Text("sizeof(PluginInfo)   : %zu bytes", sizeof(ArcDPS::PluginInfo));
@@ -300,10 +301,8 @@ void RenderArcDPSDump()
         return buf;
     };
 
-    // -------------------------------------------------------------------------
-    // Last Killing Blow / Current Target / Combat Target
-    // populated by OnCombatSquad() in entry.cpp
-    // -------------------------------------------------------------------------
+    // --- Last Killing Blow / Current Target / Combat Target ---
+    // Populated by OnCombatSquad() in entry.cpp.
     if (ImGui::CollapsingHeader("Killing Blows"))
     {
         static bool filterFoe = true;
@@ -367,6 +366,9 @@ void RenderArcDPSDump()
         }
     }
 
+    // --- Reward Event ---
+    // CBTS_REWARD (realtime: yes) fires when a reward (e.g. loot bag, chest)
+    // is granted; dst_agent = reward id.
     if (ImGui::CollapsingHeader("Reward Event"))
     {
         if (ImGui::Button("Clear##rewardevents"))
@@ -411,13 +413,11 @@ void RenderArcDPSDump()
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Log NPC Update
+    // --- Log NPC Update ---
     // CBTS_LOGNPCUPDATE fires (realtime: yes) when ArcDPS switches which NPC
     // it considers the active log boss.  src_agent is the species id of the
     // new boss; dst_agent is the related agent id; value (as uint32) is the
     // server unix timestamp at the transition.
-    // -------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Log NPC Update"))
     {
         if (ImGui::Button("Clear##lognpcupdate"))
@@ -462,9 +462,7 @@ void RenderArcDPSDump()
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Statechange frequency table — catch-all diagnostic
-    //
+    // --- Statechange frequency table (catch-all diagnostic) ---
     // Every combat event increments a slot in StatechangeFreqLocal[256] or
     // StatechangeFreqSquad[256] BEFORE any specific handler runs, so this
     // table shows the complete picture of what the Nexus bridge actually
@@ -478,7 +476,6 @@ void RenderArcDPSDump()
     //      or another delayed delivery mechanism.
     //   4. Rows coloured orange are values not present in our CBTS enum —
     //      those are the most interesting unknowns.
-    // -------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Statechange Frequency (catch-all)"))
     {
         if (ImGui::Button("Clear##scfreq"))
@@ -570,9 +567,7 @@ void RenderArcDPSDump()
         }
     }
 
-    // -------------------------------------------------------------------------
-    // APIDELAYED — forensic field dump
-    //
+    // --- APIDELAYED (forensic field dump) ---
     // CBTS_APIDELAYED (realtime: yes) fires once per event that ArcDPS deemed
     // unsafe for realtime, delivered in a burst after squad combat ends.
     // The EVTC spec says CBTS_HEALTHPCTUPDATE (value 8) comes through this
@@ -586,7 +581,6 @@ void RenderArcDPSDump()
     //   • Candidates: Value (int32), IFF, Buff, Result, IsActivation,
     //     IsBuffRemove, IsNinety, IsFifty, IsMoving, IsFlanking, PAD61-64.
     //   • Fields matching any known CBTS value are highlighted in yellow.
-    // -------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("APIDELAYED (forensic)"))
     {
         if (ImGui::Button("Clear##apidelayed"))
@@ -812,14 +806,11 @@ void RenderArcDPSDump()
         }
     }
 
-    // =========================================================================
-    // information tables, no live data
-    // =========================================================================
+    // --- Information tables, no live data ---
     if (ImGui::CollapsingHeader("Data Tables - No Live Data"))
     {
-        // -------------------------------------------------------------------------
-        // CombatEvent field layout — handy when parsing raw events in callbacks.
-        // -------------------------------------------------------------------------
+        // --- CombatEvent field layout ---
+        // Handy when parsing raw events in callbacks.
         if (ImGui::CollapsingHeader("CombatEvent Field Layout"))
         {
             // Use a table so offsets and sizes are visually aligned.
@@ -868,9 +859,8 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // ECombatStateChange — full enum table with descriptions.
-        // -------------------------------------------------------------------------
+        // --- ECombatStateChange ---
+        // Full enum table with descriptions.
         if (ImGui::CollapsingHeader("ECombatStateChange"))
         {
             if (ImGui::BeginTable("##statechange", 3,
@@ -955,9 +945,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // EIsFriendFoe
-        // -------------------------------------------------------------------------
+        // --- EIsFriendFoe ---
         if (ImGui::CollapsingHeader("EIsFriendFoe"))
         {
             if (ImGui::BeginTable("##iff", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -978,9 +966,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // ECombatResult
-        // -------------------------------------------------------------------------
+        // --- ECombatResult ---
         if (ImGui::CollapsingHeader("ECombatResult"))
         {
             if (ImGui::BeginTable("##result", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -1007,9 +993,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // ECombatActivation
-        // -------------------------------------------------------------------------
+        // --- ECombatActivation ---
         if (ImGui::CollapsingHeader("ECombatActivation"))
         {
             if (ImGui::BeginTable("##actv", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -1034,9 +1018,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // ECombatBuffRemove
-        // -------------------------------------------------------------------------
+        // --- ECombatBuffRemove ---
         if (ImGui::CollapsingHeader("ECombatBuffRemove"))
         {
             if (ImGui::BeginTable("##buffremove", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -1060,9 +1042,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // ECombatBuffCycle
-        // -------------------------------------------------------------------------
+        // --- ECombatBuffCycle ---
         if (ImGui::CollapsingHeader("ECombatBuffCycle"))
         {
             if (ImGui::BeginTable("##buffcycle", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -1090,9 +1070,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // EGWLanguage
-        // -------------------------------------------------------------------------
+        // --- EGWLanguage ---
         if (ImGui::CollapsingHeader("EGWLanguage"))
         {
             if (ImGui::BeginTable("##lang", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -1116,9 +1094,7 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // EContentLocal
-        // -------------------------------------------------------------------------
+        // --- EContentLocal ---
         if (ImGui::CollapsingHeader("EContentLocal"))
         {
             if (ImGui::BeginTable("##contentlocal", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
@@ -1141,11 +1117,10 @@ void RenderArcDPSDump()
             }
         }
 
-        // -------------------------------------------------------------------------
-        // Plugin exports — the PluginInfo struct this addon hands to ArcDPS.
-        // ArcDPSExports is set during arc_init(); it remains null until then.
-        // Unused due to using Nexus and no integrating ArcDPS directly
-        // -------------------------------------------------------------------------
+        // --- Plugin exports (PluginInfo) ---
+        // The PluginInfo struct this addon hands to ArcDPS. ArcDPSExports is
+        // set during arc_init(); it remains null until then. Unused because
+        // this addon integrates via Nexus, not ArcDPS directly.
         if (ImGui::CollapsingHeader("Plugin Exports (PluginInfo)"))
         {
             if (!ArcDPSExports)

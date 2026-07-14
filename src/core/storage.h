@@ -179,7 +179,8 @@ bool LoadSettings(const std::string& addonDir);
 // ---------------------------------------------------------------------------
 // BuildRouteTree — recursively scans addonDir and returns the root RouteFolder.
 //                  Directories sort before files; both groups sort alphabetically.
-//                  settings.ini is excluded from the results.
+//                  settings.ini is excluded from the results, as are the
+//                  "fonts" and "textures" subdirectories.
 //                  Returns an empty RouteFolder{} if addonDir doesn't exist.
 // ---------------------------------------------------------------------------
 RouteFolder BuildRouteTree(const std::string& addonDir);

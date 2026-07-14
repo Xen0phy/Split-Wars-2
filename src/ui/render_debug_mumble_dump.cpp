@@ -1,4 +1,4 @@
-// render_debug_dump.cpp
+// render_debug_mumble_dump.cpp
 // Implements RenderMumbleDump() — a live read-out of every field in the
 // MumbleLink shared-memory block.
 //
@@ -9,7 +9,11 @@
 #include "render_shared.h" // IWYU pragma: keep
 
 // ---------------------------------------------------------------------------
-// MapTypeName / MountName  (file-private helpers)
+// MapTypeName / MountName
+// ---------------------------------------------------------------------------
+// File-private helpers: map Mumble::EMapType and Mumble::EMountIndex enum
+// values to human-readable display names, used by the Context and Mount
+// dump sections below.
 // ---------------------------------------------------------------------------
 static const char* MapTypeName(Mumble::EMapType t)
 {
@@ -83,18 +87,14 @@ void RenderMumbleDump()
     
     char strBuf[512];
     
-    // -------------------------------------------------------------------------
-    // UI
-    // -------------------------------------------------------------------------
+    // --- UI ---
     if (ImGui::CollapsingHeader("UI"))
     {
         ImGui::Text("UIVersion : %u", ml.UIVersion);
         ImGui::Text("UITick    : %u", ml.UITick);
     }
     
-    // -------------------------------------------------------------------------
-    // Strings
-    // -------------------------------------------------------------------------
+    // --- Strings ---
     if (ImGui::CollapsingHeader("Strings"))
     {
         wToChar(ml.Name, strBuf, sizeof(strBuf));
@@ -103,9 +103,7 @@ void RenderMumbleDump()
         ImGui::Text("Identity : %s", strBuf);
     }
     
-    // -------------------------------------------------------------------------
-    // Avatar (player)
-    // -------------------------------------------------------------------------
+    // --- Avatar (player) ---
     if (ImGui::CollapsingHeader("Avatar"))
     {
         ImGui::Text("Position : %.4f  %.4f  %.4f", ml.AvatarPosition.X, ml.AvatarPosition.Y, ml.AvatarPosition.Z);
@@ -113,9 +111,7 @@ void RenderMumbleDump()
         ImGui::Text("Top      : %.4f  %.4f  %.4f", ml.AvatarTop.X,      ml.AvatarTop.Y,      ml.AvatarTop.Z);
     }
     
-    // -------------------------------------------------------------------------
-    // Camera
-    // -------------------------------------------------------------------------
+    // --- Camera ---
     if (ImGui::CollapsingHeader("Camera"))
     {
         ImGui::Text("Position : %.4f  %.4f  %.4f", ml.CameraPosition.X, ml.CameraPosition.Y, ml.CameraPosition.Z);
@@ -123,9 +119,7 @@ void RenderMumbleDump()
         ImGui::Text("Top      : %.4f  %.4f  %.4f", ml.CameraTop.X,      ml.CameraTop.Y,      ml.CameraTop.Z);
     }
     
-    // -------------------------------------------------------------------------
-    // Context — map / instance
-    // -------------------------------------------------------------------------
+    // --- Context — map / instance ---
     if (ImGui::CollapsingHeader("Context — Map"))
     {
         ImGui::Text("MapID         : %u",   ctx.MapID);
@@ -137,9 +131,7 @@ void RenderMumbleDump()
         ImGui::Text("ContextLength : %u",   ml.ContextLength);
     }
     
-    // -------------------------------------------------------------------------
-    // Context — flags
-    // -------------------------------------------------------------------------
+    // --- Context — flags ---
     if (ImGui::CollapsingHeader("Context — Flags"))
     {
         ImGui::Text("IsMapOpen          : %s", ctx.IsMapOpen          ? "Yes" : "No");
@@ -151,17 +143,13 @@ void RenderMumbleDump()
         ImGui::Text("IsInCombat         : %s", ctx.IsInCombat         ? "Yes" : "No");
     }
     
-    // -------------------------------------------------------------------------
-    // Context — mount
-    // -------------------------------------------------------------------------
+    // --- Context — mount ---
     if (ImGui::CollapsingHeader("Context — Mount"))
     {
         ImGui::Text("MountIndex : %s (%u)", MountName(ctx.MountIndex), (unsigned)ctx.MountIndex);
     }
     
-    // -------------------------------------------------------------------------
-    // Compass
-    // -------------------------------------------------------------------------
+    // --- Compass ---
     if (ImGui::CollapsingHeader("Compass"))
     {
         ImGui::Text("Size           : %u x %u",   ctx.Compass.Width, ctx.Compass.Height);
@@ -171,11 +159,9 @@ void RenderMumbleDump()
         ImGui::Text("Scale          : %.4f",       ctx.Compass.Scale);
     }
     
-    // -------------------------------------------------------------------------
-    // Server address
+    // --- Server address ---
     // Raw bytes — may be sockaddr_in (IPv4) or sockaddr_in6 (IPv6).
     // For IPv4 (family = 2): bytes 0-1 = family, 2-3 = port (BE), 4-7 = IP.
-    // -------------------------------------------------------------------------
     if (ImGui::CollapsingHeader("Server Address"))
     {
         const unsigned char* addr   = ctx.ServerAddress;

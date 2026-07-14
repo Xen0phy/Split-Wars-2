@@ -70,13 +70,18 @@ extern bool ShowSettingsMigrationNotice;
 // ---------------------------------------------------------------------------
 // Nexus / GW2 interface pointers
 // ---------------------------------------------------------------------------
+// Set once during AddonLoad(); see each variable's inline comment for how
+// it's used and what null/unavailable means for that pointer.
+// ---------------------------------------------------------------------------
 extern AddonAPI_t*    APIDefs;    // Nexus API; set in AddonLoad()
 extern Mumble::Data*  MumbleLink; // Mumble shared-memory block; used as fallback data source and for IsMapOpen
 extern RTAPI::RealTimeData* RTAPIData;      // Null when RTAPI is not loaded or has been hot-unloaded
 extern ArcDPS::PluginInfo* ArcDPSExports; // nullptr; set if this addon ever registers with ArcDPS
 
 // ---------------------------------------------------------------------------
-// Addon lifecycle helpers (implemented in addon.cpp and entry.cpp)
+// Addon lifecycle helpers
+// ---------------------------------------------------------------------------
+// Implemented in addon.cpp and entry.cpp.
 // ---------------------------------------------------------------------------
 void RegisterKeybinds();      // Registers all keybinds with Nexus (addon.cpp)
 void DeregisterKeybinds();    // Deregisters all keybinds from Nexus (addon.cpp)
@@ -127,11 +132,16 @@ void SetMumbleFOV(float fov);
 // ---------------------------------------------------------------------------
 // Timers
 // ---------------------------------------------------------------------------
+// The two globally-shared Timer instances; see each variable's inline
+// comment for the difference between them.
+// ---------------------------------------------------------------------------
 extern Timer SpeedrunTimer; // Run timer; paused during load screens
 extern Timer GrandTimer;    // Wall-clock timer; includes load screen time
 
 // ---------------------------------------------------------------------------
 // Route state
+// ---------------------------------------------------------------------------
+// The currently active route, its display name, and where it lives on disk.
 // ---------------------------------------------------------------------------
 extern Route       CurrentRoute;
 extern std::string CurrentRouteName;     // Display name of the active route
@@ -141,6 +151,9 @@ extern std::string AddonDir;             // Addon base directory (settings, rout
 
 // ---------------------------------------------------------------------------
 // History / best run
+// ---------------------------------------------------------------------------
+// All recorded runs for the active route, plus the designated best run that
+// drives the diff column and segment comparisons.
 // ---------------------------------------------------------------------------
 extern std::vector<Split>         BestRun;      // Splits of the designated best run; drives the diff column
 extern std::vector<HistoricalRun> HistoryRuns;  // All recorded runs, newest first
@@ -162,6 +175,8 @@ void ApplyFractalRota();
 // ---------------------------------------------------------------------------
 // Per-run state flags
 // ---------------------------------------------------------------------------
+// Transient state tracked for the current attempt; reset by FullReset().
+// ---------------------------------------------------------------------------
 extern bool   RunFinished;         // Set when a goal trigger fires; cleared by post-run UI actions
 extern double DisplayedGrandTotal; // Grand total shown in the overlay; frozen at goal for MapChange runs
 extern bool   PendingStart;        // Queued MapChange start; fires once the load screen clears
@@ -175,6 +190,7 @@ extern bool   MovementStartArmed;  // Set when a MovementStart trigger is waitin
 // and read by AddonRender() on the render thread — atomic prevents data races.
 // KeybindMutex guards all other timer mutations shared between AddonRender()
 // and the Start / Stop / Reset keybind callbacks.
+// ---------------------------------------------------------------------------
 extern std::atomic<bool> InteractKeyPressed;
 extern std::mutex        KeybindMutex;
 
@@ -200,6 +216,7 @@ void FullReset();
 
 // ---------------------------------------------------------------------------
 // Hotbar (QuickAccess) hide-all toggle state
+// ---------------------------------------------------------------------------
 // Saved when the player hides all windows, restored when they toggle back.
 // ---------------------------------------------------------------------------
 extern bool HotbarWindowsHidden;
@@ -209,6 +226,9 @@ extern bool HotbarSavedShowRouteBrowser;
 
 // ---------------------------------------------------------------------------
 // ArcDPS
+// ---------------------------------------------------------------------------
+// Raw combat-event payloads captured for the debug dump windows, plus a
+// handful of live combat-state flags (HasTarget, LastTarget, InCombat).
 // ---------------------------------------------------------------------------
 struct KillingBlowEvent {
     uint64_t             ArcTime;
@@ -331,6 +351,9 @@ void            StatechangeFreq_Clear();
 
 // ---------------------------------------------------------------------------
 // Debug
+// ---------------------------------------------------------------------------
+// State for the Debug window: visibility, the occlusion-circle radii used
+// by the world renderer, and rolling render-timing averages.
 // ---------------------------------------------------------------------------
 extern bool ShowDebug; // Shows the Debug window
 extern float occludePixelRadius; // Base pixel radius for the character occlusion circle

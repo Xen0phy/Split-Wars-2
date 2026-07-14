@@ -10,13 +10,17 @@
 // ---------------------------------------------------------------------------
 // Nexus / GW2 interface pointers
 // ---------------------------------------------------------------------------
+// See shared.h for what each pointer is used for.
+// ---------------------------------------------------------------------------
 AddonAPI_t*   APIDefs             = nullptr; // Set in AddonLoad(); used everywhere to call Nexus APIs
 Mumble::Data* MumbleLink          = nullptr; // Mumble shared-memory block; used as fallback and for IsMapOpen
 RTAPI::RealTimeData* RTAPIData    = nullptr;
 ArcDPS::PluginInfo* ArcDPSExports = nullptr;
 
 // ---------------------------------------------------------------------------
-// Settings (persisted to settings.ini via settings_table.h)
+// Settings
+// ---------------------------------------------------------------------------
+// Persisted to settings.ini; see settings_table.h for the full list.
 // ---------------------------------------------------------------------------
 #define SETTING(S, Key, Type, Default)              Type Key = Default;
 #define SETTING_ARRAY(S, Key, Size, Defaults)       float Key[Size] = {Defaults};
@@ -32,6 +36,8 @@ bool ShowSettingsMigrationNotice = false;
 
 // ---------------------------------------------------------------------------
 // GameState
+// ---------------------------------------------------------------------------
+// Global instance of the per-frame snapshot; see shared.h for field docs.
 // ---------------------------------------------------------------------------
 GameState GS = {};
 
@@ -49,8 +55,10 @@ GameState GS = {};
 //
 // IsMapOpen is always sourced from Mumble regardless of the active source,
 // as RTAPI does not expose that flag.
-// IsLoading is derived from RTAPI's GameState enum when RTAPI is active;
-// Mumble does not expose a reliable loading flag so it is always false there.
+// IsLoading is derived from RTAPI's GameState enum when RTAPI is active.
+// Mumble doesn't expose a loading flag directly, so when Mumble is the
+// active source, IsLoading is inferred by detecting a stalled UITick —
+// Mumble stops incrementing it during load screens.
 // ---------------------------------------------------------------------------
 static float s_MumbleFOV = 0.873f;              // updated by SetMumbleFOV() via the identity event
 void SetMumbleFOV(float fov) { s_MumbleFOV = fov; }
@@ -108,11 +116,15 @@ void UpdateGameState()
 // ---------------------------------------------------------------------------
 // Timers
 // ---------------------------------------------------------------------------
+// See shared.h for the difference between these two.
+// ---------------------------------------------------------------------------
 Timer SpeedrunTimer; // Measures the run itself; paused during load screens
 Timer GrandTimer;    // Measures wall-clock run time including load screens
 
 // ---------------------------------------------------------------------------
 // Route state
+// ---------------------------------------------------------------------------
+// See shared.h for what each of these holds.
 // ---------------------------------------------------------------------------
 Route       CurrentRoute;
 std::string CurrentRouteName     = "New Route"; // Display name shown in the config and history windows
@@ -123,6 +135,8 @@ std::string AddonDir;                           // Base directory of the addon (
 // ---------------------------------------------------------------------------
 // History / best run data
 // ---------------------------------------------------------------------------
+// See shared.h for what each of these holds.
+// ---------------------------------------------------------------------------
 std::vector<Split>         BestRun;
 std::vector<HistoricalRun> HistoryRuns;
 int                        BestRunIndex = -1; // Index into HistoryRuns; -1 = none set
@@ -131,6 +145,8 @@ int                        MaxHistoryRuns = 100; // 0 = unlimited; loaded per-ro
 
 // ---------------------------------------------------------------------------
 // Per-run state flags
+// ---------------------------------------------------------------------------
+// See shared.h for what each flag means.
 // ---------------------------------------------------------------------------
 bool   RunFinished         = false;
 double DisplayedGrandTotal = 0.0;
@@ -141,11 +157,15 @@ bool   MovementStartArmed  = false;
 // ---------------------------------------------------------------------------
 // Thread-safety
 // ---------------------------------------------------------------------------
+// See shared.h for what each of these guards.
+// ---------------------------------------------------------------------------
 std::atomic<bool> InteractKeyPressed = false;
 std::mutex        KeybindMutex;
 
 // ---------------------------------------------------------------------------
 // Per-checkpoint runtime trigger state
+// ---------------------------------------------------------------------------
+// See shared.h for what this mirrors and how to reset it.
 // ---------------------------------------------------------------------------
 std::vector<CheckpointState> CheckpointStates;
 
@@ -154,9 +174,11 @@ std::vector<CheckpointState> CheckpointStates;
 // ---------------------------------------------------------------------------
 // Resets all per-run state to a clean starting point. Called:
 //   • When the player manually resets via keybind or the Reset button.
-//   • When a new route is loaded or activated.
-//   • When a checkpoint is added or removed in the config window.
-//   • Just before a new run starts (automatic triggers).
+//   • When a new route is loaded, activated, or cleared.
+//   • When a checkpoint is added, removed, reordered, pasted, or otherwise
+//     edited in the config window.
+//   • Just before a new run starts (automatic triggers), and defensively
+//     mid-run if CheckpointStates ever falls out of sync with the route.
 //
 // Does NOT touch: UI visibility flags, display settings, history, or the
 // route definition itself — those persist across resets.
@@ -191,7 +213,8 @@ void FullReset()
 }
 
 // ---------------------------------------------------------------------------
-// Hotbar window-hide state
+// Hotbar (QuickAccess) hide-all toggle state
+// ---------------------------------------------------------------------------
 // Saved when the player hides all windows via the hotbar toggle, so the
 // previous visibility can be restored when they toggle back.
 // ---------------------------------------------------------------------------
@@ -202,6 +225,8 @@ bool HotbarSavedShowRouteBrowser = false;
 
 // ---------------------------------------------------------------------------
 // ArcDPS
+// ---------------------------------------------------------------------------
+// See shared.h for what each event/flag holds.
 // ---------------------------------------------------------------------------
 std::vector<KillingBlowEvent>   KillingBlows;
 std::vector<RewardEvent>        RewardEvents;
@@ -308,6 +333,8 @@ void ApplyFractalRota()
 
 // ---------------------------------------------------------------------------
 // Debug
+// ---------------------------------------------------------------------------
+// See shared.h for what each of these controls.
 // ---------------------------------------------------------------------------
 bool  ShowDebug                = false;
 float occludePixelRadius       = 1000.0f; // Base pixel radius for the character occlusion circle

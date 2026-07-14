@@ -74,9 +74,7 @@ void RenderDebugWindow()
     {
         if (ImGui::BeginTabItem("Route"))
         {
-            // -------------------------------------------------------------------------
-            // Top section — live player and timer state
-            // -------------------------------------------------------------------------
+            // --- Top section — live player and timer state ---
             if (ImGui::BeginTable("##debugtop", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame))
             {
                 ImGui::TableSetupColumn("Player");
@@ -128,9 +126,7 @@ void RenderDebugWindow()
             ImGui::Separator();
             ImGui::Spacing();
 
-            // -------------------------------------------------------------------------
-            // Bottom section — checkpoint list (left) + checkpoint detail (right)
-            // -------------------------------------------------------------------------
+            // --- Bottom section — checkpoint list (left) + checkpoint detail (right) ---
             if (CurrentRoute.Checkpoints.empty())
             {
                 ImGui::TextDisabled("No checkpoints in active route.");
@@ -200,7 +196,8 @@ void RenderDebugWindow()
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    // Spatial fields — hidden for types that have no position.
+                    // --- Spatial fields ---
+                    // Hidden for types that have no position.
                     bool hasCoords = point.TriggerType != ETriggerType::AllCheckpoints &&
                                     point.TriggerType != ETriggerType::MapChange;
 
@@ -230,12 +227,10 @@ void RenderDebugWindow()
                                 inZone ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
                                     : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
                                 "In Zone: %s", inZone ? "Yes" : "No");
-                            // -------------------------------------------------------------------------
-                            // World-to-screen projection
+                            // --- World-to-screen projection ---
                             // Shows where the checkpoint centre projects onto the screen and whether
                             // it is currently visible.  Also draws a confirmation dot in the game world.
                             // Camera data comes from GS regardless of whether RTAPI or Mumble is active.
-                            // -------------------------------------------------------------------------
                             ImGui::Spacing();
                             ImGui::Separator();
                             ImGui::Spacing();
@@ -309,7 +304,7 @@ void RenderDebugWindow()
                     ImGui::Separator();
                     ImGui::Spacing();
 
-                    // Per-checkpoint runtime trigger state.
+                    // --- Per-checkpoint runtime trigger state ---
                     if (cp.IsStart)
                     {
                         ImGui::Text("Trigger State:");

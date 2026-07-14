@@ -187,8 +187,11 @@ void HandleIdentityUpdate(void* aEventArgs)
 //      source; null if RTAPI is not installed).
 //   4. Subscribe to EV_ADDON_LOADED/UNLOADED to keep RTAPIData valid if
 //      RTAPI is hot-loaded or unloaded mid-session.
-//   5. Load persisted settings from disk if a settings file exists.
-//   6. Register the render and options callbacks with Nexus.
+//   5. Load persisted settings from disk if a settings file exists; detect a
+//      version change since the last run and flag the migration notice
+//      either way.
+//   6. Initialize stream fonts, then register the render and options
+//      callbacks with Nexus.
 //   7. Subscribe to EV_MUMBLE_IDENTITY_UPDATED (for camera FOV changes).
 //   8. Upload the hotbar icon textures and add the Quick Access button.
 //   9. Register all keybinds (defined in addon.cpp).

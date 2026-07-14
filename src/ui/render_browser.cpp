@@ -189,8 +189,8 @@ static bool RenderFolderNode(const RouteFolder& folder, bool& dragDropNeedsRefre
 // The root of the addon directory is also a drop target (rendered below the
 // tree as a "[ root ]" label) so routes can be moved back out of sub-folders.
 //
-// Selecting a route closes the browser window automatically and marks the
-// tree dirty so it reflects any external changes next time it is opened.
+// Selecting a route marks the tree dirty so any external changes are
+// picked up on the next frame; the window itself stays open.
 // ---------------------------------------------------------------------------
 void RenderRouteBrowserWindow()
 {

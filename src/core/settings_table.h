@@ -28,15 +28,23 @@
 // ---------------------------------------------------------------------------
 // [Version]
 // ---------------------------------------------------------------------------
+// Last version the addon successfully ran under, used to detect upgrades
+// and decide whether to show a migration notice.
+// ---------------------------------------------------------------------------
 SETTING        (Version,      LastKnownVersion,       int,   0)
 
 // ---------------------------------------------------------------------------
 // [DataSource]
 // ---------------------------------------------------------------------------
+// Which telemetry source (Mumble Link / ArcDPS) drives position and combat
+// state.
+// ---------------------------------------------------------------------------
 SETTING_ENUM   (DataSource, PreferredSource, EDataSource, int, EDataSource::Default)
 
 // ---------------------------------------------------------------------------
 // [UI]
+// ---------------------------------------------------------------------------
+// Visibility toggles for each top-level window.
 // ---------------------------------------------------------------------------
 SETTING        (UI,           ShowTimer,              bool,  true)
 SETTING        (UI,           ShowConfig,             bool,  true)
@@ -49,11 +57,15 @@ SETTING        (UI,           ShowEvaluation,         bool,  false)
 // ---------------------------------------------------------------------------
 // [Zones]
 // ---------------------------------------------------------------------------
+// Distance thresholds for fading zone-checkpoint markers in and out.
+// ---------------------------------------------------------------------------
 SETTING        (Zones,        ZoneFadeStart,          float, 50.0f)
 SETTING        (Zones,        ZoneFadeEnd,            float, 150.0f)
 
 // ---------------------------------------------------------------------------
 // [Timer]
+// ---------------------------------------------------------------------------
+// Display mode and behavior toggles for the main timer overlay.
 // ---------------------------------------------------------------------------
 SETTING_ENUM   (Timer, TimerDisplayMode, TimerMode, int,   TimerMode::Split)
 SETTING        (Timer,        CompactMode,            bool,  false)
@@ -63,6 +75,8 @@ SETTING        (Timer,        ShowStartSplit,         bool,  false)
 // ---------------------------------------------------------------------------
 // [Colors]
 // ---------------------------------------------------------------------------
+// Colors used for split rows, ahead/behind deltas, and the evaluation view.
+// ---------------------------------------------------------------------------
 SETTING_ARRAY  (Colors,       ColorStart,             3,     ARR( 0.2f,  1.0f,  0.2f))
 SETTING_ARRAY  (Colors,       ColorGoal,              3,     ARR( 0.2f,  0.5f,  1.0f))
 SETTING_ARRAY  (Colors,       ColorCheckpoint,        3,     ARR( 1.0f,  1.0f,  1.0f))
@@ -71,7 +85,7 @@ SETTING_ARRAY  (Colors,       ColorAhead,             3,     ARR( 0.2f,  1.0f,  
 SETTING_ARRAY  (Colors,       ColorBehind,            3,     ARR( 1.0f,  0.3f,  0.3f))
 SETTING_ARRAY  (Colors,       ColorBestRow,           3,     ARR( 0.2f,  0.5f,  0.2f))
 
-// Evaluation Colors
+// --- Evaluation colors ---
 SETTING        (Colors,       CoreColorHue,           float, 0.573f)
 SETTING        (Colors,       RotatingColorHue,       float, 0.093f)
 SETTING        (Colors,       ChildColorHue,          float, 0.772f)
@@ -79,6 +93,8 @@ SETTING_ARRAY  (Colors,       HoverColor,             3,     ARR(1.000f, 0.310f,
 
 // ---------------------------------------------------------------------------
 // [Windows]
+// ---------------------------------------------------------------------------
+// Persisted sizes for each resizable window.
 // ---------------------------------------------------------------------------
 SETTING        (Windows,      ConfigWindowW,          float, 800.0f)
 SETTING        (Windows,      ConfigWindowH,          float, 400.0f)
@@ -92,12 +108,16 @@ SETTING        (Windows,      EvaluationWindowH,      float, 640.0f)
 // ---------------------------------------------------------------------------
 // [Evaluation]
 // ---------------------------------------------------------------------------
-SETTING        (Windows,      BarWidth,               float, 42.0f)
-SETTING        (Windows,      BarGap,                 float, 15.0f)
+// Bar geometry for the evaluation-view chart.
+// ---------------------------------------------------------------------------
+SETTING        (Evaluation,   BarWidth,               float, 42.0f)
+SETTING        (Evaluation,   BarGap,                 float, 15.0f)
 
 
 // ---------------------------------------------------------------------------
 // [Streamer]
+// ---------------------------------------------------------------------------
+// Streamer-mode overlay: font sizes, screen anchor, and fill/shadow toggles.
 // ---------------------------------------------------------------------------
 SETTING        (Streamer,     StreamerMode,           bool,  false)
 SETTING        (Streamer,     StreamerFontSize,       int,   32)
@@ -111,6 +131,8 @@ SETTING_STRING (Streamer,     StreamerFontName,       "")
 // ---------------------------------------------------------------------------
 // [CrashMode]
 // ---------------------------------------------------------------------------
+// Digit shadow/fill/overlay colors for Crash Mode's oversized timer display.
+// ---------------------------------------------------------------------------
 SETTING        (CrashMode,    CrashMode,              bool,  false)
 SETTING_ARRAY  (CrashMode,    CMDigitShadowColor,     3,     ARR( 0.0f,  0.0f,  0.0f))
 SETTING_ARRAY  (CrashMode,    CMDigitShadowOffset,    2,     ARR( 0.0f,  1.0f))
@@ -119,10 +141,13 @@ SETTING_ARRAY  (CrashMode,    CMDigitBaseColor,       3,     ARR( 1.0f,  0.45f, 
 SETTING_ARRAY  (CrashMode,    CMDigitOverlay,         3,     ARR( 0.9f,  0.0f,  0.0f))
 
 // ---------------------------------------------------------------------------
-// [Speedo] — replace existing [Speedo] block in settings_table.h with this
+// [Speedo]
+// ---------------------------------------------------------------------------
+// Tachometer/speedometer overlay: visibility, label, geometry, gradient
+// stops, needle, and face texture.
 // ---------------------------------------------------------------------------
 
-// General
+// --- General ---
 SETTING        (Speedo,       ShowSpeedo,                 bool,   false)
 // Mount visibility mask — bit N = show speedo when on mount index N
 // Bit 0 = unmounted, bits 1-10 = mount order from EMountIndex
@@ -131,7 +156,7 @@ SETTING        (Speedo,       SpeedoMountMask,            int,   -1)
 SETTING        (Speedo,       SpeedoTachometer,           bool,   false)
 SETTING        (Speedo,       SpeedoEditMode,             bool,   false)
 
-// Label
+// --- Label ---
 SETTING        (Speedo,       SpeedoLabelVisible,         bool,   true)
 SETTING_STRING (Speedo,       SpeedoFontName,             "")
 SETTING        (Speedo,       SpeedoFontSize,             float,  24.0f)
@@ -139,18 +164,19 @@ SETTING        (Speedo,       SpeedoFontSize,             float,  24.0f)
 SETTING        (Speedo,       SpeedoShowUnit,             bool,   true)
 SETTING        (Speedo,       SpeedUnit,                  int,    0)  // 0=km/h, 1=mph, 2=u/s
 
-// Window position
+// --- Window position ---
 SETTING        (Speedo,       SpeedoWindowX,              float, -1.0f)
 SETTING        (Speedo,       SpeedoWindowY,              float, -1.0f)
 SETTING        (Speedo,       SpeedoLabelX,               float,  100.0f)
 SETTING        (Speedo,       SpeedoLabelY,               float,  300.0f)
 
-// Geometry
+// --- Geometry ---
 SETTING        (SpeedoArc,    SpeedoArcRotation,          float,  270.0f)
 SETTING        (SpeedoArc,    SpeedoArcAngle,             float,  60.0f)
 SETTING        (SpeedoArc,    SpeedoArcLength,            float,  400.0f)
 
-// Color + thickness stops (stop 1 always enabled at pos 0)
+// --- Color + thickness stops ---
+// Stop 1 is always enabled, fixed at position 0.
 SETTING_ARRAY  (SpeedoArc,    SpeedoStop1Color,           4,      ARR(0.0f, 0.78f, 1.0f, 1.0f))
 SETTING        (SpeedoArc,    SpeedoStop1Thickness,       float,  2.0f)
 
@@ -176,15 +202,16 @@ SETTING        (SpeedoArc,    SpeedoGradientSmooth,       bool,   true)
 // position. SpeedoGradientSmooth still controls fade-vs-step in either mode.
 SETTING        (SpeedoArc,    SpeedoGradientWholeArc,     bool,   false)
 
-// Arc rendering (background arc)
-SETTING        (SpeedoArc,    SpeedoArcBgOpacity,         float,  1.0f) // Opacity of the background arc/line only
+// --- Arc rendering ---
+// Background arc/line only.
+SETTING        (SpeedoArc,    SpeedoArcBgOpacity,         float,  1.0f)
 SETTING        (SpeedoArc,    SpeedoArcBgWidth,           float,  2.0f)
 
-// Needle
+// --- Needle ---
 SETTING        (SpeedoNeedle, SpeedoNeedleVisible,        bool,   false)
 SETTING        (SpeedoNeedle, SpeedoNeedleWidth,          float,  1.5f)
 
-// Needle texture
+// --- Needle texture ---
 SETTING        (SpeedoNeedle, SpeedoNeedleTexEnabled,     bool,   false)
 SETTING        (SpeedoNeedle, SpeedoPDistance,            float,  0.0f)
 SETTING_STRING (SpeedoNeedle, SpeedoNeedleTexPath,        "")
@@ -198,16 +225,16 @@ SETTING        (SpeedoNeedle, SpeedoNeedleTexAngleOffset, float,  180.0f)
 SETTING        (SpeedoNeedle, SpeedoNeedleTexPivotX,      float, -1.0f)
 SETTING        (SpeedoNeedle, SpeedoNeedleTexPivotY,      float, -1.0f)
 
-// Physics
+// --- Physics ---
 SETTING        (SpeedoNeedle, SpeedoSpringK,              float,  12.0f)
 SETTING        (SpeedoNeedle, SpeedoDamping,              float,  6.0f)
 
-// Peak hold
+// --- Peak hold ---
 SETTING        (SpeedoNeedle, SpeedoPeakHoldEnabled,      bool,   false)
 SETTING        (SpeedoNeedle, SpeedoPeakHoldTime,         float,  2.0f)
 SETTING        (SpeedoNeedle, SpeedoPeakHoldSize,         float,  10.0f)
 
-// Face texture
+// --- Face texture ---
 SETTING        (SpeedoFace,   SpeedoFaceEnabled,          bool,   false)
 SETTING_STRING (SpeedoFace,   SpeedoFacePath,             "")
 SETTING        (SpeedoFace,   SpeedoFaceScale,            float,  1.0f)

@@ -38,32 +38,10 @@
 #include <unordered_map>
 
 // ---------------------------------------------------------------------------
-// WorldToScreen
-// ---------------------------------------------------------------------------
-// Projects a world-space point (wx, wy, wz) onto screen space (sx, sy).
-// Returns false when the point is behind the camera or far off-screen so
-// callers can skip drawing that segment.
-//
-// The projection is a standard perspective transform built from scratch
-// using MumbleLink's camera position and front vector, because GW2 doesn't
-// expose a projection matrix directly.
-//
-// Steps:
-//   1. Normalise the camera forward vector.
-//   2. Derive the camera's right vector (rx, ry, rz) by crossing forward
-//      with world-up (0,1,0).  Special-case: if the camera is nearly
-//      straight up or down, use world-right (1,0,0) to avoid a zero cross.
-//   3. Derive the camera's up vector (tx, ty, tz) as forward × right.
-//   4. Transform the world-space offset into camera space by projecting
-//      onto the three camera basis vectors.
-//   5. Apply a perspective divide using the horizontal FOV, then remap
-//      from [-1,1] NDC to pixel coordinates.
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // BuildCameraBasis
 // ---------------------------------------------------------------------------
 // Does the camera-dependent, but dot-independent, work that WorldToScreen()
-// used to redo on every single call: normalising the forward vector,
+// redoes on every single call: normalising the forward vector,
 // deriving right/up via cross products, and computing the FOV-derived
 // perspective factor. All of this only depends on the camera and the
 // display size for the current frame, so it only needs to run once per
@@ -179,10 +157,10 @@ static bool RoutePointIsSet(const RoutePoint& point)
 // ---------------------------------------------------------------------------
 // CalcOcclusionState
 // ---------------------------------------------------------------------------
-// Computed once per frame in RenderZones() (not once per zone as before) and
-// passed into both zone renderers so player-occlusion logic doesn't have to
-// be duplicated. Takes the already-built per-frame CameraBasis so it doesn't
-// pay for its own basis reconstruction either.
+// Computed once per frame in RenderZones() and passed into both zone
+// renderers so player-occlusion logic isn't duplicated per zone. Takes the
+// already-built per-frame CameraBasis so it doesn't pay for its own basis
+// reconstruction either.
 // ---------------------------------------------------------------------------
 OcclusionState CalcOcclusionState(const CameraBasis& basis)
 {
@@ -250,10 +228,10 @@ constexpr float PIf = 3.14159265358979323846f;
 // Every camera-independent per-dot value for a sphere zone — the unit
 // direction on the sphere, the band falloff, and the raw longitude needed
 // by the CircleInteract rotating gap — depends only on the zone's dot count
-// and band parameters, never on the camera or player position. Previously
-// RenderZoneCircle recomputed asin/sin/cos for every dot on every frame;
-// now that work happens once and is reused until the config actually
-// changes (e.g. the user drags a band slider in the route editor).
+// and band parameters, never on the camera or player position. That work is
+// computed once and cached here rather than recomputed inside the per-dot
+// render loop, and stays valid until the config actually changes (e.g. the
+// user drags a band slider in the route editor).
 //
 // The cache is keyed by the RoutePoint's address, since each checkpoint's
 // Point lives at a stable address in CurrentRoute.Checkpoints for the
@@ -363,12 +341,12 @@ static const std::vector<SpherePoint>& GetSpherePoints(const RoutePoint& point, 
 // Callers should skip this entirely (not just pass alpha 0) whenever a
 // dot's alpha is already zero before occlusion — at high dot densities a
 // large fraction of dots are faded out by the band edge or distance fade,
-// and every one of those previously still paid for a full draw call.
+// and there's no reason to pay for a draw call for any of those.
 // ---------------------------------------------------------------------------
 // Both zone renderers always draw at this fixed pixel radius, so the ring
 // geometry is entirely camera/data-independent and can be baked once here
-// instead of being recomputed (radius multiply + outerScale divide) on
-// every single one of the up-to-100k dots drawn per frame.
+// rather than every one of the up-to-100k dots drawn per frame doing its
+// own radius multiply.
 constexpr float DOT_RADIUS = 3.0f;
 
 namespace
@@ -476,12 +454,9 @@ static inline void PrimAddFilledDotFan(ImDrawList* dl, float cx, float cy, int r
     // Anti-aliasing fringe: Dear ImGui's own circle/polygon fill isn't just
     // a flat-shaded fan — it adds a ~1px ring of vertices that fade to
     // alpha 0, which is what makes small shapes read as smooth instead of
-    // faceted. Dropping that (as the first version of this function did)
-    // is what made the 3px dots look edgy once AddCircleFilled's own
-    // tessellation/AA path was bypassed for speed. This restores the same
-    // visual technique by hand: an interior fan at full alpha, plus a
-    // second ring one unit further out at alpha 0, stitched together with
-    // a thin band of triangles.
+    // faceted. This reproduces that by hand: an interior fan at full alpha,
+    // plus a second ring one unit further out at alpha 0, stitched together
+    // with a thin band of triangles.
 
     const int ringVtx  = kDotSegments;
     const int vtxCount = 1 + ringVtx * 2;  // centre + solid ring + fringe ring
@@ -636,7 +611,7 @@ void RenderZoneCircle(const RoutePoint& point, float r, float g, float b,
     // feather band so the cut fades in/out rather than clipping hard.
     // These constants (and rotOffset, which only depends on elapsed time)
     // are the same for every dot this frame, so they're computed once here
-    // rather than being recomputed inside the per-dot loop as before.
+    // rather than inside the per-dot loop below.
     const bool  isInteract = (point.TriggerType == ETriggerType::CircleInteract);
     const float gapRad     = 90.0f * (PIf / 180.0f); // degrees of arc to hide
     const float featherRad = 15.0f * (PIf / 180.0f); // soft fade either side
@@ -747,8 +722,7 @@ void RenderZonePlane(const RoutePoint& point, float r, float g, float b,
     int   cols = std::max(2, (int)(point.RadiusWidth / DOT_SPACING) + 1);
     int   rows = std::max(2, (int)((bandUp + bandDown) / DOT_SPACING) + 1);
 
-    // Color is constant for the whole zone — only alpha varies per dot —
-    // so pack it to 8-bit once here instead of re-casting on every dot.
+    // Pack color to 8-bit once (only alpha varies per dot below).
     const int r255 = (int)(r * 255);
     const int g255 = (int)(g * 255);
     const int b255 = (int)(b * 255);
@@ -834,8 +808,7 @@ void RenderZoneMap(const RoutePoint& point, float r, float g, float b)
     const float POWER        = 1.5f;
     const float MouseRepelRadius = 50.0f;
 
-    // Color is constant for the whole zone — only alpha varies per dot —
-    // so pack it to 8-bit once here instead of re-casting on every dot.
+    // Pack color to 8-bit once (only alpha varies per dot below).
     const int r255 = (int)(r * 255);
     const int g255 = (int)(g * 255);
     const int b255 = (int)(b * 255);
@@ -920,10 +893,8 @@ void RenderZones()
         dl->PushTextureID((ImTextureID)s_dotTexture->Resource);
 
     // Camera basis and player-occlusion state are both genuinely once-per-
-    // frame quantities. Previously each zone rebuilt them independently
-    // (CalcOcclusionState() called its own WorldToScreen(), which in turn
-    // rebuilt the full camera basis from scratch); now it happens exactly
-    // once here and gets threaded through every zone this frame.
+    // frame quantities, computed exactly once here and threaded through
+    // every zone this frame rather than each zone rebuilding them itself.
     CameraBasis    basis = BuildCameraBasis();
     OcclusionState os    = CalcOcclusionState(basis);
 

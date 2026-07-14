@@ -16,6 +16,7 @@
 
 // ---------------------------------------------------------------------------
 // Keybind callbacks
+// ---------------------------------------------------------------------------
 // Each function below is called by Nexus whenever the matching keybind
 // fires.  The aIsRelease parameter is true when the key is released and
 // false when it is first pressed.  Most actions should fire on press
@@ -30,6 +31,7 @@ static void OnInteractKey(const char* aIdentifier, bool aIsRelease)
         InteractKeyPressed = true;
 }
 
+// ---------------------------------------------------------------------------
 // TrimHistory
 // ---------------------------------------------------------------------------
 // Removes the oldest unprotected runs until the list is within MaxHistoryRuns.
@@ -70,6 +72,7 @@ void TrimHistory()
     }
 }
 
+// ---------------------------------------------------------------------------
 // RecordRun
 // ---------------------------------------------------------------------------
 // Shared run-finalization logic used by both the manual Start/Stop keybind
@@ -292,6 +295,7 @@ static bool PointTriggered(const Vector3& prevPos, const Vector3& currPos,
 
 // ---------------------------------------------------------------------------
 // DrawIndentedNotice
+// ---------------------------------------------------------------------------
 // Renders a plain "\n"-separated string from version.h as a bulleted,
 // indented list. Indentation depth is inferred from each line's leading
 // spaces (4 spaces = one level), since ImGui::TextWrapped() does not
@@ -442,9 +446,7 @@ void AddonRender()
         currIsDowned = (state & (uint32_t)RTAPI::ECharacterState::IsDowned)  != 0;
     }
 
-    // -------------------------------------------------------------------------
-    // CombatArena trigger helper (lambda, defined inline for access to frame state)
-    //
+    // --- CombatArena trigger helper (lambda, inline for access to frame state) ---
     // Advances a CombatTriggerState one frame and returns true when the
     // combat segment is considered finished.  A segment is "finished" when:
     //   • The player leaves the zone while still in combat, OR
@@ -465,7 +467,6 @@ void AddonRender()
     // NOTE: this function only advances the Armed → GracePending → finished
     // state machine. Recording "Combat Start" and "Combat End" splits is
     // the caller's responsibility.
-    // -------------------------------------------------------------------------
     auto TickCombat = [&](CombatTriggerState& cs, const RoutePoint& point,
                           bool onCorrectMap, bool inCircle) -> bool
     {
@@ -476,11 +477,9 @@ void AddonRender()
 
         if (cs.finished) return false;
 
-        // -----------------------------------------------------------------
-        // RTAPI path: handle revive rising edge regardless of cs.active.
+        // --- RTAPI path: handle revive rising edge regardless of cs.active ---
         // If the player was dead last frame and is alive this frame, fire a
         // clean combat end so the timer advances past the tainted segment.
-        // -----------------------------------------------------------------
         if (GS.ActiveSource == EDataSource::RTAPI)
         {
             bool revivedThisFrame = currIsAlive && !prevIsAlive;
@@ -507,9 +506,7 @@ void AddonRender()
             if (cs.active && !currIsAlive) return false;
         }
 
-        // -----------------------------------------------------------------
-        // Not yet active — wait for a rising combat edge inside the zone.
-        // -----------------------------------------------------------------
+        // --- Not yet active: wait for a rising combat edge inside the zone ---
         if (!cs.active)
         {
             bool risingEdge = currInCombat && !prevInCombat;
@@ -523,9 +520,7 @@ void AddonRender()
             return false;
         }
 
-        // -----------------------------------------------------------------
-        // Armed: player is in combat inside the zone.
-        // -----------------------------------------------------------------
+        // --- Armed: player is in combat inside the zone ---
         if (cs.state == ECombatState::Armed)
         {
             // Left the zone while still in combat — trigger immediately.
@@ -548,9 +543,7 @@ void AddonRender()
             return false;
         }
 
-        // -----------------------------------------------------------------
-        // GracePending: combat dropped, waiting to see if it comes back.
-        // -----------------------------------------------------------------
+        // --- GracePending: combat dropped, waiting to see if it comes back ---
         else if (cs.state == ECombatState::GracePending)
         {
             auto now = std::chrono::steady_clock::now();
@@ -633,12 +626,10 @@ void AddonRender()
         return false;
     };
 
-    // -------------------------------------------------------------------------
-    // Loading screen detection
+    // --- Loading screen detection ---
     // GS.IsLoading is set by UpdateGameState() each frame. With RTAPI it
     // reflects GameState != Gameplay directly; with Mumble it is derived from
     // UITick stalling (UITick stops incrementing during load screens).
-    // -------------------------------------------------------------------------
     bool isLoading = GS.IsLoading;
 
     // Convenience pointers to the designated start checkpoint and the
@@ -650,10 +641,8 @@ void AddonRender()
     CheckpointState* startCp = GetStart(CurrentRoute);
     CheckpointState* mapChangeGoalCp = GetGoalOfType(CurrentRoute, ETriggerType::MapChange);
 
-    // -------------------------------------------------------------------------
-    // Main logic — held under KeybindMutex so timer calls here and in keybind
-    // callbacks (Start/Stop/Reset) don't race each other.
-    // -------------------------------------------------------------------------
+    // --- Main logic (held under KeybindMutex) ---
+    // Timer calls here and in keybind callbacks (Start/Stop/Reset) don't race each other.
     {
         std::lock_guard<std::mutex> lock(KeybindMutex);
 
@@ -712,7 +701,7 @@ void AddonRender()
             if (CheckpointStates.size() != CurrentRoute.Checkpoints.size())
                 FullReset();
 
-            // ── Unified per-checkpoint trigger loop ──────────────────────────────
+            // --- Unified per-checkpoint trigger loop ---
             //
             // Every checkpoint — start, goal, intermediate — is evaluated in one
             // pass.  IsStart / IsGoal flags drive the timer start/stop actions;
@@ -727,7 +716,6 @@ void AddonRender()
             // Goal checkpoint: on trigger → stop timers, record run.
             //
             // Intermediate checkpoint: on trigger → record split (once per run).
-            // ─────────────────────────────────────────────────────────────────────
             for (int i = 0; i < (int)CheckpointStates.size(); i++)
             {
                 CheckpointState& cs   = CheckpointStates[i];
@@ -783,7 +771,7 @@ void AddonRender()
                     pt.TriggerType == ETriggerType::CombatArena) &&
                     IsWithinRange(currPos, pt);
 
-                // ── START checkpoint ──────────────────────────────────────────────
+                // --- START checkpoint ---
                 bool prevWasInCircle = cs.wasInCircle;
                 if (cs.IsStart)
                 {
@@ -914,7 +902,7 @@ void AddonRender()
                         continue; // Start-only checkpoint handled — move to next.
                 }
 
-                // ── GOAL and INTERMEDIATE checkpoints ────────────────────────────
+                // --- GOAL and INTERMEDIATE checkpoints ---
                 // Both are skipped during load screens.
                 if (isLoading || !SpeedrunTimer.IsRunning())
                 {
@@ -989,7 +977,7 @@ void AddonRender()
                 if (!fired || cs.triggered)
                     continue;
 
-                // ── GOAL ─────────────────────────────────────────────────────────
+                // --- GOAL ---
                 if (cs.IsGoal)
                 {
                     // For CombatArena goals, check for a tainted run before accepting.
@@ -1059,7 +1047,7 @@ void AddonRender()
                     break; // Run is over — no need to evaluate further checkpoints.
                 }
 
-                // ── INTERMEDIATE checkpoint ───────────────────────────────────────
+                // --- INTERMEDIATE checkpoint ---
                 if (pt.TriggerType == ETriggerType::CombatArena)
                 {
                     Split s;

@@ -12,7 +12,8 @@
 //     2. Current segment row   — the live/in-progress segment at the bottom
 //                                of the split list (shown while running, or when
 //                                the run finished with a plain goal — not
-//                                AllCheckpoints and not a manual stop).
+//                                AllCheckpoints, not CombatArena, and not a
+//                                manual stop).
 //     3. Total row             — the cumulative run time; hovering shows the
 //                                grand total (with load screens) as a tooltip.
 //     4. Grand Total row       — load-inclusive time, shown when enabled in
@@ -54,11 +55,10 @@ void RenderTimerOverlay()
     char        buf[32];
     char        diffBuf[32];
 
-    // -------------------------------------------------------------------------
-    // Compact mode — single line, no split table
-    // Shows milliseconds only when the run is finished.
-    // Color: ColorAhead/ColorBehind vs best total time while running/finished; grey when idle.
-    // -------------------------------------------------------------------------
+    // --- Compact mode ---
+    // Single line, no split table. Shows milliseconds only when the run is
+    // finished. Color: ColorAhead/ColorBehind vs best total time while
+    // running/finished; grey when idle.
     if (CompactMode)
     {
         FormatTime(buf, sizeof(buf), elapsed, ShowRunningMillis);
@@ -69,11 +69,10 @@ void RenderTimerOverlay()
     }
     else
     {
-        // -------------------------------------------------------------------------
-        // Full mode — split table
-        // The Diff column is only added when a best run exists to compare against.
-        // Column order: [Diff] | Time | Name
-        // -------------------------------------------------------------------------
+        // --- Full mode ---
+        // Split table. The Diff column is only added when a best run exists to
+        // compare against. Column order: [Diff] | Time | Name
+
         // Hoisted here (were previously inside BeginTable) so they remain in
         // scope for the "Save as best" handler further down. goalCp is used
         // for display purposes (its name / whether a goal is set at all),
@@ -173,10 +172,11 @@ void RenderTimerOverlay()
 
             // (goalCp / goalIsAllCheckpoints / goalIsCombatArena / manualStop are declared above BeginTable)
 
-            // Current segment row (live or finished-but-no-goal-split)
-            // Shown while running, and when the run has finished without a self-contained
-            // final split. Excluded: AllCheckpoints (generates its own split), CombatArena
-            // goals (inject "X Combat End" directly into splits), and manual stops.
+            // --- Current segment row ---
+            // Live, or finished-but-no-goal-split. Shown while running, and when
+            // the run has finished without a self-contained final split. Excluded:
+            // AllCheckpoints (generates its own split), CombatArena goals (inject
+            // "X Combat End" directly into splits), and manual stops.
             if (running || (finished && !goalIsAllCheckpoints && !goalIsCombatArena && !manualStop))
             {
                 // Segment time = elapsed since the last recorded split (or from 0 if
@@ -241,11 +241,10 @@ void RenderTimerOverlay()
                     ImGui::TextDisabled("%s", (goalCp && goalCp->Name[0] != '\0') ? goalCp->Name : "Goal");
             }
 
-            // -------------------------------------------------------------------------
-            // Total row — cumulative run time
-            // Only shown once at least one split has been recorded.
-            // Hovering the time shows the grand total (load-inclusive) as a tooltip.
-            // -------------------------------------------------------------------------
+            // --- Total row ---
+            // Cumulative run time. Only shown once at least one split has been
+            // recorded. Hovering the time shows the grand total (load-inclusive)
+            // as a tooltip.
             // In Split mode every row already shows cumulative time, so the row
             // immediately above Total is always identical to it — hide the duplicate.
             if ((running || finished) && numSplits > 0 && TimerDisplayMode != TimerMode::Split)
@@ -291,10 +290,9 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("Total");
             }
 
-            // -------------------------------------------------------------------------
-            // Grand Total row — load-inclusive time, only when enabled in settings
-            // Shown as a dimmed row beneath Total so it doesn't distract mid-run.
-            // -------------------------------------------------------------------------
+            // --- Grand Total row ---
+            // Load-inclusive time, only when enabled in settings. Shown as a
+            // dimmed row beneath Total so it doesn't distract mid-run.
             if (ShowGrandTotal && (running || finished) && grand > 0.0)
             {
                 ImGui::TableNextRow();
@@ -315,8 +313,9 @@ void RenderTimerOverlay()
             ImGui::EndTable();
         }
 
-        // Idle placeholder — shown when the timer has never started and no route
-        // is active yet, so the window isn't just a blank floating box.
+        // --- Idle placeholder ---
+        // Shown when the timer has never started and no route is active yet, so
+        // the window isn't just a blank floating box.
         if (!running && !finished)
         {
             ImGui::TextDisabled("00:00:00.000");
@@ -324,11 +323,10 @@ void RenderTimerOverlay()
                 ImGui::TextDisabled("No route set");
         }
 
-        // -------------------------------------------------------------------------
-        // Post-run panel — shown after a run finishes via a goal trigger.
-        // "Save as best" promotes this run's splits to BestRun and persists it.
-        // "Reset Timer"  clears all state ready for the next attempt.
-        // -------------------------------------------------------------------------
+        // --- Post-run panel ---
+        // Shown after a run finishes via a goal trigger. "Save as best" promotes
+        // this run's splits to BestRun and persists it. "Reset Timer" clears all
+        // state ready for the next attempt.
         if (finished && RunFinished)
         {
             ImGui::Spacing();

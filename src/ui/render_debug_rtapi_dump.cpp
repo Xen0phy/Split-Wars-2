@@ -11,6 +11,10 @@
 // ---------------------------------------------------------------------------
 // File-private helpers
 // ---------------------------------------------------------------------------
+// Map RTAPI enum values (EGameState, EGameLanguage, ETimeOfDay, EMapType,
+// EGroupType) to human-readable display names, plus a bitmask-flag test for
+// ECharacterState. Used by the dump sections below.
+// ---------------------------------------------------------------------------
 static const char* GameStateName(RTAPI::EGameState s)
 {
     switch (s)
@@ -111,9 +115,7 @@ void RenderRTAPIDump()
 
     const RTAPI::RealTimeData& rt = *RTAPIData;
 
-    // -------------------------------------------------------------------------
-    // Game
-    // -------------------------------------------------------------------------
+    // --- Game ---
     if (ImGui::CollapsingHeader("Game"))
     {
         ImGui::Text("GameBuild : %u",    rt.GameBuild);
@@ -121,9 +123,7 @@ void RenderRTAPIDump()
         ImGui::Text("Language  : %s (%u)", GameLanguageName(rt.Language), (unsigned)rt.Language);
     }
 
-    // -------------------------------------------------------------------------
-    // World / Instance
-    // -------------------------------------------------------------------------
+    // --- World / Instance ---
     if (ImGui::CollapsingHeader("World"))
     {
         ImGui::Text("TimeOfDay : %s (%u)", TimeOfDayName(rt.TimeOfDay), (unsigned)rt.TimeOfDay);
@@ -135,9 +135,8 @@ void RenderRTAPIDump()
             rt.Cursor[0], rt.Cursor[1], rt.Cursor[2]);
     }
 
-    // -------------------------------------------------------------------------
-    // Squad markers — only show non-zero ones to reduce noise.
-    // -------------------------------------------------------------------------
+    // --- Squad markers ---
+    // Only shows non-zero ones to reduce noise.
     if (ImGui::CollapsingHeader("Squad Markers"))
     { 
         bool anySet = false;
@@ -156,18 +155,14 @@ void RenderRTAPIDump()
             ImGui::TextDisabled("  (all markers unset)");
     }
 
-    // -------------------------------------------------------------------------
-    // Group
-    // -------------------------------------------------------------------------
+    // --- Group ---
     if (ImGui::CollapsingHeader("Group"))
     {
         ImGui::Text("GroupType        : %s (%u)", GroupTypeName(rt.GroupType), (unsigned)rt.GroupType);
         ImGui::Text("GroupMemberCount : %u",      rt.GroupMemberCount);
     }
 
-    // -------------------------------------------------------------------------
-    // Player
-    // -------------------------------------------------------------------------
+    // --- Player ---
     if (ImGui::CollapsingHeader("Player"))
     {   
         ImGui::Text("AccountName   : %s", rt.AccountName);
@@ -183,9 +178,8 @@ void RenderRTAPIDump()
         ImGui::Text("Effective Level     : %u", rt.CharacterEffectiveLevel);
     }
 
-    // -------------------------------------------------------------------------
-    // Character state — bitmask, show each flag individually.
-    // -------------------------------------------------------------------------
+    // --- Character state ---
+    // Bitmask — show each flag individually.
     if (ImGui::CollapsingHeader("Character State"))
     {   
         ImGui::Text("IsAlive      : %s", CharState(rt.CharacterState, RTAPI::ECharacterState::IsAlive)      ? "Yes" : "No");
@@ -197,9 +191,7 @@ void RenderRTAPIDump()
         ImGui::Text("IsFlying     : %s", CharState(rt.CharacterState, RTAPI::ECharacterState::IsFlying)     ? "Yes" : "No");
     }
 
-    // -------------------------------------------------------------------------
-    // Camera
-    // -------------------------------------------------------------------------
+    // --- Camera ---
     if (ImGui::CollapsingHeader("Camera"))
     {   ImGui::Text("Position     : %.4f  %.4f  %.4f",
             rt.CameraPosition[0], rt.CameraPosition[1], rt.CameraPosition[2]);

@@ -16,6 +16,8 @@
 // ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
+// Pixel dimensions and spacing for one section window (header bar + time row).
+// ---------------------------------------------------------------------------
 static constexpr float SSW         = 280.0f;
 static constexpr float SHEADER_H   = 22.0f;
 static constexpr float STIME_ROW_H = 44.0f;
@@ -30,8 +32,9 @@ static constexpr float ANIM_DURATION     = 0.4f; // seconds for slide-out
 // ---------------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------------
-
-// Style-derived colors -- read at render time, follow Nexus theme automatically
+// Style-derived color accessors (read at render time, so they follow the
+// active Nexus theme automatically) and helpers to convert them to ImU32.
+// ---------------------------------------------------------------------------
 static ImVec4 SC_Bg()         { return ImGui::GetStyle().Colors[ImGuiCol_WindowBg];     }
 static ImVec4 SC_HeaderBg()   { return ImGui::GetStyle().Colors[ImGuiCol_TitleBg];      }
 static ImVec4 SC_TextHeader() { return ImGui::GetStyle().Colors[ImGuiCol_Text];         }
@@ -48,11 +51,15 @@ static ImU32 SToU32Alpha(ImVec4 c, float a)
 // ---------------------------------------------------------------------------
 // Anchor position
 // ---------------------------------------------------------------------------
+// Screen position of the draggable anchor section (the first/topmost window
+// in the stack); persisted to StreamerAnchor[] whenever it moves.
+// ---------------------------------------------------------------------------
 static ImVec2 s_AnchorPos = { 10.0f, 10.0f };
 static bool   s_AnchorInitialised = false;
 
 // ---------------------------------------------------------------------------
 // Outgoing split animation state
+// ---------------------------------------------------------------------------
 // When splitStart advances (a split is pushed off the top), we capture its
 // display data here and animate it sliding upward + fading out.
 // Only one slot needed since splits are evicted one at a time.
@@ -76,7 +83,11 @@ static OutgoingSlot s_Outgoing;
 static int          s_LastSplitStart = -1;
 
 // ---------------------------------------------------------------------------
-// Drawing helpers
+// SDrawHeaderBarAlpha
+// ---------------------------------------------------------------------------
+// Draws one section's header bar: background fill, left accent stripe, and
+// the label text, all faded by alpha. Used directly by the fade-out path
+// and wrapped by SDrawHeaderBar() for the normal (alpha = 1) case.
 // ---------------------------------------------------------------------------
 static void SDrawHeaderBarAlpha(ImDrawList* dl, ImVec2 pos, float width,
                                 const char* label, ImVec4 accent, float alpha,
@@ -96,13 +107,15 @@ static void SDrawHeaderBarAlpha(ImDrawList* dl, ImVec2 pos, float width,
 }
 
 // ---------------------------------------------------------------------------
-// SFontSet -- the five ImFont* pointers derived from the user's chosen size.
+// SFontSet
+// ---------------------------------------------------------------------------
+// The five ImFont* pointers derived from the user's chosen size S.
 //
-//   mainFont        h:m:s  of the running time          (chosen size, e.g. 36)
-//   mainMillisFont  .xxx   of the running time          (chosen - 2,  e.g. 34)
-//   compFont        h:m:s  of the comparison / diff     (chosen - 2,  e.g. 34)
-//   compMillisFont  .xxx   of the comparison / diff     (chosen - 4,  e.g. 32)
-//   header          size   of the title bars and button text
+//   main        h:m:s  of the running time      (S,   e.g. 36)
+//   mainMillis  .xxx   of the running time      (S-4, e.g. 32)
+//   comp        h:m:s  of the comparison / diff (S-4, e.g. 32; same font as mainMillis)
+//   compMillis  .xxx   of the comparison / diff (S-8, e.g. 28)
+//   header      size   of the title bars and button text
 //
 // All five are resolved once per frame in RenderTimerOverlayStream and passed
 // down to every drawing helper so the lookups happen only once.
@@ -117,7 +130,9 @@ struct SFontSet
 };
 
 // ---------------------------------------------------------------------------
-// Helper: split a formatted time string "H:MM:SS.mmm" into two parts.
+// SplitTimeAtDot
+// ---------------------------------------------------------------------------
+// Splits a formatted time string "H:MM:SS.mmm" into two parts.
 //   out_main receives everything up to (but not including) the last '.'
 //   out_millis receives '.' and everything after it
 // If no '.' is found, out_main gets the whole string, out_millis is empty.
@@ -144,11 +159,15 @@ static void SplitTimeAtDot(const char* buf,
     }
 }
 
+// ---------------------------------------------------------------------------
+// SDrawStyledText
+// ---------------------------------------------------------------------------
 // Draws text in four layers to produce the Crash Mode digit style:
 //   Layer 0 (fill):    solid fill color at full size
 //   Layer 1 (shadow):  shadow color shifted by CMDigitShadowOffset
 //   Layer 2 (base):    base color at (size - 4) centred within the full glyph
 //   Layer 3 (overlay): gradient from top (transparent) to bottom (opaque overlay color)
+// ---------------------------------------------------------------------------
 static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
                              ImVec2 pos, float rowTop, float rowHeight,
                              const char* text, float alpha)
@@ -221,10 +240,11 @@ static void SDrawStyledText(ImDrawList* dl, ImFont* font, float size,
 }
 
 // ---------------------------------------------------------------------------
+// SDrawTimeRowAlpha
+// ---------------------------------------------------------------------------
 // Core drawing primitive used by both the live and the fade-out path.
 //
 // timeBuf      : full formatted running time (e.g. "0:01:23.456")
-// showMillis   : whether milliseconds are present in timeBuf
 // diffMainBuf  : h:m:s part of diff (may be empty)
 // diffDecBuf   : .xxx part of diff  (may be empty)
 // hasDiff      : whether to draw diff at all
@@ -339,7 +359,12 @@ static void SDrawTimeRowAlpha(ImDrawList* dl, ImVec2 pos, float width,
     }
 }
 
-// Convenience wrappers at full alpha for normal rendering
+// ---------------------------------------------------------------------------
+// SDrawHeaderBar
+// ---------------------------------------------------------------------------
+// Convenience wrapper around SDrawHeaderBarAlpha() at full (1.0) alpha, used
+// by the normal (non-fading) rendering path.
+// ---------------------------------------------------------------------------
 static float SDrawHeaderBar(ImDrawList* dl, ImVec2 pos, float width,
                              const char* label, ImVec4 accent, ImFont* headerFont = nullptr,
                              float headerH = 0.0f)
@@ -348,6 +373,13 @@ static float SDrawHeaderBar(ImDrawList* dl, ImVec2 pos, float width,
     return pos.y + headerH;
 }
 
+// ---------------------------------------------------------------------------
+// SDrawTimeRow
+// ---------------------------------------------------------------------------
+// Convenience wrapper around SDrawTimeRowAlpha() at full (1.0) alpha; formats
+// the running time and diff strings and splits the diff at its decimal
+// point before delegating to the alpha-aware version.
+// ---------------------------------------------------------------------------
 static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
                           double timeVal, bool showMillis,
                           bool hasDiff, double diff, bool isSplit,
@@ -394,7 +426,9 @@ static float SDrawTimeRow(ImDrawList* dl, ImVec2 pos, float width,
 }
 
 // ---------------------------------------------------------------------------
-// BeginSection -- opens one pinned/anchor section window
+// BeginSection
+// ---------------------------------------------------------------------------
+// Opens one pinned/anchor section window.
 // ---------------------------------------------------------------------------
 static bool BeginSection(const char* id, ImVec2 pos, bool isAnchor)
 {
@@ -420,6 +454,11 @@ static bool BeginSection(const char* id, ImVec2 pos, bool isAnchor)
 
 // ---------------------------------------------------------------------------
 // RenderTimerOverlayStream
+// ---------------------------------------------------------------------------
+// Draws the segmented streamer overlay: one bordered section window per
+// completed split, the current segment, total, and grand-total rows, plus
+// the idle placeholder and post-run panel. Also drives the slide-up +
+// fade-out animation for splits evicted from the visible stack.
 // ---------------------------------------------------------------------------
 void RenderTimerOverlayStream()
 {
@@ -488,9 +527,8 @@ void RenderTimerOverlayStream()
     float dynamicSecH = dynamicHeaderH + STIME_ROW_H;
     float   dt      = ImGui::GetIO().DeltaTime;
 
-    // -------------------------------------------------------------------------
-    // Detect eviction: splitStart advanced since last frame -> capture outgoing
-    // -------------------------------------------------------------------------
+    // --- Detect eviction ---
+    // splitStart advanced since last frame -> capture the outgoing split.
     int splitStart = std::max(0, numSplits - MAX_VISIBLE_SPLITS);
 
     if (splitStart > 0 && splitStart != s_LastSplitStart && s_LastSplitStart >= 0)
@@ -558,10 +596,8 @@ void RenderTimerOverlayStream()
     }
     s_LastSplitStart = splitStart;
 
-    // -------------------------------------------------------------------------
-    // Tick + render the outgoing animation window
+    // --- Tick + render the outgoing animation window ---
     // Uses a dedicated ImGui window positioned above the anchor.
-    // -------------------------------------------------------------------------
     if (s_Outgoing.active)
     {
         s_Outgoing.timer += dt;
@@ -603,9 +639,7 @@ void RenderTimerOverlayStream()
         ImGui::End();
     }
 
-    // -------------------------------------------------------------------------
-    // Main stack
-    // -------------------------------------------------------------------------
+    // --- Main stack ---
     int   sectionIdx = 0;
     char  wid[32];
     float nextY = s_AnchorPos.y;

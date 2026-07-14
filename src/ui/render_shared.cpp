@@ -1,9 +1,11 @@
 // render_shared.cpp
 // Implements the utility functions shared across all render_*.cpp files:
-//   • FormatTime    — formats a seconds value into a HH:MM:SS[.mmm] string
-//   • FormatDiff    — formats a signed time delta with context-aware precision
-//   • TimeColor     — returns the ahead/behind/neutral color for a split time cell
-//   • LoadRouteFile — loads a route + its history from disk into the global state
+//   • FormatTime       — formats a seconds value into a HH:MM:SS[.mmm] string
+//   • FormatTimeExport — formats a seconds value for spreadsheet-friendly export
+//   • FormatDiff       — formats a signed time delta with context-aware precision
+//   • TimeColor        — returns the ahead/behind/neutral color for a split time cell
+//   • RunIsTainted     — checks whether a run contains a death-taint sentinel split
+//   • LoadRouteFile    — loads a route + its history from disk into the global state
 
 #include "render_shared.h"
 
@@ -195,11 +197,16 @@ bool RunIsTainted(const HistoricalRun& run)
 // On a successful load:
 //   1. The new route and its display name replace CurrentRoute / CurrentRouteName.
 //   2. The file paths are updated so subsequent saves go to the right place.
-//   3. History is loaded from the paired .history file (BestRun and HistoryRuns).
+//   3. Existing best-run/history/segment-record state is cleared, then history
+//      is reloaded from the paired .history file (BestRun, HistoryRuns,
+//      SegmentRecords, BestRunIndex, MaxHistoryRuns), segment PBs are
+//      recalculated, and Fractal Rota's best-run override is reapplied if
+//      enabled.
 //   4. FullReset() resyncs all trigger-state arrays to the new route length
 //      and clears the timer.
-//   5. IsValid is set to true so AddonRender() immediately starts evaluating
-//      the route's triggers.
+//   5. IsValid is set to true and MovementStartArmed is armed, so
+//      AddonRender() immediately starts evaluating the route's triggers and
+//      treats the player's next move as the run start.
 //
 // If LoadRoute() fails (file missing, parse error, etc.) we return early and
 // leave the previous route untouched.

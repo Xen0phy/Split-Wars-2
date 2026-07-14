@@ -46,12 +46,10 @@ void RenderConfigWindow()
     ConfigWindowW = sz.x;
     ConfigWindowH = sz.y;
 
-    // -------------------------------------------------------------------------
-    // Route name field
+    // --- Route name field ---
     // Uses a character-filter callback to block characters that are illegal in
     // Windows file names (\ / : * ? " < > |) as well as '.' to prevent path
     // traversal tricks like ".." in saved file names.
-    // -------------------------------------------------------------------------
     ImGui::Text("Route:");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(200.0f);
@@ -80,8 +78,7 @@ void RenderConfigWindow()
     Tooltip("Tip: \\ / : * ? \" < > | . are not allowed in route names.");
     ImGui::SameLine();
 
-    // -------------------------------------------------------------------------
-    // Save directory field
+    // --- Save directory field ---
     // Only the relative subfolder path (beneath AddonDir) is editable.
     // The AddonDir prefix is shown as read-only grayed text so the user can
     // see where routes are rooted but can't accidentally redirect saves
@@ -92,7 +89,6 @@ void RenderConfigWindow()
     //
     // Auto-updates when the active route file changes: strips AddonDir from
     // the loaded file's parent directory to recover the relative subfolder.
-    // -------------------------------------------------------------------------
     static char subfolderBuf[256]        = "";
     static std::string lastSeenFilepath  = "";
     if (CurrentRouteFilepath != lastSeenFilepath)
@@ -122,13 +118,11 @@ void RenderConfigWindow()
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Save Route button
+    // --- Save Route button ---
     // Two behaviours:
     //   • Same path as current file → overwrite in place (also saves history).
     //   • Different path / new file → save to the new path, clear history
     //     (history from the old file wouldn't be valid for the renamed route).
-    // -------------------------------------------------------------------------
     if (ImGui::Button("Save Route"))
     {
         std::string dir   = (subfolderBuf[0] != '\0')
@@ -169,10 +163,11 @@ void RenderConfigWindow()
         ShowHistory = !ShowHistory;
     ImGui::SameLine();
 
-    // Folder field — same row as the buttons, fixed 200px to match the route
-    // name field width. "Folder:" label makes it visually distinct from Route:.
-    // The grayed prefix shows the addon root; only the relative subfolder is editable.
-    // Hovering the prefix shows the full absolute path as a tooltip.
+    // --- Folder field ---
+    // Same row as the buttons, fixed 200px to match the route name field
+    // width. "Folder:" label makes it visually distinct from Route:.
+    // The grayed prefix shows the addon root; only the relative subfolder is
+    // editable. Hovering the prefix shows the full absolute path as a tooltip.
     ImGui::Spacing(); ImGui::SameLine();
     ImGui::Text("Folder:"); ImGui::SameLine();
     {
@@ -187,13 +182,11 @@ void RenderConfigWindow()
 
     ImGui::Separator();
 
-    // -------------------------------------------------------------------------
-    // Footer height reservation
+    // --- Footer height reservation ---
     // We need to know the footer height before drawing the scrollable table so
     // ImGui::BeginChild() can reserve the right amount of space at the bottom.
     // The footer is taller when an Interact trigger is present because an extra
     // warning line is appended.
-    // -------------------------------------------------------------------------
     bool hasInteract = false;
     bool hasCombat   = false;
     for (const auto& cp : CurrentRoute.Checkpoints)
@@ -232,8 +225,7 @@ void RenderConfigWindow()
         footerReserve += ImGui::GetFrameHeightWithSpacing() * 2.0f + 4.0f; // two rows + separator
     }
 
-    // -------------------------------------------------------------------------
-    // Checkpoint table (scrollable)
+    // --- Checkpoint table (scrollable) ---
     // Each row represents one checkpoint.  Columns:
     //   Name           — editable text field
     //   S              — "Is Start" checkbox (only one checkpoint may be start)
@@ -246,7 +238,6 @@ void RenderConfigWindow()
     //   Angle/Arm      — PlaneAngle for Plane; dot count for Circle/Interact; Re-arm for Combat
     //   Capture        — snaps all spatial fields from the player's current position
     //   Remove         — marks this row for deletion (applied after the table loop)
-    // -------------------------------------------------------------------------
     ImGui::BeginChild("##route_scroll", ImVec2(0, -footerReserve));
     if (ImGui::BeginTable("route_table", 16,
         ImGuiTableFlags_Borders |
@@ -295,9 +286,9 @@ void RenderConfigWindow()
                 case 7:  Tooltip("Enter Z Coordinate here.\nEither you know or you press the capture button."); break;
                 case 8:  Tooltip("Sphere radiues or plane width."); break;
                 case 9:  Tooltip("The amount of dots you want on your sphere or plane.\nBigger numbers need more render time."); break;
-                case 10: Tooltip("Latitude centre of the dot band in degrees.\n-90 = south pole, 0 = equator, 90 = north pole.\nNot used for Plane triggers.");
-                case 11: Tooltip("How far up the dots extend from centre.\nSphere: degrees. Plane: metres.");
-                case 12: Tooltip("How far down the dots extend from centre.\nSphere: degrees. Plane: metres.");
+                case 10: Tooltip("Latitude centre of the dot band in degrees.\n-90 = south pole, 0 = equator, 90 = north pole.\nNot used for Plane triggers."); break;
+                case 11: Tooltip("How far up the dots extend from centre.\nSphere: degrees. Plane: metres."); break;
+                case 12: Tooltip("How far down the dots extend from centre.\nSphere: degrees. Plane: metres."); break;
                 case 13: Tooltip("Defines plane angle. Use capture button or adjust manually.\n"
                                        "Shows a Re-Arm button for combat trigger.\n"
                                        "Adjust MapChange indicators hyperbole strength."); break;
@@ -683,7 +674,7 @@ void RenderConfigWindow()
             CheckpointState moved = cps[dragReorderFrom];
             cps.erase(cps.begin() + dragReorderFrom);
             // Adjust target index if source was before it.
-            int insertAt = (dragReorderFrom < dragReorderTo) ? dragReorderTo : dragReorderTo;
+            int insertAt = (dragReorderFrom < dragReorderTo) ? dragReorderTo - 1 : dragReorderTo;
             cps.insert(cps.begin() + insertAt, moved);
             FullReset();
         }
@@ -691,9 +682,7 @@ void RenderConfigWindow()
 
     ImGui::EndChild();
 
-    // -------------------------------------------------------------------------
-    // Footer buttons
-    // -------------------------------------------------------------------------
+    // --- Footer buttons ---
 
     ImGui::Spacing();
 
@@ -734,9 +723,7 @@ void RenderConfigWindow()
         FullReset();
     }
 
-    // -------------------------------------------------------------------------
-    // Calculator expansion
-    // -------------------------------------------------------------------------
+    // --- Calculator expansion ---
     if (showCalculator)
     {
         ImGui::Separator();

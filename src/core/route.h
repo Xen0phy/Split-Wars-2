@@ -171,13 +171,13 @@ struct RoutePoint
 // ---------------------------------------------------------------------------
 struct CheckpointState
 {
-    // ── Config (populated from route file; survives FullReset) ──────────────
+    // --- Config (populated from route file; survives FullReset) ---
     RoutePoint  Point;
     char        Name[64] = {};
     bool        IsStart  = false;
     bool        IsGoal   = false;
 
-    // ── Runtime (zeroed by ResetRuntime on every FullReset) ─────────────────
+    // --- Runtime (zeroed by ResetRuntime on every FullReset) ---
 
     // Enter/exit edge tracking for Circle, CircleInteract, CombatArena.
     // "Was the player inside this zone on the previous frame?"

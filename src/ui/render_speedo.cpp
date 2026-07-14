@@ -1,8 +1,9 @@
+// ---------------------------------------------------------------------------
 // render_speedo.cpp
+// ---------------------------------------------------------------------------
 // Speedometer overlay for Split Wars 2.
 //
-// ─── Tachometer geometry ────────────────────────────────────────────────────
-//
+// --- Tachometer geometry ---
 //   SpeedoArcAngle    — total sweep of the arc in degrees (1-359), 0 = straight line
 //   SpeedoArcLength   — total length of the arc/line in pixels
 //   SpeedoArcRotation — rotation of the whole speedo (0-360)
@@ -20,12 +21,10 @@
 //     line runs perpendicular to SpeedoArcRotation, length = SpeedoArcLength
 //     fill grows from lineStart toward lineEnd as speed increases
 //
-// ─── Render modes ───────────────────────────────────────────────────────────
-//
+// --- Render modes ---
 //   Edit mode — ImGui window, draggable, saves SpeedoWindowX/Y.
 //   Play mode — draws to background draw list, no ImGui window occlusion.
-//
-// ────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
 
 #include "render_shared.h"
 #include "stream_fonts.h"
@@ -616,17 +615,14 @@ static void DrawSpeedoContent(
         std::cos(axisAngleRad) * pDist,
         std::sin(axisAngleRad) * pDist);
 
-    // =========================================================================
-    // FACE TEXTURE — drawn via GetBackgroundDrawList() in RenderSpeedoWindow,
-    // not here, so it is never clipped by the speedo window bounds.
-    // =========================================================================
+    // --- Face texture ---
+    // Drawn via GetBackgroundDrawList() in RenderSpeedoWindow, not here, so
+    // it is never clipped by the speedo window bounds.
 
     SpeedoStop stops[4];
     int        stopCount = GatherStops(stops);
 
-    // =========================================================================
-    // STRAIGHT LINE FORK
-    // =========================================================================
+    // --- Straight line fork ---
     if (straightLine)
     {
         float perpAngle = axisAngleRad + PI * 0.5f;
@@ -670,9 +666,7 @@ static void DrawSpeedoContent(
         return;
     }
 
-    // =========================================================================
-    // ARC FORK
-    // =========================================================================
+    // --- Arc fork ---
 
     // --- Background arc --- (SpeedoArcBgOpacity governs only this background element)
     DrawArcSegmented(draw, C_screen, radius, arcStart, arcEnd, 1.0f,

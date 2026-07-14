@@ -47,10 +47,12 @@
 namespace EvalTool
 {
 // ---------------------------------------------------------------------
-// Data model -- mirrors the flat shape parseHistoryFile() produces in the
-// HTML: per-run list of top-level blocks in real chronological/play order,
-// each optionally carrying nested "children" (a Start/End container's own
-// sub-splits) for the click-to-stretch "split open" reveal.
+// Data model
+// ---------------------------------------------------------------------
+// Mirrors the flat shape parseHistoryFile() produces in the HTML: per-run
+// list of top-level blocks in real chronological/play order, each optionally
+// carrying nested "children" (a Start/End container's own sub-splits) for
+// the click-to-stretch "split open" reveal.
 // ---------------------------------------------------------------------
 struct EvalBlock
 {
@@ -291,7 +293,9 @@ static const unsigned int TEXT_COL = 0xd8dadf;
 static const unsigned int ACCENT = 0x6fb3e8;
 
 // ---------------------------------------------------------------------
-// Time formatting -- mirrors formatSegmentTime / formatRunTime / formatDiff.
+// Time formatting
+// ---------------------------------------------------------------------
+// Mirrors formatSegmentTime / formatRunTime / formatDiff.
 // ---------------------------------------------------------------------
 static std::string FormatSegmentTime(double seconds)
 {
@@ -330,6 +334,8 @@ static bool FormatDiff(double thisTime, double bestTime, std::string& out)
     return true;
 }
 
+// ---------------------------------------------------------------------
+// AnimF
 // ---------------------------------------------------------------------
 // Tiny animation primitive: eases from `from` to `to` over `dur` seconds,
 // using a smoothstep easing curve as a stand-in for the HTML's
@@ -373,8 +379,10 @@ struct GroupAnim
 };
 
 // ---------------------------------------------------------------------
-// Per-frame layout structs (rebuilt every render, animation state persists
-// separately in EvalState::anim / groupAnim keyed by date/name).
+// Per-frame layout structs
+// ---------------------------------------------------------------------
+// Rebuilt every render; animation state persists separately in
+// EvalState::anim / groupAnim keyed by date/name.
 // ---------------------------------------------------------------------
 struct BarBlockVis
 {
@@ -473,10 +481,12 @@ static std::string AnimKey(const std::string& runKey, const std::string& name)
 }
 
 // ---------------------------------------------------------------------
-// Hover-cluster / stretch-cluster reorder -- mirrors computeClusterOrder():
-// matching bars are pulled immediately adjacent to the anchor bar, keeping
-// their original left/right side and relative order; everything else keeps
-// its relative order around that cluster.
+// Hover-cluster / stretch-cluster reorder
+// ---------------------------------------------------------------------
+// Mirrors computeClusterOrder(): matching bars are pulled immediately
+// adjacent to the anchor bar, keeping their original left/right side and
+// relative order; everything else keeps its relative order around that
+// cluster.
 // ---------------------------------------------------------------------
 static std::vector<int> ComputeClusterOrder(const std::vector<int>& matchIdxs, int anchorIdx, int n)
 {
@@ -546,7 +556,8 @@ static void DrawChart(EvalState& cs)
     DeriveGradientFromHue(RotatingColorHue, rotStart, rotEnd);
     DeriveGradientFromHue(ChildColorHue, childStart, childEnd);
 
-    // ---- windowed + pinned run selection (mirrors render()'s dataset math) ----
+    // --- Windowed + pinned run selection ---
+    // Mirrors render()'s dataset math.
     std::vector<const EvalRun*> nonPinned, pinnedRuns;
     for (auto& r : cs.allRunsChronological)
     {
@@ -562,16 +573,17 @@ static void DrawChart(EvalState& cs)
         runs.push_back(nonPinned[i]);
     for (auto* p : pinnedRuns) runs.push_back(p);
 
-    // ---- paging button availability (disabled at either end / while every
-    // slot is pinned) -- computed up front so the Prev button can be drawn
-    // to the chart's left before the canvas itself, instead of both arrows
-    // being stacked together on the right where they left the whole chart
-    // flush against the window's left edge. ----
+    // --- Paging button availability ---
+    // Disabled at either end, or while every slot is pinned. Computed up
+    // front so the Prev button can be drawn to the chart's left before the
+    // canvas itself, instead of both arrows being stacked together on the
+    // right where they left the whole chart flush against the window's
+    // left edge.
     bool pagingLocked = availableSlots <= 0;
     bool prevDisabled = pagingLocked || cs.windowStart <= 0;
     bool nextDisabled = pagingLocked || (cs.windowStart + availableSlots >= (int)nonPinned.size());
 
-    // ---- core = intersection of block-name sets across the visible runs ----
+    // --- Core = intersection of block-name sets across the visible runs ---
     std::set<std::string> core;
     if (!runs.empty())
     {
@@ -601,7 +613,7 @@ static void DrawChart(EvalState& cs)
         return (float)((sec / 60.0 / maxMinutes) * PLOT_H);
     };
 
-    // ---- base (pre-hover/pre-stretch) layout ----
+    // --- Base (pre-hover/pre-stretch) layout ---
     std::vector<BarGroupVis> groups(runs.size());
     for (size_t ri = 0; ri < runs.size(); ri++)
     {
@@ -649,7 +661,7 @@ static void DrawChart(EvalState& cs)
         }
     }
 
-    // ---- canvas setup ----
+    // --- Canvas setup ---
     float chartW = runs.empty() ? BarGap : (float)runs.size() * (BarWidth + BarGap) + BarGap;
 
     float pageBtnW = 24.0f;
@@ -673,9 +685,9 @@ static void DrawChart(EvalState& cs)
     ImVec2 mouseLocal(mouseScreen.x - origin.x, mouseScreen.y - origin.y);
     bool canvasHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 
-    // ---- hit-test against the PREVIOUS frame's animated geometry, exactly
-    // like the browser hit-tests whatever's actually painted right now, even
-    // mid-transition. ----
+    // --- Hit-test against the previous frame's animated geometry ---
+    // Exactly like the browser hit-tests whatever's actually painted right
+    // now, even mid-transition.
     std::string hitName;
 
     const BarBlockVis* hitBlock = nullptr;
@@ -755,7 +767,7 @@ hitDone:
         cs.childHoverAnchorGroupIdx = -1;
     };
 
-    // ---- click-to-stretch state transitions ----
+    // --- Click-to-stretch state transitions ---
     if (rightClicked && !cs.stretchedName.empty())
     {
         clearStretch();
@@ -880,7 +892,7 @@ hitDone:
         cs.childHoverAnchorGroupIdx = -1;
     }
 
-    // ---- compute per-block targets ----
+    // --- Compute per-block targets ---
     // slot index per group after any clustering reorder (defaults to identity)
     std::vector<int> slotOfOrig((int)groups.size());
     for (int i = 0; i < (int)groups.size(); i++) slotOfOrig[i] = i;
@@ -939,12 +951,13 @@ hitDone:
         }
     }
 
-    // ---- precompute each group's base (un-hovered) child layout for the
-    // currently-stretched fractal, if it has children -- computed from the
-    // parent's own last-known animated span (same source hit-testing uses),
-    // independent of anything hover-related, so the cascade below always has
-    // a stable "where would this child be without any hover" to work from,
-    // same role BarBlockVis's baseY/baseH play for top-level cascades. ----
+    // --- Precompute each group's base (un-hovered) child layout ---
+    // For the currently-stretched fractal, if it has children. Computed
+    // from the parent's own last-known animated span (same source
+    // hit-testing uses), independent of anything hover-related, so the
+    // cascade below always has a stable "where would this child be without
+    // any hover" to work from -- same role BarBlockVis's baseY/baseH play
+    // for top-level cascades.
     std::vector<std::unordered_map<std::string, std::pair<float, float>>> childBase(groups.size());
     if (stretched)
     {
@@ -989,8 +1002,9 @@ hitDone:
         if (!effectiveHoverName.empty())
             for (auto& b : g.blocks) if (b.name == effectiveHoverName) { groupHasHoverMatch = true; break; }
 
-        // ---- vertical cascade for hover (snap matched block to a shared
-        // bottom line, push the rest of the stack out of the way) ----
+        // --- Vertical cascade for hover ---
+        // Snap matched block to a shared bottom line, push the rest of the
+        // stack out of the way.
         std::vector<float> yOverride(g.blocks.size(), NAN), hOverride(g.blocks.size(), NAN);
         if (!stretched && !effectiveHoverName.empty() && groupHasHoverMatch)
         {
@@ -1031,8 +1045,9 @@ hitDone:
             }
         }
 
-        // ---- stretch geometry (grows the matched block from a shared
-        // bottom line; reflows the rest of that bar around it) ----
+        // --- Stretch geometry ---
+        // Grows the matched block from a shared bottom line; reflows the
+        // rest of that bar around it.
         bool groupHasStretchMatch = false;
         int stretchIdx = -1;
         if (stretched)
@@ -1182,14 +1197,15 @@ hitDone:
                 continue;
             }
 
-            // ---- split-open: parent rect itself is hidden; draw its
-            // children instead, subdividing the parent's CURRENT (already
-            // fully-stretched) span, purple ramp, fading in from 0 opacity.
-            // When one child is hovered, every same-named child across every
-            // bar showing this stretched fractal snaps onto a shared bottom
-            // line, cascading the rest of that bar's children out of the
-            // way -- same idea as the top-level hover cascade above, just
-            // scoped to this bar's own children. ----
+            // --- Split-open ---
+            // Parent rect itself is hidden; draw its children instead,
+            // subdividing the parent's CURRENT (already fully-stretched)
+            // span, purple ramp, fading in from 0 opacity. When one child
+            // is hovered, every same-named child across every bar showing
+            // this stretched fractal snaps onto a shared bottom line,
+            // cascading the rest of that bar's children out of the way --
+            // same idea as the top-level hover cascade above, just scoped
+            // to this bar's own children.
             int n = (int)b.src->children.size();
 
             int hoveredChildIdx = -1;
@@ -1289,8 +1305,8 @@ hitDone:
         }
     }
 
-    // ---- resolve a pending jump-to-fastest flash target now that `groups`
-    // (and the x each bar animates toward) is known ----
+    // --- Resolve a pending jump-to-fastest flash target ---
+    // Now that `groups` (and the x each bar animates toward) is known.
     if (!cs.pendingFlashDate.empty())
     {
         for (auto& g : groups)
@@ -1309,7 +1325,7 @@ hitDone:
         cs.pendingFlashDate.clear();
     }
 
-    // ---- total-time band (top) ----
+    // --- Total-time band (top) ---
     {
         ImVec2 p0(origin.x, origin.y + TOTAL_BAND_H - 18.0f);
         ImVec2 p1(origin.x + chartW - 4.0f, origin.y + TOTAL_BAND_H);
@@ -1334,7 +1350,7 @@ hitDone:
         }
     }
 
-    // ---- date band (bottom) ----
+    // --- Date band (bottom) ---
     float dateBandY = CHART_H - BOTTOM_PAD + 2.0f;
     {
         ImVec2 p0(origin.x, origin.y + dateBandY);
@@ -1362,7 +1378,7 @@ hitDone:
         }
     }
 
-    // ---- pin row ----
+    // --- Pin row ---
     float pinRowY = dateBandY + DATE_BAND_H + PIN_ROW_GAP;
     {
         ImVec2 p0(origin.x, origin.y + pinRowY);
@@ -1405,7 +1421,7 @@ hitDone:
         }
     }
 
-    // ---- click-anywhere-else-while-stretched exits the stretch ----
+    // --- Click anywhere else while stretched exits the stretch ---
     if (leftClicked && stretched && hitName.empty() && canvasHovered)
     {
         // pin-row clicks are handled above and shouldn't also exit the
@@ -1414,7 +1430,7 @@ hitDone:
         if (!onPinRow) clearStretch();
     }
 
-    // ---- one-time "jump to fastest" flash ----
+    // --- One-time "jump to fastest" flash ---
     if (cs.flashPending)
     {
         if (cs.flashStartTime < 0.0) cs.flashStartTime = now;
@@ -1432,7 +1448,7 @@ hitDone:
         }
     }
 
-    // ---- tooltip ----
+    // --- Tooltip ---
     if (!hitName.empty() && (hitBlock || hitIsChild))
     {
         bool allowedWhileStretched = !stretched || hitIsChild || hitName == cs.stretchedName;

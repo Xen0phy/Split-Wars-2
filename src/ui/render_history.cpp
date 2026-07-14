@@ -18,6 +18,8 @@
 namespace fs = std::filesystem;
 
 // -------------------------------------------------------------------------
+// BackupHistoryFile
+// -------------------------------------------------------------------------
 // Backs up CurrentHistoryPath to "<path>.bak" before an in-place migration
 // (Normalize Times / Add Start Checkpoint below) overwrites it. Best-effort:
 // failure isn't fatal, it just means no safety copy was made this time.
@@ -32,8 +34,10 @@ static bool BackupHistoryFile()
 }
 
 // -------------------------------------------------------------------------
-// History Maintenance — shared state between RenderHistoryWindow() (which
-// only has the two trigger buttons + the post-run result message) and
+// History Maintenance
+// -------------------------------------------------------------------------
+// Shared state between RenderHistoryWindow() (which only has the two
+// trigger buttons + the post-run result message) and
 // RenderHistoryMaintenanceWindow() (the actual explanation/preview/confirm
 // window, defined at the bottom of this file).
 // -------------------------------------------------------------------------
@@ -195,12 +199,11 @@ void RenderHistoryWindow()
 
     ImGui::Separator();
 
-    // -------------------------------------------------------------------------
-    // Max History Runs — per-route cap on stored runs, persisted in this
-    // route's own .history file (0 = unlimited). Replaces the old global
-    // settings.ini value so different routes can keep different amounts of
-    // history (e.g. a daily fractal route vs. a rarely-run boss kill).
-    // -------------------------------------------------------------------------
+    // --- Max History Runs ---
+    // Per-route cap on stored runs, persisted in this route's own .history
+    // file (0 = unlimited). Replaces the old global settings.ini value so
+    // different routes can keep different amounts of history (e.g. a daily
+    // fractal route vs. a rarely-run boss kill).
     if (!CurrentHistoryPath.empty())
     {
         if (ImGui::BeginTable("##maxhistoryrunstable", 2, ImGuiTableFlags_None))
@@ -230,14 +233,12 @@ void RenderHistoryWindow()
     }
 
 
-    // -------------------------------------------------------------------------
-    // Footer height reservation
+    // --- Footer height reservation ---
     // History Maintenance is drawn after the tab bar closes, below. We need to
     // know its height up front so the Runs/Segments tables (each scrollable,
     // further down) can reserve exactly enough room for it — otherwise the
     // maintenance buttons get pushed toward/behind the bottom of the window.
     // Mirrors the same approach used in render_config.cpp.
-    // -------------------------------------------------------------------------
     bool showMaintenance = !CurrentHistoryPath.empty() && !HistoryRuns.empty();
 
     float footerReserve = 0.0f;
@@ -261,9 +262,7 @@ void RenderHistoryWindow()
 
     if (ImGui::BeginTabBar("##historytabs"))
     {
-        // =========================================================================
-        // Runs tab — completed run list
-        // =========================================================================
+        // --- Runs tab: completed run list ---
         if (ImGui::BeginTabItem("Runs"))
         {
             if (HistoryRuns.empty())
@@ -272,10 +271,9 @@ void RenderHistoryWindow()
             }
             else
             {
-                // -------------------------------------------------------------------------
-                // Clear History button — opens a confirmation popup before wiping data
-                // so an accidental click can't destroy the history irreversibly.
-                // -------------------------------------------------------------------------
+                // --- Clear History button ---
+                // Opens a confirmation popup before wiping data so an accidental
+                // click can't destroy the history irreversibly.
                 if (ImGui::Button("Clear History"))
                     ImGui::OpenPopup("##confirmclear");
 
@@ -302,18 +300,16 @@ void RenderHistoryWindow()
 
                 ImGui::Separator();
 
-                // -------------------------------------------------------------------------
-                // Find the fastest total time across all runs so we can highlight it with ColorAhead.
-                // We scan every time on every draw; the list is small enough that this is
-                // negligible compared to ImGui draw costs.
-                // -------------------------------------------------------------------------
+                // --- Fastest-run lookup ---
+                // Find the fastest total time across all runs so we can highlight it with
+                // ColorAhead. We scan every time on every draw; the list is small enough
+                // that this is negligible compared to ImGui draw costs.
                 double fastestTime = -1.0;
                 for (const auto& r : HistoryRuns)
                     if (fastestTime < 0.0 || r.TotalTime < fastestTime)
                         fastestTime = r.TotalTime;
 
-                // -------------------------------------------------------------------------
-                // Run history table
+                // --- Run history table ---
                 // Columns: # (row number) | Date | Time
                 // The table is scrollable; 40 px at the bottom is reserved for any
                 // controls we might add below it in future.
@@ -321,7 +317,6 @@ void RenderHistoryWindow()
                 // Hover/context detection is row-wide via a SpanAllColumns Selectable.
                 // The tooltip is drawn after the table closes to ensure only one tooltip
                 // is shown at a time regardless of cursor position between rows.
-                // -------------------------------------------------------------------------
                 if (ImGui::BeginTable("history", 3,
                     ImGuiTableFlags_Borders |
                     ImGuiTableFlags_RowBg   |
@@ -334,15 +329,13 @@ void RenderHistoryWindow()
                     ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableHeadersRow();
 
-                    // -------------------------------------------------------------------------
-                    // Display order — HistoryRuns itself is never reordered (BestRunIndex,
-                    // removeIndex, and every popup/selectable ID below are real indices into
-                    // HistoryRuns and must stay valid regardless of what the player sorts by).
-                    // Instead we sort a separate index array and iterate through that; "i"
-                    // below always means "real index into HistoryRuns", "n" means "display
-                    // position", matching the existing variable meaning everywhere else in
-                    // this file.
-                    // -------------------------------------------------------------------------
+                    // --- Display order ---
+                    // HistoryRuns itself is never reordered (BestRunIndex, removeIndex, and
+                    // every popup/selectable ID below are real indices into HistoryRuns and
+                    // must stay valid regardless of what the player sorts by). Instead we
+                    // sort a separate index array and iterate through that; "i" below always
+                    // means "real index into HistoryRuns", "n" means "display position",
+                    // matching the existing variable meaning everywhere else in this file.
                     std::vector<int> order(HistoryRuns.size());
                     for (int n = 0; n < (int)order.size(); n++) order[n] = n;
 
@@ -423,12 +416,10 @@ void RenderHistoryWindow()
                                 : ImGui::GetStyle().Colors[ImGuiCol_Text],
                             "%s", buf);
 
-                        // -----------------------------------------------------------------
-                        // Right-click context menu
+                        // --- Right-click context menu ---
                         //   "Set as best"  → promotes this run's splits to BestRun so the
                         //                    live timer can diff against them.
                         //   "Delete Run"   → marks this row for deferred removal.
-                        // -----------------------------------------------------------------
                         char popupId[32]; snprintf(popupId, sizeof(popupId), "##ctx_%d", i);
                         if (rowRightClicked)
                             ImGui::OpenPopup(popupId);
@@ -442,10 +433,9 @@ void RenderHistoryWindow()
                                     SaveHistory(CurrentHistoryPath, HistoryRuns, SegmentRecords, BestRunIndex, MaxHistoryRuns);
                             }
 
-                            // ---------------------------------------------------------
-                            // Copy to clipboard — tab-separated splits in tooltip order,
-                            // using H:MM:SS.mmm format so spreadsheets parse it as time.
-                            // ---------------------------------------------------------
+                            // --- Copy to clipboard ---
+                            // Tab-separated splits in tooltip order, using H:MM:SS.mmm
+                            // format so spreadsheets parse it as time.
                             if (ImGui::MenuItem("Copy to clipboard"))
                             {
                                 // Suppress the AllCheckpoints synthetic Goal split,
@@ -497,11 +487,11 @@ void RenderHistoryWindow()
 
                     ImGui::EndTable();
 
-                    // -----------------------------------------------------------------
-                    // Hover tooltip — drawn after the table closes so only one tooltip
-                    // is ever shown per frame regardless of cursor position between rows.
-                    // Shows a per-split breakdown for the hovered run.
-                    // The time shown per split follows the global TimerDisplayMode:
+                    // --- Hover tooltip ---
+                    // Drawn after the table closes so only one tooltip is ever shown per
+                    // frame regardless of cursor position between rows. Shows a per-split
+                    // breakdown for the hovered run. The time shown per split follows the
+                    // global TimerDisplayMode:
                     //   Split mode   → cumulative time from run start
                     //   Segment mode → time for this segment only (delta from previous split)
                     // LiveSplit mode falls back to Segment display in the tooltip.
@@ -516,7 +506,6 @@ void RenderHistoryWindow()
                     // not name — if a route's splits were renamed/reordered after
                     // BestRun was captured, the diff can silently compare mismatched
                     // splits. Pre-existing limitation, not introduced by this change.
-                    // -----------------------------------------------------------------
                     if (hoveredRow >= 0)
                     {
                         const HistoricalRun& run = HistoryRuns[hoveredRow];
@@ -617,11 +606,10 @@ void RenderHistoryWindow()
                         ImGui::EndTooltip();
                     }
 
-                    // -----------------------------------------------------------------
-                    // Deferred run deletion — safe to do after the table loop ends.
-                    // After erasing, BestRunIndex is adjusted by simple arithmetic
-                    // rather than timestamp matching since we track the index directly.
-                    // -----------------------------------------------------------------
+                    // --- Deferred run deletion ---
+                    // Safe to do after the table loop ends. After erasing, BestRunIndex is
+                    // adjusted by simple arithmetic rather than timestamp matching since
+                    // we track the index directly.
                     if (removeIndex >= 0)
                     {
                         HistoryRuns.erase(HistoryRuns.begin() + removeIndex);
@@ -644,13 +632,12 @@ void RenderHistoryWindow()
                     }
                 }
 
-                // -------------------------------------------------------------------------
-                // Average run time — across all runs currently in history (no fixed
-                // window; respects whatever the configured history limit has trimmed
-                // down to). Gives a rough "how long does a session of this route cost
-                // me" sense, distinct from the PB highlighted above. Lives in the strip
-                // reserved below the table for future controls.
-                // -------------------------------------------------------------------------
+                // --- Average run time ---
+                // Across all runs currently in history (no fixed window; respects
+                // whatever the configured history limit has trimmed down to). Gives a
+                // rough "how long does a session of this route cost me" sense, distinct
+                // from the PB highlighted above. Lives in the strip reserved below the
+                // table for future controls.
                 if (!HistoryRuns.empty())
                 {
                     double sumTime = 0.0;
@@ -666,9 +653,7 @@ void RenderHistoryWindow()
         ImGui::EndTabItem();
         } // end BeginTabItem("Runs")
 
-        // =========================================================================
-        // Segments tab — best times for named Start/End split pairs
-        // =========================================================================
+        // --- Segments tab: best times for named Start/End split pairs ---
         if (ImGui::BeginTabItem("Segments"))
         {
             if (SegmentRecords.empty())
@@ -678,9 +663,8 @@ void RenderHistoryWindow()
             }
             else
             {
-                // -------------------------------------------------------------------------
-                // Clear Segments button — confirmation popup before wiping all records.
-                // -------------------------------------------------------------------------
+                // --- Clear Segments button ---
+                // Confirmation popup before wiping all records.
                 if (ImGui::Button("Clear Segments"))
                     ImGui::OpenPopup("##confirmclearseg");
 
@@ -784,9 +768,8 @@ void RenderHistoryWindow()
                         ImGui::TableSetColumnIndex(2);
                         ImGui::Text("%s", seg.bestDate.c_str());
 
-                        // -----------------------------------------------------------------
-                        // Right-click context menu — delete a single segment record.
-                        // -----------------------------------------------------------------
+                        // --- Right-click context menu ---
+                        // Delete a single segment record.
                         char segPopupId[32]; snprintf(segPopupId, sizeof(segPopupId), "##segctx_%d", i);
                         if (segRightClicked)
                             ImGui::OpenPopup(segPopupId);
@@ -836,24 +819,22 @@ void RenderHistoryWindow()
     ImGui::EndTabBar();
     } // end BeginTabBar
 
-    // =========================================================================
-    // History Maintenance — one-off migration tools for runs recorded before
-    // start checkpoints were properly registered as splits. Both back up the
-    // .history file first and only touch runs that actually need it.
-    // =========================================================================
+    // --- History Maintenance ---
+    // One-off migration tools for runs recorded before start checkpoints were
+    // properly registered as splits. Both back up the .history file first and
+    // only touch runs that actually need it.
     if (showMaintenance)
     {
         ImGui::Separator();
         ImGui::TextDisabled("History Maintenance");
 
-        // -------------------------------------------------------------------
-        // Normalize Times — for runs where the first split's timestamp isn't
-        // 0.000 (e.g. a real gap before the first recorded checkpoint, or a
-        // manual workaround entry that isn't at exactly zero), subtract that
-        // offset from every split (and the run's totals) so the run is
-        // re-based to start at zero. Doesn't touch or remove any entry.
-        // Opens RenderHistoryMaintenanceWindow() for explanation + preview.
-        // -------------------------------------------------------------------
+        // --- Normalize Times ---
+        // For runs where the first split's timestamp isn't 0.000 (e.g. a real
+        // gap before the first recorded checkpoint, or a manual workaround
+        // entry that isn't at exactly zero), subtract that offset from every
+        // split (and the run's totals) so the run is re-based to start at
+        // zero. Doesn't touch or remove any entry. Opens
+        // RenderHistoryMaintenanceWindow() for explanation + preview.
         if (ImGui::Button("Normalize Times"))
             s_PendingAction = MaintenanceAction::Normalize;
         Tooltip("For any run whose first split isn't at 0:00:00.000, subtracts that\n"
@@ -864,12 +845,11 @@ void RenderHistoryWindow()
 
         ImGui::SameLine();
 
-        // -------------------------------------------------------------------
-        // Add Start Checkpoint — for runs that never recorded any entry near
-        // 0.000 at all (recorded before start splits existed, no workaround
-        // in place), inserts this route's designated start checkpoint as a
-        // new split at 0:00:00.000. Doesn't touch any existing split's time.
-        // -------------------------------------------------------------------
+        // --- Add Start Checkpoint ---
+        // For runs that never recorded any entry near 0.000 at all (recorded
+        // before start splits existed, no workaround in place), inserts this
+        // route's designated start checkpoint as a new split at 0:00:00.000.
+        // Doesn't touch any existing split's time.
         CheckpointState* startCp = GetStart(CurrentRoute);
 
         if (!startCp)
@@ -894,11 +874,9 @@ void RenderHistoryWindow()
             Tooltip(tipBuf);
         }
 
-        // -------------------------------------------------------------------
-        // Result message for whichever tool above last ran. Shown inline
-        // (not as a popup) once the preview window's Confirm button applies
-        // the change.
-        // -------------------------------------------------------------------
+        // --- Result message ---
+        // For whichever tool above last ran. Shown inline (not as a popup)
+        // once the preview window's Confirm button applies the change.
         if (s_ShowMaintenanceMsg)
         {
             ImGui::Spacing();

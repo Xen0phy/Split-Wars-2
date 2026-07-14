@@ -20,7 +20,9 @@
 #include <filesystem>
 
 // ---------------------------------------------------------------------------
-// Render entry points — one per UI window, each implemented in its own .cpp
+// Render entry points
+// ---------------------------------------------------------------------------
+// One per UI window; each implemented in its own .cpp file.
 // ---------------------------------------------------------------------------
 void RenderTimerOverlay();
 void RenderTimerOverlayStream();
@@ -33,7 +35,10 @@ void RenderSpeedoWindow();
 void RenderEvaluationWindow();
 
 // ---------------------------------------------------------------------------
-// Time formatting helpers (implemented in render_shared.cpp)
+// Shared render utilities
+// ---------------------------------------------------------------------------
+// Implemented in render_shared.cpp: time formatting, color selection, and
+// route loading, used across the various render_*.cpp windows.
 // ---------------------------------------------------------------------------
 
 // Formats a seconds value as "HH:MM:SS[.mmm]".

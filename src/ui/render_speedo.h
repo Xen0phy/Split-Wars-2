@@ -34,7 +34,7 @@
 //   SpeedoDamping       — needle spring damping
 //
 //   Arc rendering
-//   SpeedoOpacity        — opacity of the background (unfilled) arc/line only
+//   SpeedoArcBgOpacity   — opacity of the background (unfilled) arc/line only
 //   SpeedoArcBgWidth     — background arc/line width in px
 //   SpeedoGradientSmooth — blend between gradient stops vs hard step
 //   SpeedoStop1Color/Thickness                  — stop 1, always enabled, fixed at pos 0

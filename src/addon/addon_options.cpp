@@ -3,8 +3,8 @@
 //
 // This is a Nexus UI callback — it draws into a panel that Nexus owns,
 // not a standalone window. All widgets write directly into the global
-// variables declared in shared.h. Settings are persisted to disk via
-// Settings are persisted to settings.ini via SaveCurrentSettings().
+// variables declared in shared.h. Settings are persisted to settings.ini
+// via SaveCurrentSettings().
 
 #include "build_info.h"
 #include "render_shared.h"
@@ -200,7 +200,7 @@ void AddonOptions()
                 ImGui::TableSetColumnIndex(1);
                 // empty
 
-                //Row 6
+                // Row 6
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Separator();
@@ -280,7 +280,7 @@ void AddonOptions()
     
                 }
 
-                //Row 9
+                // Row 9
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Separator();
@@ -290,7 +290,7 @@ void AddonOptions()
                 // --- Crash Mode section ---
                 bool crashDisabled = !StreamerMode || !CrashMode  || fontNames.empty();
     
-                // Row 8 — checkbox + shadow color
+                // Row 10 — checkbox + shadow color
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 // Crash checkbox only needs streamer enabled
@@ -307,7 +307,7 @@ void AddonOptions()
                 {
                     ImGui::Text("Crash Mode Colors:");
     
-                    // Row 9 — offset box + fill/base/overlay colors
+                    // Row 11 — offset box + fill/base/overlay colors
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     {
@@ -562,7 +562,7 @@ void AddonOptions()
             ImGui::TableSetupColumn("##cpleft",  ImGuiTableColumnFlags_WidthFixed, 200);
             ImGui::TableSetupColumn("##cpright", ImGuiTableColumnFlags_WidthFixed);
 
-            //Row 1
+            // Row 1
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Show Checkpoints",   &ShowZones);
@@ -655,7 +655,7 @@ void AddonOptions()
             ImGui::TableSetupColumn("##speedoleft",  ImGuiTableColumnFlags_WidthFixed, 200);
             ImGui::TableSetupColumn("##speedoright", ImGuiTableColumnFlags_WidthFixed);
 
-            // ── Row 1: Show Speedometer | Speed Unit ────────────────────────
+            // --- Row 1: Show Speedometer | Speed Unit ---
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             ImGui::Checkbox("Show Speedometer", &ShowSpeedo);
@@ -678,7 +678,7 @@ void AddonOptions()
                     Tooltip("Restore the default font and size for the speed label.");
                 }
 
-                // ── Row 2: Mount combo | Show Label + Reset Font ─────────────────
+                // --- Row 2: Mount combo | Show Label + Reset Font ---
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 {
@@ -745,7 +745,7 @@ void AddonOptions()
                     Tooltip("Show/Hide units.");
                 }
 
-                // ── Row 3: Tachometer | Font combo ──────────────────────────────
+                // --- Row 3: Tachometer | Font combo ---
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Checkbox("Tachometer", &SpeedoTachometer);
@@ -793,7 +793,7 @@ void AddonOptions()
                     }
                 }
 
-                // ── Row 4: Edit Mode | Label X / Y ──────────────────────────────
+                // --- Row 4: Edit Mode | Label X / Y ---
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 DisabledBlock(!SpeedoTachometer)
@@ -806,14 +806,14 @@ void AddonOptions()
                 if (SpeedoLabelVisible)
                     ImGui::TextDisabled("Drag label in Edit Mode");
     
-                // ── Separator ────────────────────────────────────────────────────
+                // --- Separator ---
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Separator();
                 ImGui::TableSetColumnIndex(1);
                 ImGui::Separator();
 
-                // ── Row 5 (geometry): canvas left | sliders right ────────────────
+                // --- Row 5 (geometry): canvas left | sliders right ---
                 // The canvas is 200px tall so we emit it first in col 0,
                 // then use SameLine-style via the table to fill col 1 with rows.
                 ImGui::TableNextRow();
@@ -868,41 +868,41 @@ void AddonOptions()
 
                     ImGui::TableSetColumnIndex(1);
                     if (ImGui::BeginTable("##speedosettingssub1", 2, ImGuiTableFlags_None))
-        			{
-            			ImGui::TableSetupColumn("##sub1left",  ImGuiTableColumnFlags_WidthFixed, 100);
-            			ImGui::TableSetupColumn("##sub1right", ImGuiTableColumnFlags_WidthFixed);
+                    {
+                        ImGui::TableSetupColumn("##sub1left",  ImGuiTableColumnFlags_WidthFixed, 100);
+                        ImGui::TableSetupColumn("##sub1right", ImGuiTableColumnFlags_WidthFixed);
                     
                         ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-						ImGui::Text("Arc:");
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Arc:");
                         ImGui::SameLine();
-                    	if (ImGui::SmallButton("Reset"))
-                    	{
-                        	SpeedoArcRotation     = 270.0f;
-	                        SpeedoArcAngle  = 60.0f;
-                        	SpeedoArcLength = 400.0f;
-                        	SaveCurrentSettings();
-                    	}
-                    	Tooltip("Restore the default arc rotation, sweep, and length.");
-						ImGui::TableSetColumnIndex(1);
-                    	ImGui::SetNextItemWidth(90.0f);
-                    	ImGui::DragFloat("##georot",  &SpeedoArcRotation,    1.0f, 0.0f,   360.0f, "Rot: %.0f°");
-                    	Tooltip("Rotation of the whole speedometer.");
-                        
-                        ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-                    	ImGui::SetNextItemWidth(90.0f);
-                    	ImGui::DragFloat("##geoangle", &SpeedoArcAngle, 1.0f, 0.0f,   359.0f, "Angle: %.0f°");
-                    	Tooltip("Total sweep of the arc. Below 1° the speedo draws as a straight line instead.");
-
-						ImGui::TableSetColumnIndex(1);
-                    	ImGui::SetNextItemWidth(90.0f);
-                    	ImGui::DragFloat("##geolength", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "Size: %.0f px");
-                    	Tooltip("Length of the arc (or line, in straight-line mode) in pixels.");
+                        if (ImGui::SmallButton("Reset"))
+                        {
+                            SpeedoArcRotation     = 270.0f;
+                            SpeedoArcAngle  = 60.0f;
+                            SpeedoArcLength = 400.0f;
+                            SaveCurrentSettings();
+                        }
+                        Tooltip("Restore the default arc rotation, sweep, and length.");
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::SetNextItemWidth(90.0f);
+                        ImGui::DragFloat("##georot",  &SpeedoArcRotation,    1.0f, 0.0f,   360.0f, "Rot: %.0f°");
+                        Tooltip("Rotation of the whole speedometer.");
                         
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-						ImGui::Spacing();
+                        ImGui::SetNextItemWidth(90.0f);
+                        ImGui::DragFloat("##geoangle", &SpeedoArcAngle, 1.0f, 0.0f,   359.0f, "Angle: %.0f°");
+                        Tooltip("Total sweep of the arc. Below 1° the speedo draws as a straight line instead.");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::SetNextItemWidth(90.0f);
+                        ImGui::DragFloat("##geolength", &SpeedoArcLength, 1.0f, 10.0f, 2000.0f, "Size: %.0f px");
+                        Tooltip("Length of the arc (or line, in straight-line mode) in pixels.");
+                        
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Spacing();
                         ImVec2 p = ImGui::GetCursorScreenPos();
                         
                         float row_w = 0.0f;
@@ -910,89 +910,89 @@ void AddonOptions()
                             row_w += ImGui::GetColumnWidth(i);
                         
                         ImGui::GetWindowDrawList()->AddLine( ImVec2(p.x, p.y), ImVec2(p.x + row_w, p.y), ImGui::GetColorU32(ImGuiCol_Separator), 1.0f);
-						ImGui::Spacing();
+                        ImGui::Spacing();
                         
                         ImGui::TableSetColumnIndex(1);
                         // empty
 
                         
-                    	// ── Needle ───────────────────────────────────────────────────
+                        // --- Needle ---
                         ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-						ImGui::Text("Needle:");
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Needle:");
 
-						ImGui::TableSetColumnIndex(1);
+                        ImGui::TableSetColumnIndex(1);
                         // empty
                         
                         ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-                    	ImGui::Checkbox("Draw", &SpeedoNeedleVisible);
-                    	Tooltip("Draw the plain needle line.");
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Checkbox("Draw", &SpeedoNeedleVisible);
+                        Tooltip("Draw the plain needle line.");
 
-						ImGui::TableSetColumnIndex(1);
-                    	DisabledBlock(!SpeedoNeedleVisible)
-                    	{
-                        	ImGui::SetNextItemWidth(90.0f);
-                        	ImGui::DragFloat("##needlewidth",  &SpeedoNeedleWidth,  0.1f, 0.1f, 5.0f,     "Width: %.1f px");
-                        	Tooltip("Needle width");
-                    	}
+                        ImGui::TableSetColumnIndex(1);
+                        DisabledBlock(!SpeedoNeedleVisible)
+                        {
+                            ImGui::SetNextItemWidth(90.0f);
+                            ImGui::DragFloat("##needlewidth",  &SpeedoNeedleWidth,  0.1f, 0.1f, 5.0f,     "Width: %.1f px");
+                            Tooltip("Needle width");
+                        }
                         
                         ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-                    	ImGui::Checkbox("Texture##needletex", &SpeedoNeedleTexEnabled);
-                    	Tooltip("Load a needle image. It rotates around the drawn needle's pivot point P.");
-                    	if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Checkbox("Texture##needletex", &SpeedoNeedleTexEnabled);
+                        Tooltip("Load a needle image. It rotates around the drawn needle's pivot point P.");
+                        if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
 
-						ImGui::TableSetColumnIndex(1);
-                    	DisabledBlock(!SpeedoNeedleVisible && !SpeedoNeedleTexEnabled)
-                    	{
-                        	float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
-                        	float maxPDist = std::fmin(500.0f, radius);
-                        	SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
-                        	ImGui::SetNextItemWidth(90.0f);
-                        	ImGui::DragFloat("##needleorigin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "Origin: %.0f px");
-                        	Tooltip("Needle origin");
-                    	}
+                        ImGui::TableSetColumnIndex(1);
+                        DisabledBlock(!SpeedoNeedleVisible && !SpeedoNeedleTexEnabled)
+                        {
+                            float radius   = SpeedoArcLength / (SpeedoArcAngle * IM_PI / 180.0f);
+                            float maxPDist = std::fmin(500.0f, radius);
+                            SpeedoPDistance = std::fmin(SpeedoPDistance, maxPDist);
+                            ImGui::SetNextItemWidth(90.0f);
+                            ImGui::DragFloat("##needleorigin", &SpeedoPDistance, 0.5f, 0.0f, maxPDist, "Origin: %.0f px");
+                            Tooltip("Needle origin");
+                        }
                         
                         ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-                    	DisabledBlock(!SpeedoNeedleTexEnabled)
-                    	{
-                        	{
-                            	const auto& texNames = GetSpeedoTextureNames();
-                            	const char* needlePreview = SpeedoNeedleTexPath.empty() ? "None" : SpeedoNeedleTexPath.c_str();
-								ImGui::SetNextItemWidth(90.0f);
-                            	if (ImGui::BeginCombo("##needletexcombo", needlePreview))
-                            	{
-                                	if (ImGui::Selectable("None", SpeedoNeedleTexPath.empty()))
-                                	{
-                                    	SpeedoNeedleTexPath.clear();
-                                    	SaveCurrentSettings();
-                                	}
-                                	for (const auto& name : texNames)
-                                	{
-                                    	bool sel = (SpeedoNeedleTexPath == name);
-                                    	if (ImGui::Selectable(name.c_str(), sel))
-                                    	{
-                                        	SpeedoNeedleTexPath = name;
-                                        	SaveCurrentSettings();
-                                    	}
-                                    	if (sel) ImGui::SetItemDefaultFocus();
-                                	}
-                                	ImGui::EndCombo();
-                            	}
-                            	Tooltip("Select the needle image to use.");
+                        ImGui::TableSetColumnIndex(0);
+                        DisabledBlock(!SpeedoNeedleTexEnabled)
+                        {
+                            {
+                                const auto& texNames = GetSpeedoTextureNames();
+                                const char* needlePreview = SpeedoNeedleTexPath.empty() ? "None" : SpeedoNeedleTexPath.c_str();
+                                ImGui::SetNextItemWidth(90.0f);
+                                if (ImGui::BeginCombo("##needletexcombo", needlePreview))
+                                {
+                                    if (ImGui::Selectable("None", SpeedoNeedleTexPath.empty()))
+                                    {
+                                        SpeedoNeedleTexPath.clear();
+                                        SaveCurrentSettings();
+                                    }
+                                    for (const auto& name : texNames)
+                                    {
+                                        bool sel = (SpeedoNeedleTexPath == name);
+                                        if (ImGui::Selectable(name.c_str(), sel))
+                                        {
+                                            SpeedoNeedleTexPath = name;
+                                            SaveCurrentSettings();
+                                        }
+                                        if (sel) ImGui::SetItemDefaultFocus();
+                                    }
+                                    ImGui::EndCombo();
+                                }
+                                Tooltip("Select the needle image to use.");
 
-								ImGui::TableSetColumnIndex(1);
-                            	if (ImGui::SmallButton("Refresh##needletex"))
-                                	ScanTextureFiles();
-                            	Tooltip("PNG/JPG files from addons/Split Wars 2/textures/. Hit Refresh after adding new files.");
-                        	}
+                                ImGui::TableSetColumnIndex(1);
+                                if (ImGui::SmallButton("Refresh##needletex"))
+                                    ScanTextureFiles();
+                                Tooltip("PNG/JPG files from addons/Split Wars 2/textures/. Hit Refresh after adding new files.");
+                            }
                             
                             ImGui::TableNextRow();
-			    			ImGui::TableSetColumnIndex(0);
+                            ImGui::TableSetColumnIndex(0);
                             float scalePercent = SpeedoNeedleTexScale * 100.0f;
-				    		ImGui::SetNextItemWidth(90.0f);
+                            ImGui::SetNextItemWidth(90.0f);
                             if (ImGui::DragFloat("##needlescale", &scalePercent, 1.0f, 1.0f, 1000.0f, "Scale: %.0f%%"))
                             {
                                 SpeedoNeedleTexScale = scalePercent / 100.0f;
@@ -1000,15 +1000,15 @@ void AddonOptions()
                             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                             Tooltip("Scale the needle texture uniformly.");
 
-						    ImGui::TableSetColumnIndex(1);
-						    ImGui::SetNextItemWidth(90.0f);
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::SetNextItemWidth(90.0f);
                             ImGui::DragFloat("##needleangle", &SpeedoNeedleTexAngleOffset, 1.0f, -180.0f, 180.0f, "Angle: %.0f°");
                             if (ImGui::IsItemDeactivatedAfterEdit()) SaveCurrentSettings();
                             Tooltip("Rotates the texture relative to the needle angle. Use this to align the tip of your needle image with the drawn needle direction.");
                             
                             ImGui::TableNextRow();
-						    ImGui::TableSetColumnIndex(0);
-						    ImGui::SetNextItemWidth(90.0f);
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::SetNextItemWidth(90.0f);
                             {
                                 float texW = 0.0f, texH = 0.0f;
                                 bool hasTex = GetSpeedoNeedleTexSize(texW, texH);
@@ -1022,8 +1022,8 @@ void AddonOptions()
                                     "You can read this off your image in any image editor (e.g. GIMP, paint.net).\n"
                                     "This point gets placed on the drawn needle's pivot P and rotated about.");
 
-						    ImGui::TableSetColumnIndex(1);
-						    ImGui::SetNextItemWidth(90.0f);
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::SetNextItemWidth(90.0f);
                             {
                                 float texW = 0.0f, texH = 0.0f;
                                 bool hasTex = GetSpeedoNeedleTexSize(texW, texH);
@@ -1051,20 +1051,20 @@ void AddonOptions()
                         }
                         ImGui::EndTable();
                     }
-            		
-                    // ── Separator ────────────────────────────────────────────────────
+
+                    // --- Separator ---
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     ImGui::Separator();
                     ImGui::TableSetColumnIndex(1);
                     ImGui::Separator();
 
-                    // ── Row: Arc style left | Needle right ───────────────────────────
+                    // --- Row: Arc style left | Needle right ---
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     ImGui::Text("Arc Gradient:");
                     {    
-                        // ── Gradient bar ─────────────────────────────────────────────
+                        // --- Gradient bar ---
                         struct UIStop { float* pos; float* color; float* thickness; bool* enabled; };
                         UIStop uiStops[4] = {
                             { nullptr,          SpeedoStop1Color, &SpeedoStop1Thickness, nullptr             },
@@ -1286,9 +1286,9 @@ void AddonOptions()
     
                     ImGui::TableSetColumnIndex(1);
                     if (ImGui::BeginTable("##speedosettingssub2", 2, ImGuiTableFlags_None))
-        			{
-            			ImGui::TableSetupColumn("##sub2left",  ImGuiTableColumnFlags_WidthFixed, 100);
-            			ImGui::TableSetupColumn("##sub2right", ImGuiTableColumnFlags_WidthFixed);
+                    {
+                        ImGui::TableSetupColumn("##sub2left",  ImGuiTableColumnFlags_WidthFixed, 100);
+                        ImGui::TableSetupColumn("##sub2right", ImGuiTableColumnFlags_WidthFixed);
                         
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
@@ -1309,7 +1309,7 @@ void AddonOptions()
                             ImGui::DragFloat("##arcwidth", &SpeedoArcBgWidth, 0.1f, 0.1f, 20.0f, "Width: %.1f px");
                             Tooltip("Thickness of the background arc track.");
 
-                            // ── Face Texture ─────────────────────────────────────────────
+                            // --- Face Texture ---
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             ImGui::Checkbox("Texture##facetex", &SpeedoFaceEnabled);

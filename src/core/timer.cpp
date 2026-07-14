@@ -97,6 +97,8 @@ void Timer::Resume()
 // ---------------------------------------------------------------------------
 // State queries
 // ---------------------------------------------------------------------------
+// Trivial accessors for the timer's current state; no side effects.
+// ---------------------------------------------------------------------------
 bool Timer::IsRunning()  const { return m_Running;  }
 bool Timer::IsFinished() const { return m_Finished; }
 bool Timer::IsPaused()   const { return m_Paused;   }
