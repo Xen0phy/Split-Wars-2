@@ -854,7 +854,9 @@ void AddonRender()
                                 // Re-fetch after FullReset (which re-syncs CheckpointStates).
                                 CheckpointStates[i].combat.active = true;
                                 CheckpointStates[i].combat.state  = ECombatState::Armed;
-                                SpeedrunTimer.AddSplit(CheckpointStates[i].Name);
+                                char startSplitName[68];
+                                snprintf(startSplitName, sizeof(startSplitName), "%s Combat Start", CheckpointStates[i].Name);
+                                SpeedrunTimer.AddSplit(startSplitName);
 
                                 if (sameArea && goalCs)
                                 {
@@ -889,6 +891,25 @@ void AddonRender()
                                     s.Timestamp = t;
                                     SpeedrunTimer.AddSplitAt(s);
                                 }
+                            }
+                        }
+                        else if (SpeedrunTimer.IsRunning() && !sameArea &&
+                                 !cs.combat.active && !cs.combat.finished)
+                        {
+                            // Re-armed mid-run (via the "Re-arm" button, or after ResetRuntime
+                            // left the tracker idle) — wait for a fresh rising combat edge inside
+                            // the zone before arming again. Without this branch, a start checkpoint
+                            // whose combat tracker was cleared while a run was in progress (e.g. a
+                            // route that loops back through the same arena) never re-arms: nothing
+                            // else transitions it from active=false back to active=true.
+                            bool risingEdge = currInCombat && !prevInCombat;
+                            if (risingEdge && onCorrectMap && inCircle)
+                            {
+                                cs.combat.active = true;
+                                cs.combat.state  = ECombatState::Armed;
+                                char startSplitName[68];
+                                snprintf(startSplitName, sizeof(startSplitName), "%s Combat Start", cs.Name);
+                                SpeedrunTimer.AddSplit(startSplitName);
                             }
                         }
 

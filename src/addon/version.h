@@ -3,7 +3,7 @@
 constexpr int Maj = 1;
 constexpr int Min = 5;
 constexpr int Bld = 7;
-constexpr int Rev = 0;
+constexpr int Rev = 2;
 
 static constexpr const char* VersionNotice =
     "Welcome! If you're new, I hope you enjoy Split Wars 2.\n\n"
